@@ -10,6 +10,9 @@
 
 The healthcheck endpoint´s, when called, does not perform any action and returns the healthcheckPlus status, protecting the execution according to the specified interval configuration and the unheath policy.
 
+**Relase Notes HealthCheckPlus (V1.0.1)**
+
+- Added Documentation file helpper for Visual-Studio
 
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
