@@ -90,4 +90,4 @@ public class MyBussines
 
 ## License
 
-This project is licensed under the [MIT License](https://github.com/FRACerqueira/PromptPlus/blob/master/LICENSE)
+This project is licensed under the [MIT License](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
