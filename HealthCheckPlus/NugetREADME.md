@@ -5,6 +5,10 @@ The healthcheck endpoint´s, when called, does not perform any action and returns
 
 HealthCheckPlus was developed in c# with the **netstandard2.1, .NET 6 AND .NET7 ** target frameworks.
 
+**Relase Notes HealthCheckPlus (V1.0.1)**
+
+- Added Documentation file helpper for Visual-Studio
+
 ## **Official pages** :
 
 #### **[Visit the HealthCheckPlus official page for complete documentation](https://fracerqueira.github.io/HealthCheckPlus)**
