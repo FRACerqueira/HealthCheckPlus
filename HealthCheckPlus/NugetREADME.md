@@ -1,17 +1,13 @@
-# <img align="left" width="100" height="100" src="./docs/images/icon.png">Welcome to HealthCheckPlus
-[![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
-[![Publish](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/publish.yml/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/publish.yml)
-[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
+# **Welcome to HealthCheckPlus**
 
-**HealthCheck with IHealthCheckPublisher and individual check interval and Unhealth interval policy.**
+HealthCheck with IHealthCheckPublisher and individual check interval and Unhealth interval policy.
+The healthcheck endpoint´s, when called, does not perform any action and returns the healthcheckPlus status, protecting the execution according to the specified interval configuration and the unheath policy.
 
-**HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6** and **.Net7** target frameworks.
+HealthCheckPlus was developed in c# with the **netstandard2.1, .NET 6 AND .NET7 ** target frameworks.
 
-The healthcheck endpointÂ´s, when called, does not perform any action and returns the healthcheckPlus status, protecting the execution according to the specified interval configuration and the unheath policy.
+## **Official pages** :
 
-
-[![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
-[![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
+#### **[Visit the HealthCheckPlus official page for complete documentation](https://fracerqueira.github.io/HealthCheckPlus)**
 
 ## **HealthCheckPlus - Sample Usage**
 
@@ -88,6 +84,7 @@ public class MyBussines
 }
 ```
 
-## License
+## **License**
 
-This project is licensed under the [MIT License](https://github.com/FRACerqueira/PromptPlus/blob/master/LICENSE)
+This project is licensed under the [MIT License](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
+
