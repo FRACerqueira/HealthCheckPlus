@@ -25,10 +25,9 @@
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<Copyright>© 2023 - Fernando Cerqueira</Copyright>
-		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 		<AssemblyVersion>1.0.1</AssemblyVersion>
 		<FileVersion>1.0.1</FileVersion>
-		<IsPublishable>False</IsPublishable>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	</PropertyGroup>
 	<PropertyGroup>
