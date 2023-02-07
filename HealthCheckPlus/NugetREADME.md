@@ -1,9 +1,12 @@
 # **Welcome to HealthCheckPlus**
 
 HealthCheck with IHealthCheckPublisher and individual check interval and Unhealth interval policy.
-The healthcheck endpoint´s, when called, does not perform any action and returns the healthcheckPlus status, protecting the execution according to the specified interval configuration and the unheath policy.
 
-HealthCheckPlus was developed in c# with the **netstandard2.1, .NET 6 AND .NET7 ** target frameworks.
+The healthcheck endpointÂ´s, when called, does not perform any action and returns the healthcheckPlus status, protecting the execution according to the specified interval configuration and the unheath policy.
+
+The parameter period for each integrity check works as a circuit breaker when using it in your business logic improving application responsiveness in high request rate scenario and protecting your infrastructure.
+
+**HealthCheckPlus was developed in c# with the netstandard2.1, .NET 6 AND .NET7 target frameworks.**
 
 **Relase Notes HealthCheckPlus (V1.0.1)**
 
