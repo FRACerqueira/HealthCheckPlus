@@ -12,9 +12,10 @@ The healthcheck endpoint´s, when called, does not perform any action and return
 
 The parameter period for each integrity check works as a circuit breaker when using it in your business logic improving application responsiveness in high request rate scenario and protecting your infrastructure.
 
-**Release Notes HealthCheckPlus (V1.0.1)**
+**Release Notes HealthCheckPlus (V1.0.2)**
 
-- Added documentation file helpper for Visual-Studio
+- Improvement documentation file helpper for Visual-Studio
+- Revised some class to use inner inner scope
 
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)

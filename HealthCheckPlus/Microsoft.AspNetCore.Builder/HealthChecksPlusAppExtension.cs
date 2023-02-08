@@ -12,6 +12,9 @@ using System.Threading.Tasks;
 
 namespace Microsoft.AspNetCore.Builder;
 
+/// <summary>
+/// HealthChecksPlus Extension for IApplicationBuilder
+/// </summary>
 public static class HealthChecksPlusAppExtension
 {
     /// <summary>

@@ -12,6 +12,9 @@ using System.Linq;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
+/// <summary>
+/// HealthChecksPlus Extension for DependencyInjection
+/// </summary>
 public static class HealthChecksPlusExtension
 {
     private static readonly ConcurrentDictionary<string, WrapperBaseHealthCheckPlus> _externalCheck = new();
@@ -97,10 +100,6 @@ public static class HealthChecksPlusExtension
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check list to run.</param>
-    /// <param name="failureStatus">
-    /// The <see cref="HealthStatus"/> that should be reported when the health check reports a failure. If the provided value
-    /// is <c>null</c>, then <see cref="HealthStatus.Unhealthy"/> will be reported.
-    /// </param>
     /// <param name="delay">An optional <see cref="TimeSpan"/>. The initial delay applied after the application starts before executing
     /// <see cref="IHealthCheckPublisher"/> instances. The delay is applied once at startup, and does
     /// not apply to subsequent iterations. The default value is 5 seconds.</param>
@@ -134,11 +133,7 @@ public static class HealthChecksPlusExtension
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check list to run.</param>
-    /// <param name="name">The name health check registered.</param>
-    /// <param name="failureStatus">
-    /// The <see cref="HealthStatus"/> that should be reported when the health check reports a failure. If the provided value
-    /// is <c>null</c>, then <see cref="HealthStatus.Unhealthy"/> will be reported.
-    /// </param>
+    /// <param name="name">The name health check registered. This param is case insensitive</param>
     /// <param name="delay">An optional <see cref="TimeSpan"/>. The initial delay applied after the application starts before executing
     /// <see cref="IHealthCheckPublisher"/> instances. The delay is applied once at startup, and does
     /// not apply to subsequent iterations. The default value is 5 seconds.</param>

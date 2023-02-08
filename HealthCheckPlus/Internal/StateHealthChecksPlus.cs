@@ -1,16 +1,15 @@
-﻿using HealthCheckPlus.Internal;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
+﻿using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System;
 using System.Collections.Concurrent;
 
-namespace HealthCheckPlus
+namespace HealthCheckPlus.Internal
 {
-    public class StateHealthChecksPlus<T> : IStateHealthChecksPlus, IStateHealthCheckPlusInternal where T : Enum
+    internal class StateHealthChecksPlus<T> : IStateHealthChecksPlus, IStateHealthCheckPlusInternal where T : Enum
     {
         private readonly object root = new();
         private readonly ConcurrentDictionary<T, HealthCheckResult> _statusDeps;
-        private readonly ConcurrentDictionary<T, (DateTime? Lastexecute,bool Running)> _lastExecute;
-        private readonly ConcurrentDictionary<T, (TimeSpan delay,TimeSpan interval)> _options;
+        private readonly ConcurrentDictionary<T, (DateTime? Lastexecute, bool Running)> _lastExecute;
+        private readonly ConcurrentDictionary<T, (TimeSpan delay, TimeSpan interval)> _options;
         private HealthCheckResult _StatusApp;
 
         public StateHealthChecksPlus()
@@ -28,9 +27,9 @@ namespace HealthCheckPlus
                     (TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30)));
                 _lastExecute.TryAdd(
                     (T)Enum.Parse(tp, enumValues!.GetValue(i)!.ToString()!),
-                    (null,false));
+                    (null, false));
                 _statusDeps.TryAdd(
-                    (T)Enum.Parse(tp, enumValues!.GetValue(i)!.ToString()!), 
+                    (T)Enum.Parse(tp, enumValues!.GetValue(i)!.ToString()!),
                     HealthCheckResult.Healthy());
             }
         }
@@ -63,7 +62,7 @@ namespace HealthCheckPlus
                 throw new ArgumentException($"value is invalid for type {tp.Name}", nameof(keydep));
             }
             (TimeSpan delay, TimeSpan interval) item = _options[(T)key!];
-            item.delay = delay; 
+            item.delay = delay;
             item.interval = interval;
             _options[(T)key!] = item;
         }
@@ -111,7 +110,7 @@ namespace HealthCheckPlus
             _lastExecute[(T)key!] = aux;
         }
 
-        public HealthCheckResult StatusApp 
+        public HealthCheckResult StatusApp
         {
             get
             {
