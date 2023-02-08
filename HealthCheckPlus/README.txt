@@ -16,9 +16,10 @@
 
 # **Welcome to HealthCheckPlus**
 
-**Relase Notes HealthCheckPlus (V1.0.1)**
------------------------------------------------------------
-- Added Documentation file helpper for Visual-Studio
+**Release Notes HealthCheckPlus (V1.0.2)**
+
+- Improvement documentation file helpper for Visual-Studio
+- Revised some class to use inner inner scope
 
 
 HealthCheck with IHealthCheckPublisher and individual check interval and Unhealth interval policy.

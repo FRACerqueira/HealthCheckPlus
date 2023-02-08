@@ -12,12 +12,19 @@ using System.Threading.Tasks;
 
 namespace HealthCheckPlus
 {
+    /// <summary>
+    /// HealthCheckPlus : Abstract class for create HealthCheck class. Inherit <see cref="IHealthCheck"/>.
+    /// </summary>
     public abstract class BaseHealthCheckPlus : IHealthCheck
     {
         private readonly IStateHealthCheckPlusInternal _stateHealthCheckPlus;
         private readonly IEnumerable<IHealthCheckPlusPolicyUnhealth> _healthCheckPlusPolicyUnhealths;
         private readonly ILogger? _logger = null;
         private readonly IOptions<HealthCheckPlusOptions> _optionshc;
+        /// <summary>
+        /// HealthCheckPlus: Abstract class for create HealthCheck class. Inherit <see cref="IHealthCheck"/>.
+        /// </summary>
+        /// <param name="serviceProvider"><see cref="IServiceProvider"/></param>
         public BaseHealthCheckPlus(IServiceProvider serviceProvider)
         {
             _healthCheckPlusPolicyUnhealths = serviceProvider.GetServices<IHealthCheckPlusPolicyUnhealth>();
@@ -26,11 +33,24 @@ namespace HealthCheckPlus
             _optionshc = serviceProvider.GetRequiredService<IOptions<HealthCheckPlusOptions>>();
         }
 
+        /// <summary>
+        /// HealthCheckPlus: Runs the health check, returning the status of the component being checked.        
+        /// </summary>
+        /// <param name="context">A context object associated with the current execution.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the health check.</param>
+        /// <returns>A <see cref="Task{HealthCheckResult}"/> that completes when the health check has finished, yielding the status of the component being checked.</returns>
+
         public virtual async Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
         {
             return await Task.FromResult(HealthCheckResult.Healthy());
         }
 
+        /// <summary>
+        /// HealthCheckPlus: Not visibinble Runs the method DoHealthCheck, returning the status of the component being checked.        
+        /// </summary>
+        /// <param name="context">A context object associated with the current execution.</param>
+        /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the health check.</param>
+        /// <returns>A <see cref="Task{HealthCheckResult}"/> that completes when the health check has finished, yielding the status of the component being checked.</returns>
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             var key = context.Registration.Name;

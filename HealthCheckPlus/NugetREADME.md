@@ -8,9 +8,10 @@ The parameter period for each integrity check works as a circuit breaker when us
 
 **HealthCheckPlus was developed in c# with the netstandard2.1, .NET 6 AND .NET7 target frameworks.**
 
-**Relase Notes HealthCheckPlus (V1.0.1)**
+**Release Notes HealthCheckPlus (V1.0.2)**
 
-- Added Documentation file helpper for Visual-Studio
+- Improvement documentation file helpper for Visual-Studio
+- Revised some class to use inner inner scope
 
 ## **Official pages** :
 
