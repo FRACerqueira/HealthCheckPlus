@@ -14,7 +14,7 @@ The parameter period for each integrity check works as a circuit breaker when us
 
 **Release Notes HealthCheckPlus (V1.0.1)**
 
-- Added Documentation file helpper for Visual-Studio
+- Added documentation file helpper for Visual-Studio
 
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
