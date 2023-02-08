@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
 
 
-**HealthCheck with IHealthCheckPublisher and individual check interval and Unhealth interval policy.**
+**HealthCheck with IHealthCheckPublisher , individual check interval and Unhealth interval policy.**
 
 **HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6** and **.Net7** target frameworks.
 
