@@ -21,13 +21,13 @@
 		<PackageId>HealthCheckPlus</PackageId>
 		<PackageReadmeFile>NugetREADME.md</PackageReadmeFile>
 		<PackageProjectUrl>https://github.com/FRACerqueira/HealthCheckPlus</PackageProjectUrl>
-		<Version>1.0.2</Version>
+		<Version>1.0.3</Version>
 		<PackageIcon>icon.png</PackageIcon>
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<Copyright>© 2023 - Fernando Cerqueira</Copyright>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-		<AssemblyVersion>1.0.2</AssemblyVersion>
-		<FileVersion>1.0.2</FileVersion>
+		<AssemblyVersion>1.0.3</AssemblyVersion>
+		<FileVersion>1.0.3</FileVersion>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	</PropertyGroup>
 	<PropertyGroup>

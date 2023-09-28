@@ -51,9 +51,17 @@ namespace HealthCheckPlus.Internal
 
             }
             ReadOnlyDictionary<string, object> aux = new(data);
-            _staAppInternal.StatusApp = report.Entries.Any(e => e.Value.Status != HealthStatus.Healthy)
-                ? new HealthCheckResult(_defaultoptions!.Value.StatusFail, data: aux)
-                : new HealthCheckResult(HealthStatus.Healthy, data: aux);
+            if (_defaultoptions.Value.FuncStatusFail != null)
+            {
+                var sta = _defaultoptions.Value.FuncStatusFail.Invoke(_staeApp);
+                _staAppInternal.StatusApp = new HealthCheckResult(sta, data: aux);
+            }
+            else
+            {
+                _staAppInternal.StatusApp = report.Entries.Any(e => e.Value.Status != HealthStatus.Healthy)
+                    ? new HealthCheckResult(_defaultoptions!.Value.StatusFail, data: aux)
+                    : new HealthCheckResult(HealthStatus.Healthy, data: aux);
+            }
         }
     }
 }

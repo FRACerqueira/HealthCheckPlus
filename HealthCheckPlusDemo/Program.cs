@@ -11,7 +11,25 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services
-    .AddHealthChecks<MyEnum>("AppHealthCheck", HealthStatus.Degraded)
+    //.AddHealthChecks<MyEnum>("AppHealthCheck", HealthStatus.Degraded)
+    .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) => 
+    {
+        if (deps.StatusDep(MyEnum.HcTest2).Status != HealthStatus.Healthy)
+        {
+            return HealthStatus.Unhealthy;
+        }
+        var alldeps = (MyEnum[])Enum.GetValues(typeof(MyEnum));
+        var result = HealthStatus.Healthy;
+        foreach (var item in alldeps)
+        {
+            if (deps.StatusDep(item).Status != HealthStatus.Healthy)
+            {
+                result = HealthStatus.Degraded;
+                break;
+            }
+        }
+        return result;
+    })
     .AddRedis("teste1", "Myredis")
     .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1)
     .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20), failureStatus: HealthStatus.Degraded)

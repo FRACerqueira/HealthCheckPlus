@@ -16,11 +16,14 @@
 
 # **Welcome to HealthCheckPlus**
 
+**Release Notes HealthCheckPlus (V1.0.3)**
+
+- Add user role to customize application Health Status result
+
 **Release Notes HealthCheckPlus (V1.0.2)**
 
 - Improvement documentation file helpper for Visual-Studio
 - Revised some class to use inner inner scope
-
 
 HealthCheck with IHealthCheckPublisher and individual check interval and Unhealth interval policy.
 
@@ -47,7 +50,24 @@ public enum MyEnum
 --------------------------------------------------------------------------------------------
 //At Statup / Program
 builder.Services
-    .AddHealthChecks<MyEnum>("AppHealthCheck", HealthStatus.Degraded)
+    .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) => 
+    {
+        if (deps.StatusDep(MyEnum.HcTest2).Status != HealthStatus.Healthy)
+        {
+            return HealthStatus.Unhealthy;
+        }
+        var alldeps = (MyEnum[])Enum.GetValues(typeof(MyEnum));
+        var result = HealthStatus.Healthy;
+        foreach (var item in alldeps)
+        {
+            if (deps.StatusDep(item).Status != HealthStatus.Healthy)
+            {
+                result = HealthStatus.Degraded;
+                break;
+            }
+        }
+        return result;
+    })
     .AddRedis("teste1", "Myredis") //Register Xabaril Redis HealthCheck
     .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1)
     .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20), failureStatus: HealthStatus.Degraded)
