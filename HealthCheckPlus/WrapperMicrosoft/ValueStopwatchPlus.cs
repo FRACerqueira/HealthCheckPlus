@@ -3,7 +3,7 @@ using System.Diagnostics;
 
 namespace HealthCheckPlus.WrapperMicrosoft
 {
-    internal struct ValueStopwatchPlus
+    internal readonly struct ValueStopwatchPlus
     {
         private static readonly double TimestampToTicks = TimeSpan.TicksPerSecond / (double)Stopwatch.Frequency;
 
@@ -16,7 +16,7 @@ namespace HealthCheckPlus.WrapperMicrosoft
             _startTimestamp = startTimestamp;
         }
 
-        public static ValueStopwatchPlus StartNew() => new ValueStopwatchPlus(Stopwatch.GetTimestamp());
+        public static ValueStopwatchPlus StartNew() => new(Stopwatch.GetTimestamp());
 
         public TimeSpan GetElapsedTime()
         {

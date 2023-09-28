@@ -12,6 +12,10 @@ The healthcheck endpoint´s, when called, does not perform any action and return
 
 The parameter period for each integrity check works as a circuit breaker when using it in your business logic improving application responsiveness in high request rate scenario and protecting your infrastructure.
 
+**Release Notes HealthCheckPlus (V1.0.3)**
+
+- Add user role to customize application Health Status result
+
 **Release Notes HealthCheckPlus (V1.0.2)**
 
 - Improvement documentation file helpper for Visual-Studio
