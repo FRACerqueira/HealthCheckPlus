@@ -35,6 +35,7 @@ public static class HealthChecksPlusExtension
     /// <summary>
     /// HealthcheckPlus : Register Aplication health check
     /// </summary>
+    /// <typeparam name="T">Enum dependences</typeparam>
     /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
     /// <param name="name">The health check name. Requeried.</param>
     /// <param name="failureStatus">
@@ -65,6 +66,72 @@ public static class HealthChecksPlusExtension
             options.NameCheckApp = name;    
             options.StatusFail = failureStatus;
             options.LogLevelCheckHealthy= logLevelForHealthy;
+            options.LogLevelCheckDegraded = logLevelForDegraded;
+            options.LogLevelCheckUnhealthy = logLevelForUnhealthy;
+        });
+
+        sc.TryAddSingleton<IHealthCheckPublisher, PublishHealthCheckPlusApp<T>>();
+        sc.Configure<HealthCheckPublisherOptions>(options =>
+        {
+            options.Predicate = hcr => lstdep.Any(x => x.Equals(hcr.Name, StringComparison.InvariantCulture));
+            options.Delay = delay ?? TimeSpan.FromSeconds(5);
+            options.Period = period ?? TimeSpan.FromSeconds(5);
+        });
+
+        var ihb = sc.AddHealthChecks();
+        //remove Microsoft DefaultHealthCheckService (write log)
+        var hcs = sc.FirstOrDefault(x => x.ImplementationType != null && x.ImplementationType.Name.Equals("DefaultHealthCheckService"));
+        if (hcs != null)
+        {
+            sc.Remove(hcs!);
+        }
+        //add custom DefaultHealthCheckServicePlus (no write log)
+        sc.TryAddSingleton<HealthCheckService, DefaultHealthCheckServicePlus>();
+
+        ihb.Add(new HealthCheckRegistration(
+                    name,
+                    ActivatorUtilities.GetServiceOrCreateInstance<PublishHealthCheckPlusApp<T>>,
+                    null, null, null));
+
+        return ihb;
+    }
+
+
+    /// <summary>
+    /// HealthcheckPlus : Register Aplication health check
+    /// </summary>
+    /// <typeparam name="T">Enum dependences</typeparam>
+    /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
+    /// <param name="name">The health check name. Requeried.</param>
+    /// <param name="failureStatus">
+    /// The user function to reports <see cref="HealthStatus"/> .
+    /// </param>
+    /// <param name="delay">An optional <see cref="TimeSpan"/>. The initial delay applied after the application starts before executing
+    /// <see cref="IHealthCheckPublisher"/> instances. The delay is applied once at startup, and does
+    /// not apply to subsequent iterations. The default value is 5 seconds.</param>
+    /// <param name="period">An optional <see cref="TimeSpan"/>. The period of <see cref="IHealthCheckPublisher"/> execution. The default value is 5 seconds</param>
+    /// <param name="logLevelForHealthy">An optional <see cref="LogLevel"/> for healthy status.</param>
+    /// <param name="logLevelForDegraded">An optional <see cref="LogLevel"/> for Degraded status.</param>
+    /// <param name="logLevelForUnhealthy">An optional <see cref="LogLevel"/> for Unhealthy status.</param>
+    /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
+    /// <returns></returns>
+    public static IHealthChecksBuilder AddHealthChecks<T>(this IServiceCollection sc, string name, Func<IStateHealthChecksPlus,HealthStatus> failureStatus, TimeSpan? delay = null, TimeSpan? period = null, LogLevel logLevelForHealthy = LogLevel.Information, LogLevel logLevelForDegraded = LogLevel.Warning, LogLevel logLevelForUnhealthy = LogLevel.Error) where T : Enum
+    {
+        var tp = typeof(T);
+        var enumValues = Enum.GetValues(tp);
+        var aux = new List<string>();
+        for (int i = 0; i < enumValues.Length; i++)
+        {
+            aux.Add(enumValues!.GetValue(i)!.ToString()!);
+        }
+        var lstdep = aux.ToArray();
+
+        sc.Configure<HealthCheckPlusOptions>(options =>
+        {
+            options.NameCheckApp = name;
+            options.StatusFail = HealthStatus.Unhealthy;
+            options.FuncStatusFail = failureStatus;
+            options.LogLevelCheckHealthy = logLevelForHealthy;
             options.LogLevelCheckDegraded = logLevelForDegraded;
             options.LogLevelCheckUnhealthy = logLevelForUnhealthy;
         });

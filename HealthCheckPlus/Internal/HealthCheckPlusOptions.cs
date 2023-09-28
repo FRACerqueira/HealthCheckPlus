@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Diagnostics.HealthChecks;
+﻿using System;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 
 namespace HealthCheckPlus.Internal
@@ -7,6 +8,7 @@ namespace HealthCheckPlus.Internal
     {
         public string NameCheckApp { get; set; }
         public HealthStatus StatusFail { get; set; }
+        public Func<IStateHealthChecksPlus, HealthStatus> FuncStatusFail { get; set; }
         public LogLevel LogLevelCheckHealthy { get; set; } = LogLevel.Information;
         public LogLevel LogLevelCheckDegraded { get; set; } = LogLevel.Warning;
         public LogLevel LogLevelCheckUnhealthy { get; set; } = LogLevel.Error;
