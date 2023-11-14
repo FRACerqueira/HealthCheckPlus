@@ -23,7 +23,7 @@ Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) 
 
 ### <a id="methods-addcheckplus"/>**AddCheckPlus&lt;TE, T&gt;(IHealthChecksBuilder, TE, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)**
 
-HealthcheckPlus : Register then dependence health check to run. the class health check class must inherit from [BaseHealthCheckPlus](./healthcheckplus.basehealthcheckplus.md).
+Register then dependence health check to run. the class health check class must inherit from [BaseHealthCheckPlus](./healthcheckplus.basehealthcheckplus.md).
 
 ```csharp
 public static IHealthChecksBuilder AddCheckPlus<TE, T>(IHealthChecksBuilder ihb, TE enumdep, Nullable<TimeSpan> delay, Nullable<TimeSpan> period, IEnumerable<String> tags, Nullable<HealthStatus> failureStatus, Nullable<TimeSpan> timeout)
@@ -67,7 +67,7 @@ The .
 
 ### <a id="methods-addcheckregistered"/>**AddCheckRegistered&lt;TE&gt;(IHealthChecksBuilder, TE, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)**
 
-HealthcheckPlus : Register then external(package import) dependence health check to run. the health check must added in .
+Register then external(package import) dependence health check to run. the health check must added in .
 
 ```csharp
 public static IHealthChecksBuilder AddCheckRegistered<TE>(IHealthChecksBuilder ihb, TE enumdep, string name, Nullable<TimeSpan> delay, Nullable<TimeSpan> period, IEnumerable<String> tags, Nullable<HealthStatus> failureStatus, Nullable<TimeSpan> timeout)
@@ -112,7 +112,7 @@ The .
 
 ### <a id="methods-adddegradedpolicy"/>**AddDegradedPolicy&lt;T&gt;(IHealthChecksBuilder, T, TimeSpan)**
 
-HealthcheckPlus : Register Degraded Policy for the health check
+Register Degraded Policy for the health check
 
 ```csharp
 public static IHealthChecksBuilder AddDegradedPolicy<T>(IHealthChecksBuilder ihb, T enumdep, TimeSpan period)
@@ -139,7 +139,7 @@ The .
 
 ### <a id="methods-addhealthchecks"/>**AddHealthChecks&lt;T&gt;(IServiceCollection, String, HealthStatus, String, Action&lt;ILogger, DataResutStatus&gt;)**
 
-HealthcheckPlus : Register Aplication health check
+Register Aplication health check
 
 ```csharp
 public static IHealthChecksBuilder AddHealthChecks<T>(IServiceCollection sc, string name, HealthStatus failureStatus, string categorylog, Action<ILogger, DataResutStatus> actionlog)
@@ -174,7 +174,7 @@ The .
 
 ### <a id="methods-addhealthchecks"/>**AddHealthChecks&lt;T&gt;(IServiceCollection, String, Func&lt;IStateHealthChecksPlus, HealthStatus&gt;, String, Action&lt;ILogger, DataResutStatus&gt;)**
 
-HealthcheckPlus : Register Aplication health check
+Register Aplication health check
 
 ```csharp
 public static IHealthChecksBuilder AddHealthChecks<T>(IServiceCollection sc, string name, Func<IStateHealthChecksPlus, HealthStatus> failureStatus, string categorylog, Action<ILogger, DataResutStatus> actionlog)
@@ -208,7 +208,7 @@ The .
 
 ### <a id="methods-addunhealthypolicy"/>**AddUnhealthyPolicy&lt;T&gt;(IHealthChecksBuilder, T, TimeSpan)**
 
-HealthcheckPlus : Register Unhealthy Policy for the health check
+Register Unhealthy Policy for the health check
 
 ```csharp
 public static IHealthChecksBuilder AddUnhealthyPolicy<T>(IHealthChecksBuilder ihb, T enumdep, TimeSpan period)

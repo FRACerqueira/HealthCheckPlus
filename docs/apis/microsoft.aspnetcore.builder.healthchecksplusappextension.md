@@ -23,7 +23,7 @@ Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) 
 
 ### <a id="methods-usehealthchecksplus"/>**UseHealthChecksPlus(IApplicationBuilder, PathString, HealthCheckOptions)**
 
-HealthcheckPlus : Adds a middleware that provides health check status.
+Adds a middleware that provides health check status.
 
 ```csharp
 public static IApplicationBuilder UseHealthChecksPlus(IApplicationBuilder app, PathString path, HealthCheckOptions options)
@@ -54,7 +54,7 @@ If path is set to null or the empty string then the health check middleware will
 
 ### <a id="methods-usehealthchecksplus"/>**UseHealthChecksPlus(IApplicationBuilder, PathString, HttpStatusCode, HttpStatusCode, HttpStatusCode)**
 
-HealthcheckPlus : Adds a middleware that provides health check status.
+Adds a middleware endpoint 'Live' that provides health check status from Application health checks.
 
 ```csharp
 public static IApplicationBuilder UseHealthChecksPlus(IApplicationBuilder app, PathString path, HttpStatusCode UnhealthySta, HttpStatusCode DegradedSta, HttpStatusCode HealthySta)
@@ -83,7 +83,7 @@ The .
 
 ### <a id="methods-usehealthchecksplusstatus"/>**UseHealthChecksPlusStatus(IApplicationBuilder, PathString, HttpStatusCode, HttpStatusCode, HttpStatusCode, Func&lt;HttpContext, HealthReport, Task&gt;)**
 
-HealthcheckPlus : Adds a middleware that provides health check status with default json details from all health checks.
+Adds a middleware endpoint 'Ready' that provides health check status with default json details from all health checks.
 
 ```csharp
 public static IApplicationBuilder UseHealthChecksPlusStatus(IApplicationBuilder app, PathString path, HttpStatusCode UnhealthySta, HttpStatusCode DegradedSta, HttpStatusCode HealthySta, Func<HttpContext, HealthReport, Task> responseWriter)

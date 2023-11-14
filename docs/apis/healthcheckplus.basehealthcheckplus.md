@@ -11,7 +11,7 @@
 
 Namespace: HealthCheckPlus
 
-HealthCheckPlus : Abstract class for create HealthCheck class. Inherit .
+Abstract class for create HealthCheck class. Inherit .
 
 ```csharp
 public abstract class BaseHealthCheckPlus : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
@@ -24,7 +24,7 @@ Implements IHealthCheck
 
 ### <a id="constructors-.ctor"/>**BaseHealthCheckPlus(IServiceProvider)**
 
-HealthCheckPlus: Abstract class for create HealthCheck class. Inherit .
+Abstract class for create HealthCheck class. Inherit .
 
 ```csharp
 public BaseHealthCheckPlus(IServiceProvider serviceProvider)
@@ -38,7 +38,7 @@ public BaseHealthCheckPlus(IServiceProvider serviceProvider)
 
 ### <a id="methods-checkhealthasync"/>**CheckHealthAsync(HealthCheckContext, CancellationToken)**
 
-HealthCheckPlus: Runs the method DoHealthCheck, returning the status of the component being checked.
+Runs the method DoHealthCheck, returning the status of the component being checked.
 
 ```csharp
 public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken)
@@ -58,7 +58,7 @@ A [Task&lt;TResult&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.threa
 
 ### <a id="methods-dohealthcheck"/>**DoHealthCheck(HealthCheckContext, CancellationToken)**
 
-HealthCheckPlus: NotImplemente!
+Default method DoHealthCheck : NotImplemente!
 
 ```csharp
 public Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
@@ -74,7 +74,7 @@ A [CancellationToken](https://docs.microsoft.com/en-us/dotnet/api/system.threadi
 
 #### Returns
 
-A [Task&lt;TResult&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.threading.tasks.task-1) that completes when the health check has finished, yielding the status of the component being checked.
+A [NotImplementedException](https://docs.microsoft.com/en-us/dotnet/api/system.notimplementedexception)
 
 
 - - -
