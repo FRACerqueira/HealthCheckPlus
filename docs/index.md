@@ -60,7 +60,7 @@ dotnet add package HealthCheckPlus [--prerelease]
 ## Examples
 [**Top**](#table-of-contents)
 
-See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples).
+See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/samples).
 
 ## Usage
 [**Top**](#table-of-contents)
