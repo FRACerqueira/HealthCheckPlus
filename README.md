@@ -82,40 +82,77 @@ public enum MyEnum
 ```csharp
 //At Statup / Program
 builder.Services
-    .AddHealthChecks<MyEnum>("AppHealthCheck", 
-        HealthStatus.Degraded,
-        "AppDemo", 
-        (log, result) => 
+    //Add HealthCheckPlus
+    .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) =>
+    //custom result status 
         {
-            switch (result.Status)
+            if (deps.TryGetNotHealthy(out _))
             {
-                case HealthStatus.Unhealthy:
-                    log.LogError($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
-                    break;
-                case HealthStatus.Degraded:
-                    log.LogWarning($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
-                    break;
-                case HealthStatus.Healthy:
-                    log.LogInformation($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
-                    break;
-                default:
-                    break;
+                return HealthStatus.Degraded;
             }
-        })
-    .AddRedis("connection string", "Myredis") //Register Xabaril Redis HealthCheck
-    .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1)
-    .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20), failureStatus: HealthStatus.Degraded)
-    .AddCheckRegistered(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))
-    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(10));
-    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(5));
+            return HealthStatus.Healthy;
+        },
+        //category log
+        "HealthCheckPlusDemo",
+        //action for log    
+        (log, result) =>
+    {
+        switch (result.Status)
+        {
+            case HealthStatus.Unhealthy:
+                log.LogError($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
+                break;
+            case HealthStatus.Degraded:
+                log.LogWarning($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
+                break;
+            case HealthStatus.Healthy:
+                log.LogInformation($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
+                break;
+            default:
+                break;
+        }
+    })
+    //your custom HC    
+    .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30))
+    //your custom HC    
+    .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(40), failureStatus: HealthStatus.Degraded)
+    //external HC 
+    .AddRedis("connection string", "Myredis")
+    //register external HC 
+    .AddCheckRegistered(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
+    //policy for Degraded
+    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(5));
 ```
 
 ```csharp
 //At Statup / Program
-app.UseHealthChecksPlus("/health/ready", HttpStatusCode.OK)
-   .UseHealthChecksPlusStatus("/health/Live", HttpStatusCode.OK);
+//Endpoints HC
+app.UseHealthChecksPlus("/health/live", HttpStatusCode.OK)
+   .UseHealthChecksPlusStatus("/health/ready", HttpStatusCode.OK);
 ```
 
+```csharp
+//At Statup / Program
+//middler pipeline
+_ = app.Use(async (context, next) =>
+{
+    if (_stateHealthChecksPlus.StatusApp.Status == HealthStatus.Unhealthy)
+    {
+        var msg = JsonSerializer.Serialize(new { Error = "App Unhealthy" });
+        context.Response.ContentType = "application/json";
+        context.Response.ContentLength = msg.Length;
+        context.Response.StatusCode = 500;
+        await context.Response.WriteAsync(msg);
+        await context.Response.CompleteAsync();
+        return;
+    }
+    await next();
+});
+```
 ```csharp
 //Create HealthCheck class inheriting from BaseHealthCheckPlus(IHealthCheck)
 public class HTest1 : BaseHealthCheckPlus
@@ -129,6 +166,7 @@ public class HTest1 : BaseHealthCheckPlus
         return await Task.FromResult(HealthCheckResult.Healthy($"teste1"));
     }
 }
+
 //Create HealthCheck class inheriting from BaseHealthCheckPlus(IHealthCheck)
 public class HTest2 : BaseHealthCheckPlus
 {

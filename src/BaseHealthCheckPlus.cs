@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 namespace HealthCheckPlus
 {
     /// <summary>
-    /// HealthCheckPlus : Abstract class for create HealthCheck class. Inherit <see cref="IHealthCheck"/>.
+    /// Abstract class for create HealthCheck class. Inherit <see cref="IHealthCheck"/>.
     /// </summary>
     public abstract class BaseHealthCheckPlus : IHealthCheck
     {
@@ -27,8 +27,13 @@ namespace HealthCheckPlus
         private readonly IEnumerable<IHealthCheckPlusDegradedPolicy> _healthCheckPlusDegradedPolicy;
         private readonly ILogger? _logger = null;
         private readonly IOptions<HealthCheckPlusOptions> _optionshc;
+
+        private BaseHealthCheckPlus()
+        {
+        }
+
         /// <summary>
-        /// HealthCheckPlus: Abstract class for create HealthCheck class. Inherit <see cref="IHealthCheck"/>.
+        /// Abstract class for create HealthCheck class. Inherit <see cref="IHealthCheck"/>.
         /// </summary>
         /// <param name="serviceProvider"><see cref="IServiceProvider"/></param>
         public BaseHealthCheckPlus(IServiceProvider serviceProvider)
@@ -41,11 +46,11 @@ namespace HealthCheckPlus
         }
 
         /// <summary>
-        /// HealthCheckPlus: NotImplemente!       
+        /// Default method DoHealthCheck : NotImplemente!       
         /// </summary>
         /// <param name="context">A context object associated with the current execution.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the health check.</param>
-        /// <returns>A <see cref="Task{HealthCheckResult}"/> that completes when the health check has finished, yielding the status of the component being checked.</returns>
+        /// <returns>A <see cref="NotImplementedException"/></returns>
 
         public virtual Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
         {
@@ -53,7 +58,7 @@ namespace HealthCheckPlus
         }
 
         /// <summary>
-        /// HealthCheckPlus: Runs the method DoHealthCheck, returning the status of the component being checked.        
+        /// Runs the method DoHealthCheck, returning the status of the component being checked.        
         /// </summary>
         /// <param name="context">A context object associated with the current execution.</param>
         /// <param name="cancellationToken">A <see cref="CancellationToken"/> that can be used to cancel the health check.</param>

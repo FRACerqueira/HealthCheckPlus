@@ -24,7 +24,7 @@ namespace Microsoft.AspNetCore.Builder;
 public static class HealthChecksPlusAppExtension
 {
     /// <summary>
-    /// HealthcheckPlus : Adds a middleware that provides health check status.
+    /// Adds a middleware that provides health check status.
     /// </summary>
     /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
     /// <param name="path">The The path on which to provide health check status.</param>
@@ -37,16 +37,14 @@ public static class HealthChecksPlusAppExtension
     ///('/') character.
     /// </remarks>
     /// <returns>The <see cref="IApplicationBuilder"/>.</returns>
-
-
-    public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path,  HealthCheckOptions options)
+    public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, HealthCheckOptions options)
     {
         app.UseHealthChecks(path, options);
         return app;
     }
 
     /// <summary>
-    /// HealthcheckPlus : Adds a middleware that provides health check status.
+    /// Adds a middleware endpoint 'Live' that provides health check status from Application health checks.
     /// </summary>
     /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
     /// <param name="path">The The path on which to provide health check status.</param>
@@ -68,7 +66,7 @@ public static class HealthChecksPlusAppExtension
     }
 
     /// <summary>
-    /// HealthcheckPlus : Adds a middleware that provides health check status with default json details from all health checks.
+    /// Adds a middleware endpoint 'Ready' that provides health check status with default json details from all health checks.
     /// </summary>
     /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
     /// <param name="path">The The path on which to provide health check status.</param>

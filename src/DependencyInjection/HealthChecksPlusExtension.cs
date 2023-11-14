@@ -20,7 +20,7 @@ public static class HealthChecksPlusExtension
     private static readonly ConcurrentDictionary<string, WrapperBaseHealthCheckPlus> _externalCheck = new();
 
     /// <summary>
-    /// HealthcheckPlus : Register Unhealthy Policy for the health check
+    /// Register Unhealthy Policy for the health check
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check to run.</param>
@@ -33,7 +33,7 @@ public static class HealthChecksPlusExtension
     }
 
     /// <summary>
-    /// HealthcheckPlus : Register Degraded Policy for the health check
+    /// Register Degraded Policy for the health check
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check to run.</param>
@@ -46,7 +46,7 @@ public static class HealthChecksPlusExtension
     }
 
     /// <summary>
-    /// HealthcheckPlus : Register Aplication health check
+    /// Register Aplication health check
     /// </summary>
     /// <typeparam name="T">Enum dependences</typeparam>
     /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
@@ -105,7 +105,7 @@ public static class HealthChecksPlusExtension
 
 
     /// <summary>
-    /// HealthcheckPlus : Register Aplication health check
+    /// Register Aplication health check
     /// </summary>
     /// <typeparam name="T">Enum dependences</typeparam>
     /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
@@ -164,7 +164,7 @@ public static class HealthChecksPlusExtension
     }
 
     /// <summary>
-    /// HealthcheckPlus : Register then dependence health check to run. the class health check class must inherit from <see cref="BaseHealthCheckPlus"/>.
+    /// Register then dependence health check to run. the class health check class must inherit from <see cref="BaseHealthCheckPlus"/>.
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check list to run.</param>
@@ -200,7 +200,7 @@ public static class HealthChecksPlusExtension
     }
 
     /// <summary>
-    /// HealthcheckPlus : Register then external(package import) dependence health check to run. the health check must added in <see cref="IHealthChecksBuilder"/>.
+    /// Register then external(package import) dependence health check to run. the health check must added in <see cref="IHealthChecksBuilder"/>.
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check list to run.</param>

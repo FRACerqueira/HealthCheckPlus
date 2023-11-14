@@ -11,7 +11,7 @@
 
 Namespace: HealthCheckPlus
 
-HealthCheckPlus: Public interface for access data  Application and Dependences.
+Represents the commands of the HealthChecksPlus for access data
 
 ```csharp
 public interface IStateHealthChecksPlus
@@ -21,7 +21,7 @@ public interface IStateHealthChecksPlus
 
 ### <a id="properties-statusapp"/>**StatusApp**
 
-HealthCheckPlus:  data Application.
+The last  data for application.
 
 ```csharp
 public abstract HealthCheckResult StatusApp { get; }
@@ -35,7 +35,7 @@ HealthCheckResult<br>
 
 ### <a id="methods-statusdep"/>**StatusDep(Enum)**
 
-HealthCheckPlus:  data Dependence.
+The last  data for dependence.
 
 ```csharp
 HealthCheckResult StatusDep(Enum keydep)
@@ -44,7 +44,7 @@ HealthCheckResult StatusDep(Enum keydep)
 #### Parameters
 
 `keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
-HealthCheckPlus: Enum HealthCheck value Dependence
+The Enum value dependence.
 
 #### Returns
 
@@ -52,7 +52,7 @@ HealthCheckResult
 
 ### <a id="methods-swithtodegraded"/>**SwithToDegraded(Enum)**
 
-HealthCheckPlus: Swith state to Degraded
+Swith state to Degraded.
 
 ```csharp
 void SwithToDegraded(Enum keydep)
@@ -61,11 +61,11 @@ void SwithToDegraded(Enum keydep)
 #### Parameters
 
 `keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
-HealthCheckPlus: Enum HealthCheck value Dependence
+The Enum value dependence.
 
 ### <a id="methods-swithtounhealthy"/>**SwithToUnhealthy(Enum)**
 
-HealthCheckPlus: Swith state to unhealthy
+Swith state to unhealthy.
 
 ```csharp
 void SwithToUnhealthy(Enum keydep)
@@ -74,7 +74,75 @@ void SwithToUnhealthy(Enum keydep)
 #### Parameters
 
 `keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
-HealthCheckPlus: Enum HealthCheck value Dependence
+The Enum value dependence.
+
+### <a id="methods-trygetdegraded"/>**TryGetDegraded(ref IEnumerable`1)**
+
+Try get all degraded status.
+
+```csharp
+bool TryGetDegraded(ref IEnumerable`1 result)
+```
+
+#### Parameters
+
+`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
+[DataResutStatus](./healthcheckplus.dataresutstatus.md) degrated.
+
+#### Returns
+
+True if found, oyherwise false.
+
+### <a id="methods-trygethealthy"/>**TryGetHealthy(ref IEnumerable`1)**
+
+Try get all healthy status.
+
+```csharp
+bool TryGetHealthy(ref IEnumerable`1 result)
+```
+
+#### Parameters
+
+`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
+[DataResutStatus](./healthcheckplus.dataresutstatus.md) healthy.
+
+#### Returns
+
+True if found, oyherwise false.
+
+### <a id="methods-trygetnothealthy"/>**TryGetNotHealthy(ref IEnumerable`1)**
+
+Try get all not healthy status.
+
+```csharp
+bool TryGetNotHealthy(ref IEnumerable`1 result)
+```
+
+#### Parameters
+
+`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
+[DataResutStatus](./healthcheckplus.dataresutstatus.md) healthy.
+
+#### Returns
+
+True if found, oyherwise false.
+
+### <a id="methods-trygetunhealthy"/>**TryGetUnhealthy(ref IEnumerable`1)**
+
+Try get all unhealthy status.
+
+```csharp
+bool TryGetUnhealthy(ref IEnumerable`1 result)
+```
+
+#### Parameters
+
+`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
+[DataResutStatus](./healthcheckplus.dataresutstatus.md) unhealthy.
+
+#### Returns
+
+True if found, oyherwise false.
 
 
 - - -

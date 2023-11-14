@@ -7,6 +7,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace HealthCheckPlus.Internal
 {
@@ -259,6 +261,40 @@ namespace HealthCheckPlus.Internal
                     SetIsRunning(keydep.ToString(), false);
                 }
             }
+        }
+
+        public bool TryGetNotHealthy(out IEnumerable<DataResutStatus> result)
+        {
+            result = _statusDeps
+                .Where(x => x.Value.Status != HealthStatus.Healthy)
+                .Select(x => new DataResutStatus(x.Key.ToString(), x.Value.Description, x.Value.Status, x.Value.Exception, LastCheck(x.Key.ToString()), LastDuration(x.Key.ToString())));
+            return result.Any();
+        }
+
+
+        public bool TryGetHealthy(out IEnumerable<DataResutStatus> result)
+        {
+            result = GetResultsByStatus(HealthStatus.Healthy);
+            return result.Any();
+        }
+
+        public bool TryGetDegraded(out IEnumerable<DataResutStatus> result)
+        {
+            result = GetResultsByStatus(HealthStatus.Degraded);
+            return result.Any();
+        }
+
+        public bool TryGetUnhealthy(out IEnumerable<DataResutStatus> result)
+        {
+            result = GetResultsByStatus(HealthStatus.Unhealthy);
+            return result.Any();
+        }
+
+        private IEnumerable<DataResutStatus> GetResultsByStatus(HealthStatus status)
+        {
+            return _statusDeps
+                .Where(x => x.Value.Status == status)
+                .Select(x => new DataResutStatus(x.Key.ToString(), x.Value.Description, x.Value.Status, x.Value.Exception, LastCheck(x.Key.ToString()), LastDuration(x.Key.ToString())));
         }
     }
 }

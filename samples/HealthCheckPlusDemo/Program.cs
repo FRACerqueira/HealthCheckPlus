@@ -2,6 +2,9 @@ using HealthCheckPlus;
 using HealthCheckPlusDemo;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Net;
+using System.Text.Json;
+
+IStateHealthChecksPlus? _stateHealthChecksPlus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,26 +14,20 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services
+    //Add HealthCheckPlus
     .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) =>
+    //custom result status 
         {
-            if (deps.StatusDep(MyEnum.HcTest2).Status != HealthStatus.Healthy)
+            if (deps.TryGetNotHealthy(out _))
             {
-                return HealthStatus.Unhealthy;
+                return HealthStatus.Degraded;
             }
-            var alldeps = (MyEnum[])Enum.GetValues(typeof(MyEnum));
-            var result = HealthStatus.Healthy;
-            foreach (var item in alldeps)
-            {
-                if (deps.StatusDep(item).Status != HealthStatus.Healthy)
-                {
-                    result = HealthStatus.Degraded;
-                    break;
-                }
-            }
-            return result;
+            return HealthStatus.Healthy;
         },
-        "HealthCheckPlusDemo", 
-        (log, result) => 
+        //category log
+        "HealthCheckPlusDemo",
+        //action for log    
+        (log, result) =>
     {
         switch (result.Status)
         {
@@ -47,28 +44,51 @@ builder.Services
                 break;
         }
     })
+    //your custom HC    
+    .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30))
+    //your custom HC    
+    .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(40), failureStatus: HealthStatus.Degraded)
+    //external HC 
     .AddRedis("connection string", "Myredis")
-    .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(1600), TimeSpan.FromSeconds(1600))
-    .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(1600), failureStatus: HealthStatus.Degraded)
-    .AddCheckRegistered(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(1600))
-    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(1))
-    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(1));
+    //register external HC 
+    .AddCheckRegistered(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
+    //policy for Degraded
+    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(5));
 
 
 var app = builder.Build();
 
-//example usage
+//save interfaces IStateHealthChecksPlus
 using (IServiceScope startscope = app.Services.CreateScope())
 {
-    var healthCheckApp = app.Services.GetRequiredService<IStateHealthChecksPlus>();
-    if (healthCheckApp.StatusApp.Status == HealthStatus.Unhealthy)
-    { 
-    }
-    var _ = healthCheckApp.StatusDep(MyEnum.HcTest1);
+    _stateHealthChecksPlus = startscope.ServiceProvider.GetRequiredService<IStateHealthChecksPlus>();
 }
 
-app.UseHealthChecksPlus("/health/ready", HttpStatusCode.OK)
-   .UseHealthChecksPlusStatus("/health/Live", HttpStatusCode.OK);
+
+//Endpoints HC
+app.UseHealthChecksPlus("/health/live", HttpStatusCode.OK)
+   .UseHealthChecksPlusStatus("/health/ready", HttpStatusCode.OK);
+
+//middler pipeline
+_ = app.Use(async (context, next) =>
+{
+    if (_stateHealthChecksPlus.StatusApp.Status == HealthStatus.Unhealthy)
+    {
+        var msg = JsonSerializer.Serialize(new { Error = "App Unhealthy" });
+        context.Response.ContentType = "application/json";
+        context.Response.ContentLength = msg.Length;
+        context.Response.StatusCode = 500;
+        await context.Response.WriteAsync(msg);
+        await context.Response.CompleteAsync();
+        return;
+    }
+    await next();
+});
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
