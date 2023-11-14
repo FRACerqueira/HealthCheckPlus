@@ -16,12 +16,14 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "readme", "readme", "{EE6725
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "doc", "doc", "{BE1994FD-D680-4A4E-8107-17FB273C74A4}"
 	ProjectSection(SolutionItems) = preProject
+		.github\workflows\build.yml = .github\workflows\build.yml
 		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		CODE_OF_CONDUCT.md = CODE_OF_CONDUCT.md
 		CONTRIBUTING.md = CONTRIBUTING.md
 		docapitemplate.md = docapitemplate.md
 		docs\index.md = docs\index.md
 		docs\LICENSE.md = docs\LICENSE.md
+		.github\workflows\publish.yml = .github\workflows\publish.yml
 		docs\whatsnewprev.md = docs\whatsnewprev.md
 		docs\_config.yml = docs\_config.yml
 	EndProjectSection
