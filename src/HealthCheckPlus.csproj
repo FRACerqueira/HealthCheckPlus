@@ -24,7 +24,7 @@
 		<RepositoryType>git</RepositoryType>
 		<PackageId>HealthCheckPlus</PackageId>
 		<PackageReadmeFile>NugetREADME.md</PackageReadmeFile>
-		<PackageProjectUrl>https://github.com/FRACerqueira/HealthCheckPlus</PackageProjectUrl>
+		<PackageProjectUrl>https://fracerqueira.github.io/HealthCheckPlus</PackageProjectUrl>
 		<Version>1.0.4</Version>
 		<PackageIcon>icon.png</PackageIcon>
 		<Copyright>© 2023 - Fernando Cerqueira</Copyright>
