@@ -1,4 +1,4 @@
-# <img align="left" width="100" height="100" src="./docs/images/icon.png">Welcome to HealthCheckPlus
+# <img align="left" width="100" height="100" src="./images/icon.png">Welcome to HealthCheckPlus
 [![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
@@ -8,8 +8,6 @@
 ### **HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.**
 
 **HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6** and **.Net7** target frameworks.
-
-**[Visit the official page for more documentation of HealthCheckPlus](https://fracerqueira.github.io/HealthCheckPlus)**
 
 ## Table of Contents
 
@@ -68,6 +66,7 @@ See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/ma
 [**Top**](#table-of-contents)
 
 The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
+
 
 ```csharp
 //Create enum with all HealthCheck
