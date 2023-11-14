@@ -9,8 +9,6 @@
 
 **HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6** and **.Net7** target frameworks.
 
-**[Visit the official page for more documentation of HealthCheckPlus](https://fracerqueira.github.io/HealthCheckPlus)**
-
 ## Table of Contents
 
 - [What's new - previous versions](./docs/whatsnewprev.md)
