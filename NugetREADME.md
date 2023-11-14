@@ -2,7 +2,7 @@
 
 ### **HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.**
 
-**HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6** and **.Net7** target frameworks.
+**HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6**, **.Net7** and **.Net8** target frameworks.
 
 ## What's new V1.0.4
 
@@ -38,7 +38,7 @@ public enum MyEnum
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) =>
-    //custom result status 
+        //custom result status 
         {
             if (deps.TryGetNotHealthy(out _))
             {
