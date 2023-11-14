@@ -1,0 +1,4 @@
+description: HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.
+show_downloads: false
+google_analytics:
+theme: jekyll-theme-cayman

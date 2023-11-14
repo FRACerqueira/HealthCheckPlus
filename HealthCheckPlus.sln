@@ -3,29 +3,47 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33213.308
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlus", "HealthCheckPlus\HealthCheckPlus.csproj", "{C955576A-054E-4AB7-9B0E-33E0B4B086A0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlus", "src\HealthCheckPlus.csproj", "{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlusDemo", "HealthCheckPlusDemo\HealthCheckPlusDemo.csproj", "{2233E9F9-7411-46CF-ABAB-934C66E0176F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlusDemo", "samples\HealthCheckPlusDemo\HealthCheckPlusDemo.csproj", "{8D563223-BE9E-47D2-8761-C321C7AD8BE6}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "OtherFiles", "OtherFiles", "{8852B0A4-25A5-432E-968C-25F9129051B6}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "readme", "readme", "{EE6725E1-0A5C-4025-98FF-D992D1EF4E30}"
 	ProjectSection(SolutionItems) = preProject
+		NugetREADME.md = NugetREADME.md
 		README.md = README.md
+		README.txt = README.txt
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "doc", "doc", "{BE1994FD-D680-4A4E-8107-17FB273C74A4}"
+	ProjectSection(SolutionItems) = preProject
+		CODE_OF_CONDUCT.md = CODE_OF_CONDUCT.md
+		CONTRIBUTING.md = CONTRIBUTING.md
+		docapitemplate.md = docapitemplate.md
+		docs\index.md = docs\index.md
+		docs\LICENSE.md = docs\LICENSE.md
+		docs\whatsnewprev.md = docs\whatsnewprev.md
+		docs\_config.yml = docs\_config.yml
 	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		local|Any CPU = local|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{C955576A-054E-4AB7-9B0E-33E0B4B086A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C955576A-054E-4AB7-9B0E-33E0B4B086A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C955576A-054E-4AB7-9B0E-33E0B4B086A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C955576A-054E-4AB7-9B0E-33E0B4B086A0}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2233E9F9-7411-46CF-ABAB-934C66E0176F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2233E9F9-7411-46CF-ABAB-934C66E0176F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2233E9F9-7411-46CF-ABAB-934C66E0176F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2233E9F9-7411-46CF-ABAB-934C66E0176F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.local|Any CPU.ActiveCfg = local|Any CPU
+		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.local|Any CPU.Build.0 = local|Any CPU
+		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.local|Any CPU.ActiveCfg = local|Any CPU
+		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.local|Any CPU.Build.0 = local|Any CPU
+		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
