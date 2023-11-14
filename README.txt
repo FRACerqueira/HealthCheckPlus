@@ -47,8 +47,13 @@ Examples
 
 See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples
 
-Sample Usage
-************
+Usage
+******
+
+The HealthCheckPlu* use fluent interface; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
+
+SAMPLE
+======
 
 //Create enum with all HealthCheck
 public enum MyEnum

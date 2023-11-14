@@ -1,34 +1,32 @@
-# <img align="left" width="100" height="100" src="./images/icon.png">Welcome to PipeAndFilter
-[![Build](https://github.com/FRACerqueira/PipeAndFilter/workflows/Build/badge.svg)](https://github.com/FRACerqueira/PipeAndFilter/actions/workflows/build.yml)
-[![License](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://github.com/FRACerqueira/PipeAndFilter/blob/master/LICENSE)
-[![NuGet](https://img.shields.io/nuget/v/PipeAndFilter)](https://www.nuget.org/packages/PipeAndFilter/)
-[![Downloads](https://img.shields.io/nuget/dt/PipeAndFilter)](https://www.nuget.org/packages/PipeAndFilter/)
+# <img align="left" width="100" height="100" src="../images/icon.png">Welcome to HealthCheckPlus
+[![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
+[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
+[![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
+[![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 
 
-**PipeAndFilter component for .NET Core with flexible conditions for each step (pipe)
-and the ability to parallel execute tasks over a pipe.
-.**
+### **HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.**
 
-**PipeAndFilter** was developed in C# with the **netstandard2.1**, **.NET 6** and **.NET 7** target frameworks.
+**HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6** and **.Net7** target frameworks.
 
-<img src="./images/PipeAndFilterFeature.png"> 
+**[Visit the official page for more documentation of HealthCheckPlus](https://fracerqueira.github.io/HealthCheckPlus)**
 
 ## Table of Contents
 
-- [What's new - previous versions](whatsnewprev.md)
+- [What's new - previous versions](./docs/whatsnewprev.md)
 - [Features](#features)
 - [Installing](#installing)
 - [Examples](#examples)
 - [Usage](#usage)
-- [Performance](#performance)
 - [Code of Conduct](#code-of-conduct)
 - [Contributing](#contributing)
 - [Credits](#credits)
 - [License](#license)
-- [API Reference](https://fracerqueira.github.io/PipeAndFilter/apis/apis.html)
+- [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
+
 
 ## What's new in the latest version 
-### V1.0.3 
+### V1.0.4
 
 [**Top**](#table-of-contents)
 
@@ -37,28 +35,26 @@ and the ability to parallel execute tasks over a pipe.
 ## Features
 [**Top**](#table-of-contents)
 
-- Thread safety to obtain/change contract values ​​and/or generic purpose when running a Task (pararel execute)
-- Add multiple pipe
-- Add multiple Aggregate pipe (for run pararel tasks)
-- Set the maximum amount of parallel execution
-- Add multiple preconditions to run a pipe or task
-- Add multiple link to the pipe to jump to another pipe
-- Perform an action with conditions after pipe/aggregatepipe 
-- Have detailed status (execution date, execution time, type of execution, result of each execution) and number of executions in each pipe
-- Save multiple results from each pipe to be used during the another pipe/aggregate pipe run
-- Save multiple results in each task to be effective during the aggregation pipe run
-- Terminate the PipeAndFilter on any task, condition or pipe
+- Delay and interval for each HealthCheck
+- Interval policy for unhealthy status for each HealthCheck
+- Interval policy for degraded status for each HealthCheck
+- Endpoints returns the latest internal status protecting your application.
+- The parameter period for each health check acts as a circuit breaker when using it in your business logic, improving application responsiveness in high request rate scenarios and protecting your infrastructure.
+- Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
+- Register an external health check (packet import) and associate delay, interval and individual policy rules.
+- Optional action to write log.
+- Optional parameter for log category name.
 - Simple and clear fluent syntax
 
 ## Installing
 [**Top**](#table-of-contents)
 
 ```
-Install-Package PipeAndFilter [-pre]
+Install-Package HealthCheckPlus [-pre]
 ```
 
 ```
-dotnet add package PipeAndFilter [--prerelease]
+dotnet add package HealthCheckPlus [--prerelease]
 ```
 
 **_Note:  [-pre]/[--prerelease] usage for pre-release versions_**
@@ -66,131 +62,112 @@ dotnet add package PipeAndFilter [--prerelease]
 ## Examples
 [**Top**](#table-of-contents)
 
-See folder [**Samples**](https://github.com/FRACerqueira/PipeAndFilter/tree/main/Samples).
-
-```
-dotnet run --project [name of sample]
-```
+See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples).
 
 ## Usage
 [**Top**](#table-of-contents)
 
-The **PipeAndFilter** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
+The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
 
-### Sample-Console Usage (Full features)
 
 ```csharp
-await PipeAndFilter.New<MyClass>()
-    .AddPipe(Pipe1)
-        .WithGotoCondition(Cond0, "LastPipe")
-        .WithCondition(Cond1)
-        .WithCondition(Cond2)
-        .AfterRunningPipe(ExecPipeAfter)
-            .WithCondition(CondA1)
-            .WithGotoCondition(CondA2, "LastPipe")
-    .AddPipe(Pipe2)
-        .AfterRunningPipe()
-            .WithGotoCondition(CondA3, "LastPipe")
-    .AddPipe(Pipe3)
-        .AfterRunningAggregatePipe(ExecPipeAfterTask)
-            .MaxDegreeProcess(8)
-            .AddTaskCondition(Task50)
-                .WithCondition(CondTrue)
-            .AddTask(Task100)    
-    .AddPipe(Pipe4)
-    .AddAggregatePipe(Pipe5)
-        .WithCondition(Cond1)
-        .MaxDegreeProcess(4)
-        .AddTask(Task50)
-        .AddTaskCondition(Task100)
-            .WithCondition(Cond3)
-            .WithCondition(Cond4)
-        .AddTask(Task150)
-    .AddPipe(Pipe6, "LastPipe")
-    .BuildAndCreate()
-    .Init(contract)
-    .CorrelationId(null)
-    .Logger(null)
-    .Run();
+//Create enum with all HealthCheck
+public enum MyEnum
+{
+    HcTeste1,
+    HcTeste2,
+    Redis
+}
 ```
 
-### Sample-api/webUsage
-[**Top**](#table-of-contents)
-
 ```csharp
+//At Statup / Program
 builder.Services
-    .AddPipeAndFilter(PipeAndFilter.New<WeatherForecast>()
-        .AddPipe(TemperatureAdd10)
-        .Build());
+    .AddHealthChecks<MyEnum>("AppHealthCheck", 
+        HealthStatus.Degraded,
+        "AppDemo", 
+        (log, result) => 
+        {
+            switch (result.Status)
+            {
+                case HealthStatus.Unhealthy:
+                    log.LogError($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
+                    break;
+                case HealthStatus.Degraded:
+                    log.LogWarning($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
+                    break;
+                case HealthStatus.Healthy:
+                    log.LogInformation($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
+                    break;
+                default:
+                    break;
+            }
+        })
+    .AddRedis("connection string", "Myredis") //Register Xabaril Redis HealthCheck
+    .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1)
+    .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20), failureStatus: HealthStatus.Degraded)
+    .AddCheckRegistered(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))
+    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(10));
+    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(5));
 ```
 
 ```csharp
-private static Task TemperatureAdd10(EventPipe<WeatherForecast> pipe, CancellationToken token)
+//At Statup / Program
+app.UseHealthChecksPlus("/health/ready", HttpStatusCode.OK)
+   .UseHealthChecksPlusStatus("/health/Live", HttpStatusCode.OK);
+```
+
+```csharp
+//Create HealthCheck class inheriting from BaseHealthCheckPlus(IHealthCheck)
+public class HTest1 : BaseHealthCheckPlus
 {
-    pipe.ThreadSafeAccess((contract) =>
+    public hcteste1(IServiceProvider serviceProvider) : base(serviceProvider)
     {
-        contract.TemperatureC += 10;
-    });
-    return Task.CompletedTask;
+    }
+
+    public override async Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
+    {
+        return await Task.FromResult(HealthCheckResult.Healthy($"teste1"));
+    }
+}
+//Create HealthCheck class inheriting from BaseHealthCheckPlus(IHealthCheck)
+public class HTest2 : BaseHealthCheckPlus
+{
+    public hcteste2(IServiceProvider serviceProvider) : base(serviceProvider)
+    {
+    }
+
+    public override async Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
+    {
+        return await Task.FromResult(HealthCheckResult.Degraded($"teste2"));
+    }
 }
 ```
 
 ```csharp
-[ApiController]
-[Route("[controller]")]
-public class WeatherForecastController : ControllerBase
+//Consuming Status from HealthCheckPlus
+public class MyBussines
 {
-    private readonly ILogger<WeatherForecastController> _logger;
-    private readonly IPipeAndFilterService<WeatherForecast> _mypipe;
-
-    public WeatherForecastController(ILogger<WeatherForecastController> logger, IPipeAndFilterService<WeatherForecast> pipeAndFilter)
+    public MyBussines(IStateHealthChecksPlus healthCheckApp)
     {
-        _logger = logger;
-        _mypipes = pipeAndFilter;
-    }
-
-    [HttpGet(Name = "GetWeatherForecast")]
-    public async Task<WeatherForecast> Get(CancellationToken cancellation)
-    {
-            var cid = Guid.NewGuid().ToString();
-
-            var pipe = await _mypipes
-                .Create()
-                .Logger(_logger)
-                .CorrelationId(cid)
-                .Init(new WeatherForecast { Date = DateOnly.FromDateTime(DateTime.Now), Summary = "PipeAndFilter-Opc1", TemperatureC = 0 })
-                .Run(cancellation);
-            return pipe.Value!
+        if (healthCheckApp.StatusApp.Status == HealthStatus.Degraded)
+        { 
+            //do something
+        }
+        if (healthCheckApp.StatusDep(MyEnum.HcTeste2).Status == HealthStatus.Unhealthy)
+        { 
+            //do something. This dependency 'HcTeste2' is not available
+        }
+        try
+        {
+            //redis access
+        }
+        catch (ExceptionRedis rex)
+        {
+            healthCheckApp.SwithToUnhealthy(MyEnum.Redis);
+        }
     }
 }
-```
-
-## Performance
-[**Top**](#table-of-contents)
-
-All pipes, conditions and tasks do not perform any task, they are only called and executed by the component
-
-See folder [**Samples/PipeandFIlterBenchmarking**](https://github.com/FRACerqueira/PipeAndFilter/tree/main/Samples/PipeandFIlterBenchmarking).
-
-```
-------------------------------------------------------------------------------------------------------
-BenchmarkDotNet v0.13.10, Windows 10 (10.0.19044.3570/21H2/November2021Update)
-Intel Core i7-8565U CPU 1.80GHz (Whiskey Lake), 1 CPU, 8 logical and 4 physical cores
-.NET SDK 8.0.100-rc.2.23502.2
-  [Host]     : .NET 7.0.13 (7.0.1323.51816), X64 RyuJIT AVX2
-  DefaultJob : .NET 7.0.13 (7.0.1323.51816), X64 RyuJIT AVX2
-------------------------------------------------------------------------------------------------------
-| Method                       | Mean      | Error     | StdDev    | Median    | Gen0    | Allocated |
-|----------------------------- |----------:|----------:|----------:|----------:|--------:|----------:|
-| PipeAsync                    |  3.990 us | 0.0460 us | 0.0384 us |  3.992 us |  0.8698 |   3.57 KB |
-| PipeWith10Async              | 97.574 us | 1.7283 us | 1.7748 us | 97.153 us | 15.0146 |  61.37 KB |
-| PipeWithConditionAsync       |  5.003 us | 0.0591 us | 0.0524 us |  5.003 us |  1.0834 |   4.45 KB |
-| PipeWith10ConditionAsync     | 13.157 us | 0.1262 us | 0.0985 us | 13.155 us |  3.1891 |  13.05 KB |
-| PipeWith10ConditionGotoAsync | 18.253 us | 0.3007 us | 0.2347 us | 18.211 us |  3.9978 |  16.34 KB |
-| PipeTaskAsync                |  9.741 us | 0.1923 us | 0.3517 us |  9.649 us |  1.3275 |   5.45 KB |
-| PipeWith10TaskAsync          | 45.064 us | 0.7313 us | 0.8981 us | 44.984 us |  4.5166 |  18.58 KB |
-| PipeTaskConditionAsync       | 11.280 us | 0.1956 us | 0.1830 us | 11.312 us |  1.5564 |   6.39 KB |
-| PipeWith10TaskConditionAsync | 48.034 us | 0.9578 us | 2.5895 us | 47.222 us |  4.5166 |  18.58 KB |
 ```
 
 ## Code of Conduct
@@ -200,6 +177,7 @@ This project has adopted the code of conduct defined by the Contributor Covenant
 For more information see the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Contributing
+[**Top**](#table-of-contents)
 
 See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
 
@@ -215,4 +193,5 @@ See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
 
 Copyright 2023 @ Fernando Cerqueira
 
-PipeAndFilter is licensed under the MIT license. See [LICENSE](https://github.com/FRACerqueira/PipeAndFilter/blob/master/LICENSE).
+HealthCheckPlus is licensed under the MIT license. See [LICENSE](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE).
+

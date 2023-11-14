@@ -21,7 +21,10 @@
 - Optional parameter for log category name.
 - Simple and clear fluent syntax
 
-## Sample Usage**
+## Usage**
+
+The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
+
 
 ```csharp
 //Create enum with all HealthCheck

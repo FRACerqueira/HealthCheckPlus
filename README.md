@@ -18,12 +18,11 @@
 - [Installing](#installing)
 - [Examples](#examples)
 - [Usage](#usage)
-- [Performance](#performance)
 - [Code of Conduct](#code-of-conduct)
 - [Contributing](#contributing)
 - [Credits](#credits)
 - [License](#license)
-- [API Reference](https://fracerqueira.github.io/PipeAndFilter/apis/apis.html)
+- [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
 
 
 ## What's new in the latest version 
@@ -65,7 +64,10 @@ dotnet add package HealthCheckPlus [--prerelease]
 
 See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples).
 
-## **HealthCheckPlus - Sample Usage**
+## Usage
+[**Top**](#table-of-contents)
+
+The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
 
 ```csharp
 //Create enum with all HealthCheck
@@ -174,6 +176,7 @@ This project has adopted the code of conduct defined by the Contributor Covenant
 For more information see the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Contributing
+[**Top**](#table-of-contents)
 
 See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
 
