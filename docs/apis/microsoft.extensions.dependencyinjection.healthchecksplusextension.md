@@ -44,12 +44,10 @@ The .
 The [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum) with health check list to run.
 
 `delay` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
-An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The initial delay applied after the application starts before executing
-  instances. The delay is applied once at startup, and does
- not apply to subsequent iterations. The default value is 5 seconds.
+The initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.
 
 `period` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
-An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The period of  execution. The default value is 30 seconds
+the period of  execution. The default value is 1 seconds. The min.value is 500 milesecond.
 
 `tags` [IEnumerable&lt;String&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1)<br>
 A list of tags that can be used for filtering health checks.

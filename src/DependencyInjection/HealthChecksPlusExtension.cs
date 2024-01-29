@@ -192,10 +192,8 @@ public static class HealthChecksPlusExtension
     /// </summary>
     /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
     /// <param name="enumdep">The <see cref="Enum"/> with health check list to run.</param>
-    /// <param name="delay">An optional <see cref="TimeSpan"/>. The initial delay applied after the application starts before executing
-    /// <see cref="IHealthCheckPublisher"/> instances. The delay is applied once at startup, and does
-    /// not apply to subsequent iterations. The default value is 5 seconds.</param>
-    /// <param name="period">An optional <see cref="TimeSpan"/>. The period of <see cref="IHealthCheckPublisher"/> execution. The default value is 30 seconds</param>
+    /// <param name="delay">The initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.</param>
+    /// <param name="period"> the period of <see cref="IHealthCheckPublisher"/> execution. The default value is 1 seconds. The min.value is 500 milesecond.</param>
     /// <param name="tags">A list of tags that can be used for filtering health checks.</param>
     /// <param name="failureStatus">
     /// The <see cref="HealthStatus"/> that should be reported when the health check reports a failure. If the provided value
