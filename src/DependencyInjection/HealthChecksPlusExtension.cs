@@ -51,6 +51,8 @@ public static class HealthChecksPlusExtension
     /// <typeparam name="T">Enum dependences</typeparam>
     /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
     /// <param name="name">The health check name. Requeried.</param>
+    /// <param name="delay">The initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.</param>
+    /// <param name="period"> the period of <see cref="IHealthCheckPublisher"/> execution. The default value is 1 seconds. The min.value is 500 milesecond.</param>
     /// <param name="failureStatus">
     /// The <see cref="HealthStatus"/> that should be reported when the health check reports a failure. If the provided value
     /// is <c>null</c>, then <see cref="HealthStatus.Unhealthy"/> will be reported.
@@ -58,8 +60,18 @@ public static class HealthChecksPlusExtension
     /// <param name="categorylog">An optional category name for logger.</param>
     /// <param name="actionlog">An optional action to write log.</param>
     /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
-    public static IHealthChecksBuilder AddHealthChecks<T>(this IServiceCollection sc, string name, HealthStatus failureStatus =  HealthStatus.Unhealthy,string? categorylog = null, Action<ILogger, DataResutStatus> actionlog = null) where T : Enum
+    public static IHealthChecksBuilder AddHealthChecks<T>(this IServiceCollection sc, string name, TimeSpan? delay = null, TimeSpan? period = null, HealthStatus failureStatus =  HealthStatus.Unhealthy,string? categorylog = null, Action<ILogger, DataResutStatus> actionlog = null) where T : Enum
     {
+        delay ??= TimeSpan.FromSeconds(5);
+        if (delay.Value.Milliseconds < 1)
+        {
+            delay = TimeSpan.FromSeconds(1);
+        }
+        period ??= TimeSpan.FromSeconds(1);
+        if (period.Value.TotalMilliseconds < 500)
+        {
+            period = TimeSpan.FromMilliseconds(500);
+        }
         var tp = typeof(T);
         var enumValues = Enum.GetValues(tp);
         var aux = new List<string>();
@@ -81,8 +93,8 @@ public static class HealthChecksPlusExtension
         sc.Configure<HealthCheckPublisherOptions>(options =>
         {
             options.Predicate = hcr => lstdep.Any(x => x.Equals(hcr.Name, StringComparison.InvariantCulture));
-            options.Delay = TimeSpan.Zero;
-            options.Period = TimeSpan.FromSeconds(1);
+            options.Delay = delay.Value;
+            options.Period = period.Value;
         });
 
         var ihb = sc.AddHealthChecks();
@@ -113,11 +125,23 @@ public static class HealthChecksPlusExtension
     /// <param name="failureStatus">
     /// The user function to reports <see cref="HealthStatus"/> .
     /// </param>
+    /// <param name="delay">The initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.</param>
+    /// <param name="period"> the period of <see cref="IHealthCheckPublisher"/> execution. The default value is 1 seconds. The min.value is 500 milesecond.</param>
     /// <param name="categorylog">An optional category name for logger.</param>
     /// <param name="actionlog">An optional action to write log.</param>
     /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
-    public static IHealthChecksBuilder AddHealthChecks<T>(this IServiceCollection sc, string name, Func<IStateHealthChecksPlus,HealthStatus> failureStatus, string? categorylog = null, Action<ILogger, DataResutStatus> actionlog = null) where T : Enum
+    public static IHealthChecksBuilder AddHealthChecks<T>(this IServiceCollection sc, string name,  Func<IStateHealthChecksPlus,HealthStatus> failureStatus, TimeSpan? delay = null, TimeSpan? period = null, string? categorylog = null, Action<ILogger, DataResutStatus> actionlog = null) where T : Enum
     {
+        delay ??= TimeSpan.FromSeconds(5);
+        if (delay.Value.TotalMilliseconds < 1)
+        {
+            delay = TimeSpan.FromSeconds(1);
+        }
+        period ??= TimeSpan.FromSeconds(1);
+        if (period.Value.TotalMilliseconds < 500)
+        {
+            period = TimeSpan.FromMilliseconds(500);
+        }
         var tp = typeof(T);
         var enumValues = Enum.GetValues(tp);
         var aux = new List<string>();
@@ -141,8 +165,8 @@ public static class HealthChecksPlusExtension
         sc.Configure<HealthCheckPublisherOptions>(options =>
         {
             options.Predicate = hcr => lstdep.Any(x => x.Equals(hcr.Name, StringComparison.InvariantCulture));
-            options.Delay = TimeSpan.Zero;
-            options.Period = TimeSpan.FromSeconds(1);
+            options.Delay = delay.Value;
+            options.Period = period.Value;
         });
 
         var ihb = sc.AddHealthChecks();

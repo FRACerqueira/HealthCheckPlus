@@ -4,12 +4,18 @@
 
 **HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6**, **.Net7** and **.Net8** target frameworks.
 
+### V1.0.5
+
+- Added parameter 'Delay'  on AddHealthChecks<T> : Initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.
+- Added parameter 'Period' on AddHealthChecks<T> : Period of HealthCheckPublisher execution. The default value is 1 seconds. The min.value is 500 milesecond.
+
 ## What's new V1.0.4
 
 - First Release G.A
 
 ## Features
 
+- Delay and interval for HealthCheckPublisher  
 - Delay and interval for each HealthCheck
 - Interval policy for unhealthy status for each HealthCheck
 - Interval policy for degraded status for each HealthCheck

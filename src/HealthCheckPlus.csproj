@@ -25,7 +25,7 @@
 		<PackageId>HealthCheckPlus</PackageId>
 		<PackageReadmeFile>NugetREADME.md</PackageReadmeFile>
 		<PackageProjectUrl>https://fracerqueira.github.io/HealthCheckPlus</PackageProjectUrl>
-		<Version>1.0.4</Version>
+		<Version>1.0.5</Version>
 		<PackageIcon>icon.png</PackageIcon>
 		<Copyright>© 2023 - Fernando Cerqueira</Copyright>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>

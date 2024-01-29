@@ -15,7 +15,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) =>
+    .AddHealthChecks<MyEnum>("AppHealthCheck",(deps) =>
     //custom result status 
         {
             if (deps.TryGetNotHealthy(out _))
@@ -24,6 +24,10 @@ builder.Services
             }
             return HealthStatus.Healthy;
         },
+        //Delay initial Publisher
+        TimeSpan.FromSeconds(5),
+        //Period HealthCheck Publisher
+        TimeSpan.FromSeconds(1),
         //category log
         "HealthCheckPlusDemo",
         //action for log    
