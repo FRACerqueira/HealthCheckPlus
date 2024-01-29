@@ -137,12 +137,12 @@ Requeried [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan
 
 The .
 
-### <a id="methods-addhealthchecks"/>**AddHealthChecks&lt;T&gt;(IServiceCollection, String, HealthStatus, String, Action&lt;ILogger, DataResutStatus&gt;)**
+### <a id="methods-addhealthchecks"/>**AddHealthChecks&lt;T&gt;(IServiceCollection, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, HealthStatus, String, Action&lt;ILogger, DataResutStatus&gt;)**
 
 Register Aplication health check
 
 ```csharp
-public static IHealthChecksBuilder AddHealthChecks<T>(IServiceCollection sc, string name, HealthStatus failureStatus, string categorylog, Action<ILogger, DataResutStatus> actionlog)
+public static IHealthChecksBuilder AddHealthChecks<T>(IServiceCollection sc, string name, Nullable<TimeSpan> delay, Nullable<TimeSpan> period, HealthStatus failureStatus, string categorylog, Action<ILogger, DataResutStatus> actionlog)
 ```
 
 #### Type Parameters
@@ -158,6 +158,12 @@ The .
 `name` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
 The health check name. Requeried.
 
+`delay` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+The initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.
+
+`period` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+the period of  execution. The default value is 1 seconds. The min.value is 500 milesecond.
+
 `failureStatus` HealthStatus<br>
 The  that should be reported when the health check reports a failure. If the provided value
  is `null`, then  will be reported.
@@ -172,12 +178,12 @@ An optional action to write log.
 
 The .
 
-### <a id="methods-addhealthchecks"/>**AddHealthChecks&lt;T&gt;(IServiceCollection, String, Func&lt;IStateHealthChecksPlus, HealthStatus&gt;, String, Action&lt;ILogger, DataResutStatus&gt;)**
+### <a id="methods-addhealthchecks"/>**AddHealthChecks&lt;T&gt;(IServiceCollection, String, Func&lt;IStateHealthChecksPlus, HealthStatus&gt;, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, String, Action&lt;ILogger, DataResutStatus&gt;)**
 
 Register Aplication health check
 
 ```csharp
-public static IHealthChecksBuilder AddHealthChecks<T>(IServiceCollection sc, string name, Func<IStateHealthChecksPlus, HealthStatus> failureStatus, string categorylog, Action<ILogger, DataResutStatus> actionlog)
+public static IHealthChecksBuilder AddHealthChecks<T>(IServiceCollection sc, string name, Func<IStateHealthChecksPlus, HealthStatus> failureStatus, Nullable<TimeSpan> delay, Nullable<TimeSpan> period, string categorylog, Action<ILogger, DataResutStatus> actionlog)
 ```
 
 #### Type Parameters
@@ -195,6 +201,12 @@ The health check name. Requeried.
 
 `failureStatus` [Func&lt;IStateHealthChecksPlus, HealthStatus&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.func-2)<br>
 The user function to reports  .
+
+`delay` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+The initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.
+
+`period` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+the period of  execution. The default value is 1 seconds. The min.value is 500 milesecond.
 
 `categorylog` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
 An optional category name for logger.
