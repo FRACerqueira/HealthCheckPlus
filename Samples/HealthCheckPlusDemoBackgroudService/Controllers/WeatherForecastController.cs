@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 
-namespace HealthCheckPlusDemo.Controllers
+namespace HealthCheckPlusDemoBackgroudService.Controllers
 {
     [ApiController]
     [Route("[controller]")]

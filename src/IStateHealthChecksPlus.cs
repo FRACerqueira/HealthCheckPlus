@@ -4,8 +4,6 @@
 // ********************************************************************************************
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System;
-using System.Collections.Generic;
 
 namespace HealthCheckPlus
 {
@@ -15,61 +13,69 @@ namespace HealthCheckPlus
     public interface IStateHealthChecksPlus
     {
         /// <summary>
-        /// The last <see cref="HealthCheckResult"/> data for application.
-        /// </summary>
-        HealthCheckResult StatusApp { get; }
-        /// <summary>
-        /// The last <see cref="HealthCheckResult"/> data for dependence.
+        /// The last <see cref="HealthCheckResult"/> data for HealthCheck.
         /// </summary>
         /// <param name="keydep">
         /// The Enum value dependence.
         /// </param>
-        HealthCheckResult StatusDep(Enum keydep);
+        HealthCheckResult StatusDep(string keydep);
+
+        /// <summary>
+        /// Gets a <see cref="HealthStatus"/> representing the aggregate status of all the health checks.
+        /// </summary>
+        HealthStatus Status(string? name = null);
 
         /// <summary>
         /// Swith state to unhealthy.
         /// </summary>
         /// <param name="keydep">
-        /// The Enum value dependence.
+        /// The name value dependence.
         /// </param>
-        void SwithToUnhealthy(Enum keydep);
+        void SwithToUnhealthy(string keydep);
 
         /// <summary>
         /// Swith state to Degraded.
         /// </summary>
         /// <param name="keydep">
-        /// The Enum value dependence.
+        /// The name value dependence.
         /// </param>
-        void SwithToDegraded(Enum keydep);
+        void SwithToDegraded(string keydep);
 
 
         /// <summary>
         /// Try get all not healthy status.
         /// </summary>
-        /// <param name="result"><see cref="DataResutStatus"/> healthy.</param>
+        /// <param name="result"><see cref="IEnumerable{HealthCheckResult}"/> healthy.</param>
         /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetNotHealthy(out IEnumerable<DataResutStatus> result);
+        bool TryGetNotHealthy(out IEnumerable<HealthCheckResult> result);
 
         /// <summary>
         /// Try get all healthy status.
         /// </summary>
-        /// <param name="result"><see cref="DataResutStatus"/> healthy.</param>
+        /// <param name="result"><see cref="IEnumerable{HealthCheckResult}"/> healthy.</param>
         /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetHealthy(out IEnumerable<DataResutStatus> result);
+        bool TryGetHealthy(out IEnumerable<HealthCheckResult> result);
 
         /// <summary>
         /// Try get all degraded status.
         /// </summary>
-        /// <param name="result"><see cref="DataResutStatus"/> degrated.</param>
+        /// <param name="result"><see cref="IEnumerable{HealthCheckResult}"/> degrated.</param>
         /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetDegraded(out IEnumerable<DataResutStatus> result);
+        bool TryGetDegraded(out IEnumerable<HealthCheckResult> result);
 
         /// <summary>
         /// Try get all unhealthy status.
         /// </summary>
-        /// <param name="result"><see cref="DataResutStatus"/> unhealthy.</param>
+        /// <param name="result"><see cref="IEnumerable{HealthCheckResult}"/> unhealthy.</param>
         /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetUnhealthy(out IEnumerable<DataResutStatus> result);
+        bool TryGetUnhealthy(out IEnumerable<HealthCheckResult> result);
+
+        /// <summary>
+        /// Convert <see cref="HealthReport"/> to <see cref="IDataHealthPlus"/>
+        /// </summary>
+        /// <param name="report">The report</param>
+        /// <returns><see cref="IEnumerable{IDataHealthPlus}"/></returns>
+        IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report);
 
     }
 }

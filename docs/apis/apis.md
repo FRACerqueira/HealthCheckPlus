@@ -11,15 +11,21 @@
 
 ## Namespace HealthCheckPlus
 
-- [BaseHealthCheckPlus](./healthcheckplus.basehealthcheckplus.md)
+- [HealthCheckTrigger](./healthcheckplus.healthchecktrigger.md)
 
-- [DataResutStatus](./healthcheckplus.dataresutstatus.md)
+- [IDataHealthPlus](./healthcheckplus.idatahealthplus.md)
 
 - [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)
 
-## Namespace Microsoft.AspNetCore.Builder
+## Namespace HealthCheckPlus.Microsoft.AspNetCore.Builder
 
-- [HealthChecksPlusAppExtension](./microsoft.aspnetcore.builder.healthchecksplusappextension.md)
+- [HealthChecksPlusAppExtension](./healthcheckplus.microsoft.aspnetcore.builder.healthchecksplusappextension.md)
+
+## Namespace HealthCheckPlus.options
+
+- [HealthCheckPlusBackGroundOptions](./healthcheckplus.options.healthcheckplusbackgroundoptions.md)
+
+- [HealthCheckPlusOptions](./healthcheckplus.options.healthcheckplusoptions.md)
 
 ## Namespace Microsoft.Extensions.DependencyInjection
 

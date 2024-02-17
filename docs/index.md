@@ -7,7 +7,7 @@
 
 ### **HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.**
 
-**HealthCheckPlus** was developed in c# with the **netstandard2.1**, **.Net6**, **.Net7** and **.Net8** target frameworks.
+**HealthCheckPlus** was developed in c# with the **.Net6**, **.Net7** and **.Net8** target frameworks.
 
 ## Table of Contents
 
@@ -22,34 +22,37 @@
 - [License](#license)
 - [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
 
-
 ## What's new in the latest version 
 
-### V1.0.5
-
-- Added parameter 'Delay'  on AddHealthChecks<T> : Initial delay applied after the application starts. The default value is 5 seconds.The min.value is 1 second.
-- Added parameter 'Period' on AddHealthChecks<T> : Period of HealthCheckPublisher execution. The default value is 1 seconds. The min.value is 500 milesecond.
-
-### V1.0.4
-
+### V2.0.0
 [**Top**](#table-of-contents)
 
-- First Release G.A
+- Complete refactoring to only extend native functionalities without changing their behavior when the new features are not used.
 
 ## Features
 [**Top**](#table-of-contents)
 
-- Delay and interval for HealthCheckPublisher  
-- Delay and interval for each HealthCheck
-- Interval policy for unhealthy status for each HealthCheck
-- Interval policy for degraded status for each HealthCheck
-- Endpoints returns the latest internal status protecting your application.
-- The parameter period for each health check acts as a circuit breaker when using it in your business logic, improving application responsiveness in high request rate scenarios and protecting your infrastructure.
-- Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
+- Command to Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
+- Command to retrieve the last result of each HealthCheck kept in cache
+- Optional background policy service for updating and running HealthChecks while keeping results cached
+- Optional Delay and interval for each HealthCheck (policy for Healthy while keeping results cached)
+    - Delay and interval when set are used for all HealthCheck request
+    - Delay and interval when not set are used in the background update service parameters when defined
+- Optional Interval policy for unhealthy status for each HealthCheck while keeping results cached
+    - Delay and interval when set are used for all HealthCheck request
+    - Delay and interval when not set are used in the background update service parameters when defined
+- Optional Interval policy for degraded status for each HealthCheck while keeping results cached
+    - Delay and interval when set are used for all HealthCheck request
+    - Delay and interval when not set are used in the background update service parameters when defined
 - Register an external health check (packet import) and associate delay, interval and individual policy rules.
-- Optional action to write log.
-- Optional parameter for log category name.
-- Simple and clear fluent syntax
+- Response templates with small/full details in "application/json" ContentType
+    - HealthCheckPlusOptions.WriteShortDetails
+    - HealthCheckPlusOptions.WriteShortDetailsPlus (with extra fields : cache source and reference date of last run)
+    - HealthCheckPlusOptions.WriteDetailsWithoutException
+    - HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus (with extra fields : cache source and reference date of last run)
+    - HealthCheckPlusOptions.WriteDetailsWithException
+    - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
+- Simple and clear fluent syntax extending the native features of healt check
 
 ## Installing
 [**Top**](#table-of-contents)
@@ -67,7 +70,7 @@ dotnet add package HealthCheckPlus [--prerelease]
 ## Examples
 [**Top**](#table-of-contents)
 
-See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/samples).
+See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples).
 
 ## Usage
 [**Top**](#table-of-contents)
@@ -85,67 +88,100 @@ public enum MyEnum
 ```
 
 ```csharp
-//At Statup / Program
+//At Statup / Program (without background services policies)
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecks<MyEnum>("AppHealthCheck", (deps) =>
-        //custom result status 
-        {
-            if (deps.TryGetNotHealthy(out _))
-            {
-                return HealthStatus.Degraded;
-            }
-            return HealthStatus.Healthy;
-        },
-        //category log
-        "HealthCheckPlusDemo",
-        //action for log    
-        (log, result) =>
-    {
-        switch (result.Status)
-        {
-            case HealthStatus.Unhealthy:
-                log.LogError($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
-                break;
-            case HealthStatus.Degraded:
-                log.LogWarning($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
-                break;
-            case HealthStatus.Healthy:
-                log.LogInformation($"{result.Name} : {result.Description} : {result.Status} : {result.ElapsedTime} : {result.Date}");
-                break;
-            default:
-                break;
-        }
-    })
+    .AddHealthChecksPlus<MyEnum>()
     //your custom HC    
-    .AddCheckPlus<MyEnum, HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(30))
+    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
     //your custom HC    
-    .AddCheckPlus<MyEnum, HcTeste2>(MyEnum.HcTest2, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(40), failureStatus: HealthStatus.Degraded)
+    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
     //external HC 
     .AddRedis("connection string", "Myredis")
     //register external HC 
-    .AddCheckRegistered(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(60))
+    .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
     //policy for Unhealthy
     .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
     //policy for Degraded
     .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
     //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(5));
+    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
+
+```
+
+```csharp
+//At Statup / Program (with background services policies)
+builder.Services
+    //Add HealthCheckPlus
+    .AddHealthChecksPlus<MyEnum>()
+    //your custom HC with custom delay and period   
+    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
+    //your custom HC without delay and period (using BackgroundPolicy)     
+    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
+    //external HC 
+    .AddRedis("connection string", "Myredis")
+    //register external HC  without delay and period (using BackgroundPolicy)
+    .AddCheckLinkTo(MyEnum.Redis, "MyRedis")
+    //policy for running in Background service
+    .AddBackgroundPolicy((opt) =>
+    {
+        opt.Delay = TimeSpan.FromSeconds(5);
+        opt.Timeout = TimeSpan.FromSeconds(30);
+        opt.Idle = TimeSpan.FromSeconds(1);
+        opt.HealthyPeriod = TimeSpan.FromSeconds(30);
+        opt.DegradedPeriod = TimeSpan.FromSeconds(30);
+        opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
+        //opt.AllStatusPeriod(TimeSpan.FromSeconds(30));
+    });
+```
+
+
+```csharp
+//At Statup / Program (optional)
+
+var app = builder.Build();
+
+//save interfaces IStateHealthChecksPlus
+using (IServiceScope startscope = app.Services.CreateScope())
+{
+    _stateHealthChecksPlus = startscope.ServiceProvider.GetRequiredService<IStateHealthChecksPlus>();
+}
 ```
 
 ```csharp
 //At Statup / Program
 //Endpoints HC
-app.UseHealthChecksPlus("/health/live", HttpStatusCode.OK)
-   .UseHealthChecksPlusStatus("/health/ready", HttpStatusCode.OK);
+app
+    //Extend HealthCheckOptions with HealthCheckPlusOptions
+    .UseHealthChecksPlus("/health/live", new HealthCheckPlusOptions
+    {
+        //name for HealthCheck kind
+        HealthCheckName = "live",
+        //custom function for status value of report
+        StatusHealthReport = (rep) =>
+        {
+            return HealthStatus.Degraded;
+        },
+        //template for Response (same behavior as HealthCheckOptions)
+        ResponseWriter = HealthCheckPlusOptions.WriteDetailsWithoutException,
+        //Result Status Codes  (same behavior as HealthCheckOptions)
+        ResultStatusCodes =
+        {
+            [HealthStatus.Healthy] = StatusCodes.Status200OK,
+            [HealthStatus.Degraded] = StatusCodes.Status200OK,
+            [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+        }
+    })
+    //default HealthCheckPlusOptions (same behavior as default HealthCheckOptions)
+    .UseHealthChecksPlus("/health/ready");
+});
 ```
 
 ```csharp
-//At Statup / Program
-//middler pipeline
+//example of use in the middler pipeline
 _ = app.Use(async (context, next) =>
 {
-    if (_stateHealthChecksPlus.StatusApp.Status == HealthStatus.Unhealthy)
+    if (_stateHealthChecksPlus.Status("live") == HealthStatus.Unhealthy)
     {
         var msg = JsonSerializer.Serialize(new { Error = "App Unhealthy" });
         context.Response.ContentType = "application/json";
@@ -158,41 +194,14 @@ _ = app.Use(async (context, next) =>
     await next();
 });
 ```
-```csharp
-//Create HealthCheck class inheriting from BaseHealthCheckPlus(IHealthCheck)
-public class HTest1 : BaseHealthCheckPlus
-{
-    public hcteste1(IServiceProvider serviceProvider) : base(serviceProvider)
-    {
-    }
-
-    public override async Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
-    {
-        return await Task.FromResult(HealthCheckResult.Healthy($"teste1"));
-    }
-}
-
-//Create HealthCheck class inheriting from BaseHealthCheckPlus(IHealthCheck)
-public class HTest2 : BaseHealthCheckPlus
-{
-    public hcteste2(IServiceProvider serviceProvider) : base(serviceProvider)
-    {
-    }
-
-    public override async Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
-    {
-        return await Task.FromResult(HealthCheckResult.Degraded($"teste2"));
-    }
-}
-```
 
 ```csharp
-//Consuming Status from HealthCheckPlus
+//example of use in a business class using dependency injection
 public class MyBussines
 {
     public MyBussines(IStateHealthChecksPlus healthCheckApp)
     {
-        if (healthCheckApp.StatusApp.Status == HealthStatus.Degraded)
+        if (healthCheckApp.Status("live") == HealthStatus.Degraded)
         { 
             //do something
         }
@@ -228,7 +237,7 @@ See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
 
 **API documentation generated by**
 
-- [xmldoc2md](https://github.com/FRACerqueira/xmldoc2md), Copyright (c) 2022 Charles de Vandière.
+- [xmldoc2md](https://github.com/FRACerqueira/xmldoc2md), Copyright (c) 2022 Charles de Vandière. See [LICENSE](Licenses/LICENSE-xmldoc2md.md).
 
 ## License
 [**Top**](#table-of-contents)

@@ -1,29 +1,24 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.4.33213.308
+VisualStudioVersion = 17.8.34511.84
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlus", "src\HealthCheckPlus.csproj", "{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlus", "src\HealthCheckPlus.csproj", "{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlusDemo", "samples\HealthCheckPlusDemo\HealthCheckPlusDemo.csproj", "{8D563223-BE9E-47D2-8761-C321C7AD8BE6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlusDemo", "Samples\HealthCheckPlusDemo\HealthCheckPlusDemo.csproj", "{AC841B86-EC92-4C30-A650-9E5825B4E9DC}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "readme", "readme", "{EE6725E1-0A5C-4025-98FF-D992D1EF4E30}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HealthCheckPlusDemoBackgroudService", "Samples\HealthCheckPlusDemoBackgroudService\HealthCheckPlusDemoBackgroudService.csproj", "{6730E215-ECA5-401C-B28A-F8AC11FE64DC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{46A1CA76-6EE4-4CDF-98DF-8FB4A89F4677}"
 	ProjectSection(SolutionItems) = preProject
-		NugetREADME.md = NugetREADME.md
-		README.md = README.md
-		README.txt = README.txt
-	EndProjectSection
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "doc", "doc", "{BE1994FD-D680-4A4E-8107-17FB273C74A4}"
-	ProjectSection(SolutionItems) = preProject
-		.github\workflows\build.yml = .github\workflows\build.yml
-		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		CODE_OF_CONDUCT.md = CODE_OF_CONDUCT.md
 		CONTRIBUTING.md = CONTRIBUTING.md
 		docapitemplate.md = docapitemplate.md
 		docs\index.md = docs\index.md
+		LICENSE = LICENSE
 		docs\LICENSE.md = docs\LICENSE.md
-		.github\workflows\publish.yml = .github\workflows\publish.yml
+		SECURITY.md = SECURITY.md
+		whatsnewprev.md = whatsnewprev.md
 		docs\whatsnewprev.md = docs\whatsnewprev.md
 		docs\_config.yml = docs\_config.yml
 	EndProjectSection
@@ -35,23 +30,29 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.local|Any CPU.ActiveCfg = local|Any CPU
-		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.local|Any CPU.Build.0 = local|Any CPU
-		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8001BE45-55DF-42AA-A531-4C6AB5A2DC80}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.local|Any CPU.ActiveCfg = local|Any CPU
-		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.local|Any CPU.Build.0 = local|Any CPU
-		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8D563223-BE9E-47D2-8761-C321C7AD8BE6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}.local|Any CPU.ActiveCfg = local|Any CPU
+		{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}.local|Any CPU.Build.0 = local|Any CPU
+		{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{59A3979A-4DA9-48EB-B037-B69A1A8B53BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC841B86-EC92-4C30-A650-9E5825B4E9DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC841B86-EC92-4C30-A650-9E5825B4E9DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC841B86-EC92-4C30-A650-9E5825B4E9DC}.local|Any CPU.ActiveCfg = local|Any CPU
+		{AC841B86-EC92-4C30-A650-9E5825B4E9DC}.local|Any CPU.Build.0 = local|Any CPU
+		{AC841B86-EC92-4C30-A650-9E5825B4E9DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC841B86-EC92-4C30-A650-9E5825B4E9DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6730E215-ECA5-401C-B28A-F8AC11FE64DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6730E215-ECA5-401C-B28A-F8AC11FE64DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6730E215-ECA5-401C-B28A-F8AC11FE64DC}.local|Any CPU.ActiveCfg = Debug|Any CPU
+		{6730E215-ECA5-401C-B28A-F8AC11FE64DC}.local|Any CPU.Build.0 = Debug|Any CPU
+		{6730E215-ECA5-401C-B28A-F8AC11FE64DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6730E215-ECA5-401C-B28A-F8AC11FE64DC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {783702DD-61DE-4B7C-ACD1-C77F08C700D7}
+		SolutionGuid = {2F525EFD-C08B-49DF-AAF3-1414F0B8DE63}
 	EndGlobalSection
 EndGlobal

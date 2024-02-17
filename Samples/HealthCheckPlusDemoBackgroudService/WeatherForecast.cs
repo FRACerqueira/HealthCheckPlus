@@ -1,4 +1,4 @@
-namespace HealthCheckPlusDemo
+namespace HealthCheckPlusDemoBackgroudService
 {
     public class WeatherForecast
     {

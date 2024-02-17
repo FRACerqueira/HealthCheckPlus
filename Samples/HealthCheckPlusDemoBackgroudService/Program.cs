@@ -1,11 +1,12 @@
 using HealthCheckPlus;
 using HealthCheckPlus.Microsoft.AspNetCore.Builder;
 using HealthCheckPlus.options;
+using HealthCheckPlusDemoBackgroudService;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Text.Json;
 
-namespace HealthCheckPlusDemo
+namespace HealthCheckPlusDemoBackgroudService
 {
     public class Program
     {
@@ -23,20 +24,25 @@ namespace HealthCheckPlusDemo
             builder.Services
                 //Add HealthCheckPlus
                 .AddHealthChecksPlus<MyEnum>()
-                //your custom HC    
-                .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
-                //your custom HC    
+                //your custom HC with custom delay and period   
+                .AddCheckPlus<HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
+                //your custom HC without delay and period (using BackgroundPolicy)     
                 .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
                 //external HC 
                 .AddRedis("connection string", "Myredis")
-                //register external HC 
-                .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
-                //policy for Unhealthy
-                .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
-                //policy for Degraded
-                .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
-                //policy for Unhealthy
-                .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
+                //register external HC  without delay and period (using BackgroundPolicy)
+                .AddCheckLinkTo(MyEnum.Redis, "MyRedis")
+                //policy for running in Background service
+                .AddBackgroundPolicy((opt) =>
+                {
+                    opt.Delay = TimeSpan.FromSeconds(5);
+                    opt.Timeout = TimeSpan.FromSeconds(30);
+                    opt.Idle = TimeSpan.FromSeconds(1);
+                    opt.HealthyPeriod = TimeSpan.FromSeconds(30);
+                    opt.DegradedPeriod = TimeSpan.FromSeconds(30);
+                    opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
+                    //opt.AllStatusPeriod(TimeSpan.FromSeconds(30));
+                });
 
             var app = builder.Build();
 
@@ -49,21 +55,22 @@ namespace HealthCheckPlusDemo
 
             //Endpoints HC
             app.UseHealthChecksPlus("/health/live", new HealthCheckPlusOptions
+            {
+                HealthCheckName = "live",
+                ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus(ctx, report, _stateHealthChecksPlus),
+                StatusHealthReport = (rep) =>
                 {
-                    HealthCheckName = "live",
-                    ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus(ctx,report, _stateHealthChecksPlus),
-                    StatusHealthReport = (rep) =>
-                    {
-                        return HealthStatus.Degraded;
-                    },
-                    ResultStatusCodes =
+                    return HealthStatus.Degraded;
+                },
+                ResultStatusCodes =
                             {
                                 [HealthStatus.Healthy] = StatusCodes.Status200OK,
                                 [HealthStatus.Degraded] = StatusCodes.Status200OK,
                                 [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
                             }
-                })
-               .UseHealthChecksPlus("/health/ready", new HealthCheckPlusOptions
+            })
+               .UseHealthChecksPlus("/health/ready")
+               .UseHealthChecks("/health/Test", new HealthCheckOptions
                {
                    ResultStatusCodes =
                     {

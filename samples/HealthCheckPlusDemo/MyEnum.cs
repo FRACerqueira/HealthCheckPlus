@@ -1,6 +1,6 @@
 ﻿namespace HealthCheckPlusDemo
 {
-    public enum MyEnum
+    public enum MyEnum 
     {
         HcTest1,
         HcTest2,

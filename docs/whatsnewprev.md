@@ -4,22 +4,27 @@
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 
-### V1.0.3
-[**Main**](index.md) | [**Top**](#pipeandfilter-whats-new)
+### V1.0.4 (Deprecate)
+[**Main**](index.md) | [**Top**](#welcome-to-healthcheckplus)
+
+- First Release G.A
+
+### V1.0.3 (Deprecate)
+[**Main**](index.md) | [**Top**](#welcome-to-healthcheckplus)
 
 - Internal Release
    
-### V1.0.2
-[**Main**](index.md) | [**Top**](#pipeandfilter-whats-new)
+### V1.0.2 (Deprecate)
+[**Main**](index.md) | [**Top**](#welcome-to-healthcheckplus)
 
 - Internal Release
 
-### V1.0.1
-[**Main**](index.md) | [**Top**](#pipeandfilter-whats-new)
+### V1.0.1 (Deprecate)
+[**Main**](index.md) | [**Top**](#welcome-to-healthcheckplus)
 
 - Internal Release
 
-### V1.0.0
-[**Main**](index.md) | [**Top**](#pipeandfilter-whats-new)
+### V1.0.0 (Deprecate)
+[**Main**](index.md) | [**Top**](#welcome-to-healthcheckplus)
 
 - Test Release 

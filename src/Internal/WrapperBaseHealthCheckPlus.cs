@@ -4,21 +4,13 @@
 // ********************************************************************************************
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace HealthCheckPlus.Internal
 {
-    internal class WrapperBaseHealthCheckPlus : BaseHealthCheckPlus, IDisposable
+    internal class WrapperBaseHealthCheckPlus(IHealthCheck healthCheckisnt) : IHealthCheck, IDisposable
     {
-        private readonly IHealthCheck _externalCheckinstance;
+        private readonly IHealthCheck _externalCheckinstance = healthCheckisnt;
         private bool disposed = false;
-
-        public WrapperBaseHealthCheckPlus(IHealthCheck healthCheckisnt, IServiceProvider serviceProvider) : base(serviceProvider)
-        {
-            _externalCheckinstance = healthCheckisnt;
-        }
 
         // Implement IDisposable.
         // Do not make this method virtual.
@@ -61,7 +53,7 @@ namespace HealthCheckPlus.Internal
             }
         }
 
-        public override async Task<HealthCheckResult> DoHealthCheck(HealthCheckContext context, CancellationToken cancellationToken)
+        public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             var aux = await _externalCheckinstance.CheckHealthAsync(context, cancellationToken);
             if (_externalCheckinstance is IDisposable disposable)

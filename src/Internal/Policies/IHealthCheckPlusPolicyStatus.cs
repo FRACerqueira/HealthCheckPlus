@@ -3,13 +3,15 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using System;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace HealthCheckPlus.Internal
+namespace HealthCheckPlus.Internal.Policies
 {
-    internal interface IHealthCheckPlusPolicy
+    internal interface IHealthCheckPlusPolicyStatus
     {
-        TimeSpan PolicyTime { get; }
+        HealthStatus PolicyForStatus { get; }
+        TimeSpan? PolicyPeriod { get; }
+        TimeSpan? PolicyDelay { get; }
         string PolicyNameDep { get; }
     }
 }
