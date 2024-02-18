@@ -187,13 +187,7 @@ namespace HealthCheckPlus.Internal
 
         public IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
         {
-            var lst = new List<IDataHealthPlus>();
-            foreach (var item in report.Entries)
-            {
-                var sta = _statusDeps[item.Key];
-                lst.Add(sta);
-            }
-            return lst;
+            return report.Entries.Select(x => _statusDeps[x.Key]);
         }
 
         #endregion

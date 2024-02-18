@@ -217,14 +217,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                             var aux = _policies
                                 .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Unhealthy)
                                 .FirstOrDefault();
-                            if (aux is not null)
-                            {
-                                policy = aux;
-                            }
-                            else
-                            {
-                                policy = new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, backgroudoptions.Delay, backgroudoptions.UnhealthyPeriod, item.Name);
-                            }
+                            policy = aux ?? new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, backgroudoptions.Delay, backgroudoptions.UnhealthyPeriod, item.Name);
                         }
                         break;
                     case HealthStatus.Degraded:
@@ -232,14 +225,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                             var aux = _policies
                                 .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Degraded)
                                 .FirstOrDefault();
-                            if (aux is not null)
-                            {
-                                policy = aux;
-                            }
-                            else
-                            {
-                                policy = new HealthCheckPlusPolicyStatus(HealthStatus.Degraded, backgroudoptions.Delay, backgroudoptions.DegradedPeriod, item.Name);
-                            }
+                            policy = aux ?? new HealthCheckPlusPolicyStatus(HealthStatus.Degraded, backgroudoptions.Delay, backgroudoptions.DegradedPeriod, item.Name);
                         }
                         break;
                     default: //HealthStatus.Healthy
@@ -545,8 +531,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                         builder.Append("    ");
                         builder.Append(kvp.Key);
                         builder.Append(": ");
-
-                        builder.AppendLine(kvp.Value?.ToString());
+                        builder.AppendLine((kvp.Value??"Null").ToString());
                     }
 
                     _formatted = builder.ToString();

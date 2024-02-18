@@ -185,7 +185,6 @@ namespace Microsoft.Extensions.DependencyInjection
                     enumdep.ToString(),
                     (sp) =>
                     {
-                        DefaultHealthCheckServicePlus hcs = (DefaultHealthCheckServicePlus)sp.GetRequiredService<HealthCheckService>();
                         return ActivatorUtilities.GetServiceOrCreateInstance<T>(sp);
                     },
                     failureStatus,
