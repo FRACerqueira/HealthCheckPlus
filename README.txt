@@ -55,7 +55,7 @@ Features
 Examples
 ********
 
-See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/samples
+See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples
 
 Usage
 *****
