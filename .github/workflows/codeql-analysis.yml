@@ -26,14 +26,13 @@ jobs:
         dotnet-version: '8.0.x' # SDK Version to use.
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
+      uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         queries: +security-and-quality
-        config-file: codeql.yml
 
-    - name: Build project
-      run: dotnet build ./src/HealthCheckPlus.csproj -c Release
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      uses: github/codeql-action/analyze@v3
