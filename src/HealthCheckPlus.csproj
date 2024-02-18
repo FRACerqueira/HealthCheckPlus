@@ -59,12 +59,16 @@
 		<Exec Command="xmldoc2md $(SolutionDir)src\bin\local\net7.0\HealthCheckPlus.dll $(SolutionDir)docs\apis --templatefile $(SolutionDir)docapitemplate.md  --excludeinternal --index-page-name apis --back-button &quot;Back to List Api&quot; --link-back-button &quot;./apis.md&quot; --back-index-button &quot;Main&quot; --link-backindex-button &quot;../index.md#table-of-contents&quot;" />
 	</Target>
 
-	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.HealthChecks" Version="2.2.0" />
+	<ItemGroup Condition="'$(TargetFramework)'=='net6.0'">
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+		<PackageReference Include="System.Text.Encodings.Web" Version="8.0.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="8.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Options" Version="8.0.1" />
+	</ItemGroup>
+
+	<ItemGroup >
+		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.HealthChecks" Version="2.2.0" />
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.2" />
 	</ItemGroup>
 
 </Project>
