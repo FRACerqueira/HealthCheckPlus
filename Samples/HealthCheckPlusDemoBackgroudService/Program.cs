@@ -1,7 +1,5 @@
 using HealthCheckPlus;
-using HealthCheckPlus.Microsoft.AspNetCore.Builder;
 using HealthCheckPlus.options;
-using HealthCheckPlusDemoBackgroudService;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Text.Json;

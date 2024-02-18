@@ -3,16 +3,16 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using HealthCheckPlus;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
 using HealthCheckPlus.options;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
-namespace HealthCheckPlus.Microsoft.AspNetCore.Builder
+namespace Microsoft.AspNetCore.Builder
 {
     /// <summary>
     /// HealthChecksPlus Extension for IApplicationBuilder
