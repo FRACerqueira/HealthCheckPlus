@@ -52,7 +52,6 @@ Features
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
 - Simple and clear fluent syntax extending the native features of healt check
 
-
 Examples
 ********
 
@@ -208,4 +207,3 @@ License
 Copyright 2023 @ Fernando Cerqueira
 
 HealthCheckPlus is licensed under the MIT license. See https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE.
-
