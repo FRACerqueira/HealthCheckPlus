@@ -17,64 +17,83 @@ Represents the commands of the HealthChecksPlus for access data
 public interface IStateHealthChecksPlus
 ```
 
-## Properties
-
-### <a id="properties-statusapp"/>**StatusApp**
-
-The last  data for application.
-
-```csharp
-public abstract HealthCheckResult StatusApp { get; }
-```
-
-#### Property Value
-
-HealthCheckResult<br>
-
 ## Methods
 
-### <a id="methods-statusdep"/>**StatusDep(Enum)**
+### <a id="methods-converttoplus"/>**ConvertToPlus(HealthReport)**
 
-The last  data for dependence.
+Convert  to [IDataHealthPlus](./healthcheckplus.idatahealthplus.md)
 
 ```csharp
-HealthCheckResult StatusDep(Enum keydep)
+IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
 ```
 
 #### Parameters
 
-`keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
+`report` HealthReport<br>
+The report
+
+#### Returns
+
+[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1)
+
+### <a id="methods-status"/>**Status(String)**
+
+Gets a  representing the aggregate status of all the health checks.
+
+```csharp
+HealthStatus Status(string name)
+```
+
+#### Parameters
+
+`name` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+
+#### Returns
+
+HealthStatus
+
+### <a id="methods-statusdep"/>**StatusDep(String)**
+
+The last  data for HealthCheck.
+
+```csharp
+HealthCheckResult StatusDep(string keydep)
+```
+
+#### Parameters
+
+`keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
 The Enum value dependence.
 
 #### Returns
 
 HealthCheckResult
 
-### <a id="methods-swithtodegraded"/>**SwithToDegraded(Enum)**
+### <a id="methods-swithtodegraded"/>**SwithToDegraded(String)**
 
 Swith state to Degraded.
 
 ```csharp
-void SwithToDegraded(Enum keydep)
+void SwithToDegraded(string keydep)
 ```
 
 #### Parameters
 
-`keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
-The Enum value dependence.
+`keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name value dependence.
 
-### <a id="methods-swithtounhealthy"/>**SwithToUnhealthy(Enum)**
+### <a id="methods-swithtounhealthy"/>**SwithToUnhealthy(String)**
 
 Swith state to unhealthy.
 
 ```csharp
-void SwithToUnhealthy(Enum keydep)
+void SwithToUnhealthy(string keydep)
 ```
 
 #### Parameters
 
-`keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
-The Enum value dependence.
+`keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name value dependence.
 
 ### <a id="methods-trygetdegraded"/>**TryGetDegraded(ref IEnumerable`1)**
 
@@ -87,7 +106,7 @@ bool TryGetDegraded(ref IEnumerable`1 result)
 #### Parameters
 
 `result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[DataResutStatus](./healthcheckplus.dataresutstatus.md) degrated.
+[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) degrated.
 
 #### Returns
 
@@ -104,7 +123,7 @@ bool TryGetHealthy(ref IEnumerable`1 result)
 #### Parameters
 
 `result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[DataResutStatus](./healthcheckplus.dataresutstatus.md) healthy.
+[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) healthy.
 
 #### Returns
 
@@ -121,7 +140,7 @@ bool TryGetNotHealthy(ref IEnumerable`1 result)
 #### Parameters
 
 `result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[DataResutStatus](./healthcheckplus.dataresutstatus.md) healthy.
+[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) healthy.
 
 #### Returns
 
@@ -138,7 +157,7 @@ bool TryGetUnhealthy(ref IEnumerable`1 result)
 #### Parameters
 
 `result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[DataResutStatus](./healthcheckplus.dataresutstatus.md) unhealthy.
+[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) unhealthy.
 
 #### Returns
 
