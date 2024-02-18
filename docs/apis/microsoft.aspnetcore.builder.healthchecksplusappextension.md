@@ -9,7 +9,7 @@
 
 # HealthChecksPlusAppExtension
 
-Namespace: HealthCheckPlus.Microsoft.AspNetCore.Builder
+Namespace: Microsoft.AspNetCore.Builder
 
 HealthChecksPlus Extension for IApplicationBuilder
 
@@ -17,7 +17,7 @@ HealthChecksPlus Extension for IApplicationBuilder
 public static class HealthChecksPlusAppExtension
 ```
 
-Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) → [HealthChecksPlusAppExtension](./healthcheckplus.microsoft.aspnetcore.builder.healthchecksplusappextension.md)
+Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) → [HealthChecksPlusAppExtension](./microsoft.aspnetcore.builder.healthchecksplusappextension.md)
 
 ## Methods
 

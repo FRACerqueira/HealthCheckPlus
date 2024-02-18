@@ -17,15 +17,15 @@
 
 - [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)
 
-## Namespace HealthCheckPlus.Microsoft.AspNetCore.Builder
-
-- [HealthChecksPlusAppExtension](./healthcheckplus.microsoft.aspnetcore.builder.healthchecksplusappextension.md)
-
 ## Namespace HealthCheckPlus.options
 
 - [HealthCheckPlusBackGroundOptions](./healthcheckplus.options.healthcheckplusbackgroundoptions.md)
 
 - [HealthCheckPlusOptions](./healthcheckplus.options.healthcheckplusoptions.md)
+
+## Namespace Microsoft.AspNetCore.Builder
+
+- [HealthChecksPlusAppExtension](./microsoft.aspnetcore.builder.healthchecksplusappextension.md)
 
 ## Namespace Microsoft.Extensions.DependencyInjection
 
