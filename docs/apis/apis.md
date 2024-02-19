@@ -23,6 +23,8 @@
 
 - [HealthCheckPlusOptions](./healthcheckplus.options.healthcheckplusoptions.md)
 
+- [PublishingOptions](./healthcheckplus.options.publishingoptions.md)
+
 ## Namespace Microsoft.AspNetCore.Builder
 
 - [HealthChecksPlusAppExtension](./microsoft.aspnetcore.builder.healthchecksplusappextension.md)

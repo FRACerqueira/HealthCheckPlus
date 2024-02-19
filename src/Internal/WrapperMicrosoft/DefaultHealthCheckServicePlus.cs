@@ -112,7 +112,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     Period = item.Period ?? policy.PolicyPeriod ?? TimeSpan.Zero
                 };
 
-                if (!sta.Dateref.HasValue)
+                if (sta.Dateref == _cacheStatus.DateRegister)
                 {
                     if (_cacheStatus.DateRegister.Add(itemToRum.Delay!.Value) < DateTime.Now)
                     {
@@ -122,7 +122,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 else
                 {
-                    if (sta.Dateref.Value.Add(itemToRum.Period!.Value) < DateTime.Now)
+                    if (sta.Dateref.Add(itemToRum.Period!.Value) < DateTime.Now)
                     {
                         _cacheStatus.Running(itemToRum.Name, true);
                         registrationstorun.Add(itemToRum);
@@ -234,7 +234,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                                 .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Healthy)
                                 .FirstOrDefault()!;
 
-                            var delay = aux.PolicyDelay ?? (!sta.Dateref.HasValue ? backgroudoptions.Delay : TimeSpan.Zero);
+                            var delay = aux.PolicyDelay ?? (sta.Dateref == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
                             var period = aux.PolicyPeriod ?? backgroudoptions.HealthyPeriod;
                             policy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, item.Name);
                         }
@@ -246,7 +246,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     Period = policy.PolicyPeriod!.Value
                 };
 
-                if (!sta.Dateref.HasValue)
+                if (sta.Dateref == _cacheStatus.DateRegister)
                 {
                     if (_cacheStatus.DateRegister.Add(itemToRum.Delay.Value) < DateTime.Now)
                     {
@@ -256,7 +256,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 else
                 {
-                    if (sta.Dateref.Value.Add(itemToRum.Period.Value) < DateTime.Now)
+                    if (sta.Dateref.Add(itemToRum.Period.Value) < DateTime.Now)
                     {
                         _cacheStatus.Running(item.Name, true);
                         registrationstorun.Add(itemToRum);
@@ -296,6 +296,14 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
         }
 
+        public HealthReport CreateReport()
+        {
+            return _cacheStatus.CreateReport();
+        }
+        public DateTime? LastReport()
+        {
+            return _cacheStatus.LastReport();
+        }
 
         private async Task<HealthReportEntry> RunCheckAsync(HealthCheckRegistration registration, CancellationToken cancellationToken)
         {
@@ -404,6 +412,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
         }
 
+#pragma warning disable IDE0079
         private static partial class Log
         {
             [LoggerMessage(EventIds.HealthCheckProcessingBeginId, LogLevel.Debug, "Running health checks", EventName = EventIds.HealthCheckProcessingBeginName)]
@@ -423,6 +432,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             [LoggerMessage(EventIds.HealthCheckEndId, LogLevel.Debug, HealthCheckEndText, EventName = EventIds.HealthCheckEndName)]
             private static partial void HealthCheckEndHealthy(ILogger logger, string HealthCheckName, HealthStatus HealthStatus, double ElapsedMilliseconds, string? HealthCheckDescription);
+
 #pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
 #pragma warning disable SYSLIB1025 // Multiple logging methods should not use the same event name within a class
             [LoggerMessage(EventIds.HealthCheckEndId, LogLevel.Warning, HealthCheckEndText, EventName = EventIds.HealthCheckEndName)]
@@ -474,6 +484,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
             }
         }
+#pragma warning disable IDE0079
 
         private sealed class HealthCheckDataLogValue : IReadOnlyList<KeyValuePair<string, object>>
         {

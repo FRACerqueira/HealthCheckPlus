@@ -24,12 +24,12 @@ public interface IDataHealthPlus
 The date reference of last execute.
 
 ```csharp
-public abstract Nullable<DateTime> Dateref { get; }
+public abstract DateTime Dateref { get; }
 ```
 
 #### Property Value
 
-[Nullable&lt;DateTime&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+[DateTime](https://docs.microsoft.com/en-us/dotnet/api/system.datetime)<br>
 
 ### <a id="properties-duration"/>**Duration**
 

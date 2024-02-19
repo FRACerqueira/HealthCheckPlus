@@ -11,7 +11,7 @@ namespace HealthCheckPlus.Internal
     {
         public string Name { get; set; } = string.Empty;
         public TimeSpan Duration { get; set; }
-        public DateTime? Dateref { get; set; }
+        public DateTime Dateref { get; set; }
         public HealthCheckResult Lastresult { get; set; }
         public HealthCheckTrigger Origin { get; set; }
         public bool Running { get; set; }

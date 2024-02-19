@@ -104,6 +104,21 @@ If [HealthCheckPlusBackGroundOptions.Predicate](./healthcheckplus.options.health
  registered health checks - this is the default behavior. To run a subset of health checks,
  provide a function that filters the set of checks.
 
+### <a id="properties-publishing"/>**Publishing**
+
+Gets or sets the usage of publishers registered 
+ with the  interface 
+ using [PublishingOptions](./healthcheckplus.options.publishingoptions.md). 
+ <br>Default values:<br>Enabled = false<br>WhenReportChange = true<br>AfterIdleCount = 1
+
+```csharp
+public PublishingOptions Publishing { get; set; }
+```
+
+#### Property Value
+
+[PublishingOptions](./healthcheckplus.options.publishingoptions.md)<br>
+
 ### <a id="properties-timeout"/>**Timeout**
 
 Gets or sets the timeout for executing the health checks an all HealthCheckPlus background service.
@@ -124,8 +139,8 @@ The [HealthCheckPlusBackGroundOptions.Timeout](./healthcheckplus.options.healthc
 
 ### <a id="properties-unhealthyperiod"/>**UnhealthyPeriod**
 
-Gets or sets the period when HealthCheck's period property is null and last status is of . The default value is
- 30 seconds.
+Gets or sets the period when HealthCheck's period property is null and last status is of . 
+ The default value is 30 seconds.
 
 ```csharp
 public TimeSpan UnhealthyPeriod { get; set; }

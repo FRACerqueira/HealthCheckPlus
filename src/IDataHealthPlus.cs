@@ -19,7 +19,7 @@ namespace HealthCheckPlus
         /// <summary>
         /// The date reference of last execute.
         /// </summary>
-        public DateTime? Dateref { get; }
+        public DateTime Dateref { get; }
         /// <summary>
         /// The result, see <see cref="HealthCheckResult"/>.
         /// </summary>

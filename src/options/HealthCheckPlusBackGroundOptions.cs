@@ -113,8 +113,8 @@ namespace HealthCheckPlus.options
         }
 
         /// <summary>
-        /// Gets or sets the period when HealthCheck's period property is null and last status is of <see cref="HealthStatus.Unhealthy"/>. The default value is
-        /// 30 seconds.
+        /// Gets or sets the period when HealthCheck's period property is null and last status is of <see cref="HealthStatus.Unhealthy"/>. 
+        /// The default value is 30 seconds.
         /// </summary>
         /// <remarks>
         /// The <see cref="UnhealthyPeriod"/> cannot be set to a value lower than 1 second.
@@ -217,5 +217,17 @@ namespace HealthCheckPlus.options
         /// provide a function that filters the set of checks.
         /// </remarks>
         public Func<HealthCheckRegistration, bool>? Predicate { get; set; }
+
+        /// <summary>
+        /// Gets or sets the usage of publishers registered 
+        /// with the <see cref="IHealthCheckPublisher"/> interface      
+        /// using <see cref="PublishingOptions"/>. 
+        /// <br>Default values:</br>
+        /// <br>Enabled = false</br>
+        /// <br>WhenReportChange = true</br>
+        /// <br>AfterIdleCount = 1</br>
+        /// </summary>
+        public PublishingOptions Publishing { get; set; } = new(false);
+
     }
 }
