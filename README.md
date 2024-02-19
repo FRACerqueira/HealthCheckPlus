@@ -38,6 +38,10 @@
 - Command to Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
 - Command to retrieve the last result of each HealthCheck kept in cache
 - Optional background policy service for updating and running HealthChecks while keeping results cached
+    - Integration with registered publishers with the interface IHealthCheckPublisher
+    - Extra filters:
+        - Number of counts idle to publish.
+        - Run publish only when the report has a status change in one of its entries.
 - Optional Delay and interval for each HealthCheck (policy for Healthy while keeping results cached)
     - Delay and interval when set are used for all HealthCheck request
     - Delay and interval when not set are used in the background update service parameters when defined
@@ -131,10 +135,11 @@ builder.Services
         opt.Delay = TimeSpan.FromSeconds(5);
         opt.Timeout = TimeSpan.FromSeconds(30);
         opt.Idle = TimeSpan.FromSeconds(1);
+        //opt.AllStatusPeriod(TimeSpan.FromSeconds(30));
         opt.HealthyPeriod = TimeSpan.FromSeconds(30);
         opt.DegradedPeriod = TimeSpan.FromSeconds(30);
         opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
-        //opt.AllStatusPeriod(TimeSpan.FromSeconds(30));
+        opt.Publishing = new PublishingOptions();
     });
 ```
 

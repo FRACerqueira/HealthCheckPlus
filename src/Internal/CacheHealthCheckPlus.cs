@@ -49,7 +49,7 @@ namespace HealthCheckPlus.Internal
                     {
                         Name = enumValues!.GetValue(i)!.ToString()!,
                         Duration = TimeSpan.Zero,
-                        Dateref = null,
+                        Dateref = _dateregister,
                         Running = false,
                         Origin = HealthCheckTrigger.None,
                         Lastresult = new HealthCheckResult(HealthStatus.Healthy)
@@ -66,13 +66,18 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        public DateTime? LastReport()
+        {
+            return _statusDeps.Values.Max(x => x.Dateref);
+        }
+
         public HealthReport CreateReport()
         {
             var entries = new Dictionary<string, HealthReportEntry>();
             var index = 0;
             foreach (var sta in _statusDeps.Values)
             {
-                entries[index.ToString()] = new HealthReportEntry(sta.Lastresult.Status, null, TimeSpan.Zero, null, null);
+                entries[sta.Name] = new HealthReportEntry(sta.Lastresult.Status, null, TimeSpan.Zero, null, null);
                 index++;
             }
             return new HealthReport(entries, TimeSpan.Zero);

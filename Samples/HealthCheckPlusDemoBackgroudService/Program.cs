@@ -36,11 +36,14 @@ namespace HealthCheckPlusDemoBackgroudService
                     opt.Delay = TimeSpan.FromSeconds(5);
                     opt.Timeout = TimeSpan.FromSeconds(30);
                     opt.Idle = TimeSpan.FromSeconds(1);
+                    //opt.AllStatusPeriod(TimeSpan.FromSeconds(30));
                     opt.HealthyPeriod = TimeSpan.FromSeconds(30);
                     opt.DegradedPeriod = TimeSpan.FromSeconds(30);
                     opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
-                    //opt.AllStatusPeriod(TimeSpan.FromSeconds(30));
+                    opt.Publishing = new PublishingOptions();
                 });
+
+            builder.Services.AddSingleton<IHealthCheckPublisher, SamplePublishHealth>();
 
             var app = builder.Build();
 
