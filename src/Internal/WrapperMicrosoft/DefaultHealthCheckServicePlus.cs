@@ -108,8 +108,8 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
                 var itemToRum = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)
                 {
-                    Delay = item.Delay ?? policy.PolicyDelay??TimeSpan.Zero,
-                    Period = item.Period ?? policy.PolicyPeriod ?? TimeSpan.Zero
+                    Delay = policy.PolicyDelay??TimeSpan.Zero,
+                    Period = policy.PolicyPeriod ?? TimeSpan.Zero
                 };
 
                 if (sta.Dateref == _cacheStatus.DateRegister)

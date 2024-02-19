@@ -47,10 +47,28 @@ HealthStatus Status(string name)
 #### Parameters
 
 `name` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+name of url request([HealthCheckPlusOptions.HealthCheckName](./healthcheckplus.options.healthcheckplusoptions.md#healthcheckname)).
 
 #### Returns
 
 HealthStatus
+
+### <a id="methods-statusdep"/>**StatusDep(Enum)**
+
+The last  data for HealthCheck.
+
+```csharp
+HealthCheckResult StatusDep(Enum keydep)
+```
+
+#### Parameters
+
+`keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
+The Enum value dependence.
+
+#### Returns
+
+HealthCheckResult
 
 ### <a id="methods-statusdep"/>**StatusDep(String)**
 
@@ -63,11 +81,24 @@ HealthCheckResult StatusDep(string keydep)
 #### Parameters
 
 `keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
-The Enum value dependence.
+The name dependence.
 
 #### Returns
 
 HealthCheckResult
+
+### <a id="methods-swithtodegraded"/>**SwithToDegraded(Enum)**
+
+Swith state to Degraded.
+
+```csharp
+void SwithToDegraded(Enum keydep)
+```
+
+#### Parameters
+
+`keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
+The Enum value dependence.
 
 ### <a id="methods-swithtodegraded"/>**SwithToDegraded(String)**
 
@@ -80,7 +111,20 @@ void SwithToDegraded(string keydep)
 #### Parameters
 
 `keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
-The name value dependence.
+The name dependence.
+
+### <a id="methods-swithtounhealthy"/>**SwithToUnhealthy(Enum)**
+
+Swith state to unhealthy.
+
+```csharp
+void SwithToUnhealthy(Enum keydep)
+```
+
+#### Parameters
+
+`keydep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
+The enum value dependence.
 
 ### <a id="methods-swithtounhealthy"/>**SwithToUnhealthy(String)**
 
@@ -93,71 +137,71 @@ void SwithToUnhealthy(string keydep)
 #### Parameters
 
 `keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
-The name value dependence.
+The name dependence.
 
-### <a id="methods-trygetdegraded"/>**TryGetDegraded(ref IEnumerable`1)**
+### <a id="methods-trygetdegraded"/>**TryGetDegraded(ref Dictionary`2)**
 
 Try get all degraded status.
 
 ```csharp
-bool TryGetDegraded(ref IEnumerable`1 result)
+bool TryGetDegraded(ref Dictionary`2 result)
 ```
 
 #### Parameters
 
-`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) degrated.
+`result` [Dictionary`2&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.dictionary-2&)<br>
+the Dictionary with all HealthCheck Result with degraded status
 
 #### Returns
 
 True if found, oyherwise false.
 
-### <a id="methods-trygethealthy"/>**TryGetHealthy(ref IEnumerable`1)**
+### <a id="methods-trygethealthy"/>**TryGetHealthy(ref Dictionary`2)**
 
 Try get all healthy status.
 
 ```csharp
-bool TryGetHealthy(ref IEnumerable`1 result)
+bool TryGetHealthy(ref Dictionary`2 result)
 ```
 
 #### Parameters
 
-`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) healthy.
+`result` [Dictionary`2&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.dictionary-2&)<br>
+the Dictionary with all HealthCheck Result with healthy status
 
 #### Returns
 
 True if found, oyherwise false.
 
-### <a id="methods-trygetnothealthy"/>**TryGetNotHealthy(ref IEnumerable`1)**
+### <a id="methods-trygetnothealthy"/>**TryGetNotHealthy(ref Dictionary`2)**
 
 Try get all not healthy status.
 
 ```csharp
-bool TryGetNotHealthy(ref IEnumerable`1 result)
+bool TryGetNotHealthy(ref Dictionary`2 result)
 ```
 
 #### Parameters
 
-`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) healthy.
+`result` [Dictionary`2&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.dictionary-2&)<br>
+the Dictionary with all HealthCheck Result with not healthy status
 
 #### Returns
 
 True if found, oyherwise false.
 
-### <a id="methods-trygetunhealthy"/>**TryGetUnhealthy(ref IEnumerable`1)**
+### <a id="methods-trygetunhealthy"/>**TryGetUnhealthy(ref Dictionary`2)**
 
 Try get all unhealthy status.
 
 ```csharp
-bool TryGetUnhealthy(ref IEnumerable`1 result)
+bool TryGetUnhealthy(ref Dictionary`2 result)
 ```
 
 #### Parameters
 
-`result` [IEnumerable`1&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1&)<br>
-[IEnumerable&lt;T&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1) unhealthy.
+`result` [Dictionary`2&](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.dictionary-2&)<br>
+the Dictionary with all HealthCheck Result with unhealthy status
 
 #### Returns
 
