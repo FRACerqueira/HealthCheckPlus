@@ -34,21 +34,16 @@
 
 - Command to Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
 - Command to retrieve the last result of each HealthCheck kept in cache
-- Optional background policy service for updating and running HealthChecks while keeping results cached
-    - Integration with registered publishers with the interface IHealthCheckPublisher
-    - Extra filters:
+- Optional Delay and interval for each HealthCheck 
+    - Policy for Healthy while keeping results cached (default)
+    - Policy for degraded (Optional)
+    - Policy for unhealthy (Optional)
+- Register an external health check (package import) and associate delay, interval and individual policy rules.
+- Policy background service for updating and running HealthChecks
+    - Optional set delay and interval are used in the background update service parameters when defined and HealthCheck is null for delay and interval
+    - Integration with registered publishers with the interface IHealthCheckPublisher with extra filters:
         - Number of counts idle to publish.
         - Run publish only when the report has a status change in one of its entries.
-- Optional Delay and interval for each HealthCheck (policy for Healthy while keeping results cached)
-    - Delay and interval when set are used for all HealthCheck request
-    - Delay and interval when not set are used in the background update service parameters when defined
-- Optional Interval policy for unhealthy status for each HealthCheck while keeping results cached
-    - Delay and interval when set are used for all HealthCheck request
-    - Delay and interval when not set are used in the background update service parameters when defined
-- Optional Interval policy for degraded status for each HealthCheck while keeping results cached
-    - Delay and interval when set are used for all HealthCheck request
-    - Delay and interval when not set are used in the background update service parameters when defined
-- Register an external health check (packet import) and associate delay, interval and individual policy rules.
 - Response templates with small/full details in "application/json" ContentType
     - HealthCheckPlusOptions.WriteShortDetails
     - HealthCheckPlusOptions.WriteShortDetailsPlus (with extra fields : cache source and reference date of last run)
@@ -57,6 +52,7 @@
     - HealthCheckPlusOptions.WriteDetailsWithException
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
 - Simple and clear fluent syntax extending the native features of healt check
+
 
 ## Installing
 [**Top**](#table-of-contents)
