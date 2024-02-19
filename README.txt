@@ -21,7 +21,8 @@ HealthCheck with individual check interval and unhealthy/degraded/healthy interv
 
 HealthCheckPlus was developed in c# with the **.Net6** , **.Net7** and **.Net8** target frameworks.
 
-Visit the official page for more documentation : https://fracerqueira.github.io/HealthCheckPlus
+Visit the official page for more documentation : 
+https://fracerqueira.github.io/HealthCheckPlus
 
 What's new V2.0.0
 *****************
