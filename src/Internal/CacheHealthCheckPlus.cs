@@ -35,7 +35,14 @@ namespace HealthCheckPlus.Internal
             {
                 throw new ArgumentException("HealthCheckName already exists");
             }
-            _statusFunction.Add(options.HealthCheckName,options.StatusHealthReport);
+            if (options.StatusHealthReport == null)
+            {
+                _statusFunction.Add(options.HealthCheckName, (_) => _statusDeps.Values.Min(x => x.Lastresult.Status));
+            }
+            else
+            {
+                _statusFunction.Add(options.HealthCheckName, options.StatusHealthReport);
+            }
         }
 
         public void InitCache<T>()
@@ -136,11 +143,16 @@ namespace HealthCheckPlus.Internal
             Update(key, HealthCheckTrigger.SwithTo, itemres, DateTime.Now, TimeSpan.Zero);
         }
 
-        #region IStateHealthChecksPlus
-
         public ItemCacheHealth FullStatus(string keydep)
         {
             return _statusDeps[keydep];
+        }
+
+        #region IStateHealthChecksPlus
+
+        public HealthCheckResult StatusDep(Enum keydep)
+        {
+            return StatusDep(keydep.ToString());
         }
 
         public HealthCheckResult StatusDep(string keydep)
@@ -148,9 +160,19 @@ namespace HealthCheckPlus.Internal
             return _statusDeps[keydep].Lastresult;
         }
 
+        public void SwithToUnhealthy(Enum keydep)
+        {
+            SwithToUnhealthy(keydep.ToString());
+        }
+
         public void SwithToUnhealthy(string keydep)
         {
             SwithState(keydep, HealthStatus.Unhealthy);
+        }
+
+        public void SwithToDegraded(Enum keydep)
+        {
+            SwithToDegraded(keydep.ToString());
         }
 
         public void SwithToDegraded(string keydep)
@@ -158,35 +180,43 @@ namespace HealthCheckPlus.Internal
             SwithState(keydep, HealthStatus.Degraded);
         }
 
-        public bool TryGetNotHealthy(out IEnumerable<HealthCheckResult> result)
+        public bool TryGetNotHealthy(out Dictionary<string,HealthCheckResult> result)
         {
-            result = _statusDeps
-                .Where(x => x.Value.Lastresult.Status != HealthStatus.Healthy)
-                .Select(x => x.Value.Lastresult);
+            result = [];
+            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status != HealthStatus.Healthy))
+            {
+                result.Add(item.Key, item.Value.Lastresult);
+            }
             return result.Any();
         }
 
-        public bool TryGetHealthy(out IEnumerable<HealthCheckResult> result)
+        public bool TryGetHealthy(out Dictionary<string, HealthCheckResult> result)
         {
-            result = _statusDeps
-                .Where(x => x.Value.Lastresult.Status == HealthStatus.Healthy)
-                .Select(x => x.Value.Lastresult);
+            result = [];
+            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status == HealthStatus.Healthy))
+            {
+                result.Add(item.Key, item.Value.Lastresult);
+            }
             return result.Any();
         }
 
-        public bool TryGetDegraded(out IEnumerable<HealthCheckResult> result)
+        public bool TryGetDegraded(out Dictionary<string, HealthCheckResult> result)
         {
-            result = _statusDeps
-                .Where(x => x.Value.Lastresult.Status == HealthStatus.Degraded)
-                .Select(x => x.Value.Lastresult);
+            result = [];
+            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status == HealthStatus.Degraded))
+            {
+                result.Add(item.Key, item.Value.Lastresult);
+            }
             return result.Any();
         }
 
-        public bool TryGetUnhealthy(out IEnumerable<HealthCheckResult> result)
+        public bool TryGetUnhealthy(out Dictionary<string, HealthCheckResult> result)
         {
-            result = _statusDeps
-                .Where(x => x.Value.Lastresult.Status == HealthStatus.Unhealthy)
-                .Select(x => x.Value.Lastresult);
+            result = [];
+            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status == HealthStatus.Unhealthy))
+            {
+                result.Add(item.Key, item.Value.Lastresult);
+            }
             return result.Any();
         }
 
