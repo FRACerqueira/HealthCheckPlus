@@ -24,7 +24,6 @@
 - [License](#license)
 - [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
 
-
 ## What's new in the latest version 
 
 ### V2.0.0

@@ -53,7 +53,7 @@ public bool Enabled { get; }
 
 ### <a id="properties-whenreportchange"/>**WhenReportChange**
 
-Gets or sets publish only when the report has had a status change
+Gets or sets publish only when the report has a status change in one of its entries
  The default value is True.
 
 ```csharp
