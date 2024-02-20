@@ -1,4 +1,9 @@
-﻿using Microsoft.Extensions.Diagnostics.HealthChecks;
+﻿// ********************************************************************************************
+// MIT LICENCE
+// The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
+// ********************************************************************************************
+
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlus
 {
