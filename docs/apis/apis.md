@@ -17,6 +17,8 @@
 
 - [IDataHealthPlus](./healthcheckplus.idatahealthplus.md)
 
+- [IHealthCheckPlusPublisher](./healthcheckplus.ihealthcheckpluspublisher.md)
+
 - [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)
 
 ## Namespace HealthCheckPlus.options
