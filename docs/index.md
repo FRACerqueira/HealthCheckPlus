@@ -161,10 +161,16 @@ app
         //custom function for status value of report
         StatusHealthReport = (rep) =>
         {
+            if (rep.StatusResult(MyEnum.HcTest1) == HealthStatus.Unhealthy)
+            {
+                //do something
+            }
+            if (rep.TryGetNotHealthy(out var results))
+            {
+                //do something
+            }
             return HealthStatus.Degraded;
         },
-        //template for Response (same behavior as HealthCheckOptions)
-        ResponseWriter = HealthCheckPlusOptions.WriteDetailsWithoutException,
         //Result Status Codes  (same behavior as HealthCheckOptions)
         ResultStatusCodes =
         {
@@ -174,8 +180,20 @@ app
         }
     })
     //default HealthCheckPlusOptions (same behavior as default HealthCheckOptions)
-    .UseHealthChecksPlus("/health/ready");
-});
+    .UseHealthChecksPlus("/health/ready", new HealthCheckPlusOptions
+    {
+        //name for HealthCheck kind
+        HealthCheckName = "ready",
+        //template for Response (same behavior as HealthCheckOptions)
+        ResponseWriter = HealthCheckPlusOptions.WriteDetailsWithoutException,
+        //Result Status Codes  (same behavior as HealthCheckOptions)
+        ResultStatusCodes =
+        {
+            [HealthStatus.Healthy] = StatusCodes.Status200OK,
+            [HealthStatus.Degraded] = StatusCodes.Status200OK,
+            [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+        }
+    });
 ```
 
 ```csharp
