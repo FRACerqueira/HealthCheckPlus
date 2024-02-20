@@ -7,6 +7,8 @@ namespace HealthCheckPlusDemo
 {
     public class Program
     {
+        private static readonly string[] names = ["HcTest1", "HcTest2", "Redis"];
+
         public static void Main(string[] args)
         {
             IStateHealthChecksPlus? _stateHealthChecksPlus;
@@ -20,21 +22,21 @@ namespace HealthCheckPlusDemo
 
             builder.Services
                 //Add HealthCheckPlus
-                .AddHealthChecksPlus<MyEnum>()
+                .AddHealthChecksPlus(names)
                 //your custom HC    
-                .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
+                .AddCheckPlus<HcTeste1>("HcTest1")
                 //your custom HC    
-                .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
+                .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
                 //external HC 
                 .AddRedis("connection string", "Myredis")
                 //register external HC 
-                .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
+                .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
                 //policy for Unhealthy
-                .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
+                .AddUnhealthyPolicy("HcTest1", TimeSpan.FromSeconds(2))
                 //policy for Degraded
-                .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
+                .AddDegradedPolicy("HcTest2", TimeSpan.FromSeconds(3))
                 //policy for Unhealthy
-                .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
+                .AddUnhealthyPolicy("Redis", TimeSpan.FromSeconds(1));
 
             var app = builder.Build();
 
@@ -51,7 +53,7 @@ namespace HealthCheckPlusDemo
                     HealthCheckName = "live",
                     StatusHealthReport = (rep) =>
                     {
-                        if (rep.StatusResult(MyEnum.HcTest1) == HealthStatus.Unhealthy)
+                        if (rep.StatusResult("HcTest1") == HealthStatus.Unhealthy)
                         {
                             //do something
                         }

@@ -19,7 +19,7 @@ namespace HealthCheckPlusDemo.Controllers
         [HttpGet(Name = "GetWeatherForecast")]
         public IEnumerable<WeatherForecast> Get()
         {
-            if (stateHealthChecks.StatusResult(MyEnum.HcTest1).Status != HealthStatus.Healthy)
+            if (stateHealthChecks.StatusResult("HcTest1").Status != HealthStatus.Healthy)
             {
                 //do something
             }

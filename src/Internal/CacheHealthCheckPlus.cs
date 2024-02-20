@@ -45,6 +45,23 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        public void InitCache(IEnumerable<string> names)
+        {
+            foreach (var item in names)
+            {
+                _statusDeps.TryAdd(item,
+                    new()
+                    {
+                        Name = item,
+                        Duration = TimeSpan.Zero,
+                        Dateref = _dateregister,
+                        Running = false,
+                        Origin = HealthCheckTrigger.None,
+                        Lastresult = new HealthCheckResult(HealthStatus.Healthy)
+                    });
+            }
+        }
+
         public void InitCache<T>()
         {
             var tp = typeof(T);
