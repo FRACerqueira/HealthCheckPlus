@@ -60,8 +60,7 @@ See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples
 
 Usage
 *****
-
-//Create enum with all HealthCheck
+//create list all HealthCheck by enum (optional type)
 public enum MyEnum
 {
     HcTeste1,
@@ -69,9 +68,34 @@ public enum MyEnum
     Redis
 }
 
+//create list all HealthCheck by string (compatible type)
+private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
+
 ...
 
-//At Statup / Program (without background services policies)
+//At Statup / Program (without background services policies with string)
+builder.Services
+    //Add HealthCheckPlus
+    .AddHealthChecksPlus(HealthChecknames)
+    //your custom HC    
+    .AddCheckPlus<HcTeste1>("HcTest1")
+    //your custom HC    
+    .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
+    //external HC 
+    .AddRedis("connection string", "Myredis")
+    //register external HC 
+    .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy("HcTest1", TimeSpan.FromSeconds(2))
+    //policy for Degraded
+    .AddDegradedPolicy("HcTest2", TimeSpan.FromSeconds(3))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy("Redis", TimeSpan.FromSeconds(1));
+...
+
+...
+
+//At Statup / Program (without background services policies with enum)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus<MyEnum>()
@@ -91,7 +115,7 @@ builder.Services
     .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
 ...
 
-//At Statup / Program (wit background services policies)
+//At Statup / Program (wit background services policies with enum)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus<MyEnum>()

@@ -77,6 +77,87 @@ The .
 
 The [HealthChecksPlusExtension.AddCheckLinkTo(IHealthChecksBuilder, Enum, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#addchecklinktoihealthchecksbuilder-enum-string-nullabletimespan-nullabletimespan) cannot be set to a period value lower than 1 second.
 
+### <a id="methods-addchecklinkto"/>**AddCheckLinkTo(IHealthChecksBuilder, String, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;)**
+
+Register then external(package import) dependence health check to run. the health check must added in .
+
+```csharp
+public static IHealthChecksBuilder AddCheckLinkTo(IHealthChecksBuilder ihb, string namedep, string name, Nullable<TimeSpan> delay, Nullable<TimeSpan> period)
+```
+
+#### Parameters
+
+`ihb` IHealthChecksBuilder<br>
+The .
+
+`namedep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name health check list to run.
+
+`name` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name health check registered. This param is case insensitive
+
+`delay` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The initial delay applied after the application starts before executing
+  instances. The delay is applied once at startup, and does
+ not apply to subsequent iterations. The default value is 5 seconds.
+
+`period` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The period of  execution. The default value is 30 seconds
+
+#### Returns
+
+The .
+
+**Remarks:**
+
+The [HealthChecksPlusExtension.AddCheckLinkTo(IHealthChecksBuilder, Enum, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#addchecklinktoihealthchecksbuilder-enum-string-nullabletimespan-nullabletimespan) cannot be set to a period value lower than 1 second.
+
+### <a id="methods-addcheckplus"/>**AddCheckPlus&lt;T&gt;(IHealthChecksBuilder, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)**
+
+Register then dependence health check to run.
+
+```csharp
+public static IHealthChecksBuilder AddCheckPlus<T>(IHealthChecksBuilder ihb, string namedep, Nullable<TimeSpan> delay, Nullable<TimeSpan> period, IEnumerable<String> tags, Nullable<HealthStatus> failureStatus, Nullable<TimeSpan> timeout)
+```
+
+#### Type Parameters
+
+`T`<br>
+
+#### Parameters
+
+`ihb` IHealthChecksBuilder<br>
+The .
+
+`namedep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name health check list to run.
+
+`delay` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The initial delay applied after the application starts before executing
+  instances. The delay is applied once at startup, and does
+ not apply to subsequent iterations. The default value is 5 seconds.
+
+`period` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The period of  execution. The default value is 30 seconds
+
+`tags` [IEnumerable&lt;String&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1)<br>
+A list of tags that can be used for filtering health checks.
+
+`failureStatus` [Nullable&lt;HealthStatus&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+The  that should be reported when the health check reports a failure. If the provided value
+ is `null`, then  will be reported.
+
+`timeout` [Nullable&lt;TimeSpan&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.nullable-1)<br>
+An optional [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan) representing the timeout of the check.
+
+#### Returns
+
+The .
+
+**Remarks:**
+
+The [HealthChecksPlusExtension.AddCheckPlus&lt;T&gt;(IHealthChecksBuilder, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#addcheckplustihealthchecksbuilder-string-nullabletimespan-nullabletimespan-ienumerablestring-nullablehealthstatus-nullabletimespan) cannot be set to a period value lower than 1 second.
+
 ### <a id="methods-addcheckplus"/>**AddCheckPlus&lt;T&gt;(IHealthChecksBuilder, Enum, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)**
 
 Register then dependence health check to run.
@@ -121,7 +202,7 @@ The .
 
 **Remarks:**
 
-The [HealthChecksPlusExtension.AddCheckPlus&lt;T&gt;(IHealthChecksBuilder, Enum, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#addcheckplustihealthchecksbuilder-enum-nullabletimespan-nullabletimespan-ienumerablestring-nullablehealthstatus-nullabletimespan) cannot be set to a period value lower than 1 second.
+The [HealthChecksPlusExtension.AddCheckPlus&lt;T&gt;(IHealthChecksBuilder, String, Nullable&lt;TimeSpan&gt;, Nullable&lt;TimeSpan&gt;, IEnumerable&lt;String&gt;, Nullable&lt;HealthStatus&gt;, Nullable&lt;TimeSpan&gt;)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#addcheckplustihealthchecksbuilder-string-nullabletimespan-nullabletimespan-ienumerablestring-nullablehealthstatus-nullabletimespan) cannot be set to a period value lower than 1 second.
 
 ### <a id="methods-adddegradedpolicy"/>**AddDegradedPolicy(IHealthChecksBuilder, Enum, TimeSpan)**
 
@@ -149,6 +230,53 @@ The .
 **Remarks:**
 
 The [HealthChecksPlusExtension.AddDegradedPolicy(IHealthChecksBuilder, Enum, TimeSpan)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#adddegradedpolicyihealthchecksbuilder-enum-timespan) cannot be set to a value lower than 1 second.
+
+### <a id="methods-adddegradedpolicy"/>**AddDegradedPolicy(IHealthChecksBuilder, String, TimeSpan)**
+
+Register Degraded Policy for the health check
+
+```csharp
+public static IHealthChecksBuilder AddDegradedPolicy(IHealthChecksBuilder ihb, string namedep, TimeSpan period)
+```
+
+#### Parameters
+
+`ihb` IHealthChecksBuilder<br>
+The .
+
+`namedep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name health check to run.
+
+`period` [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan)<br>
+Requeried [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan). The period of execution when status is Unhealthy.
+
+#### Returns
+
+The .
+
+**Remarks:**
+
+The [HealthChecksPlusExtension.AddDegradedPolicy(IHealthChecksBuilder, Enum, TimeSpan)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#adddegradedpolicyihealthchecksbuilder-enum-timespan) cannot be set to a value lower than 1 second.
+
+### <a id="methods-addhealthchecksplus"/>**AddHealthChecksPlus(IServiceCollection, IEnumerable&lt;String&gt;)**
+
+Register HealthChecksPlus Service
+
+```csharp
+public static IHealthChecksBuilder AddHealthChecksPlus(IServiceCollection sc, IEnumerable<String> names)
+```
+
+#### Parameters
+
+`sc` IServiceCollection<br>
+The .
+
+`names` [IEnumerable&lt;String&gt;](https://docs.microsoft.com/en-us/dotnet/api/system.collections.generic.ienumerable-1)<br>
+List of HealthChecks names
+
+#### Returns
+
+The .
 
 ### <a id="methods-addhealthchecksplus"/>**AddHealthChecksPlus&lt;T&gt;(IServiceCollection)**
 
@@ -187,6 +315,33 @@ The .
 
 `enumdep` [Enum](https://docs.microsoft.com/en-us/dotnet/api/system.enum)<br>
 The enum value with health check to run.
+
+`period` [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan)<br>
+Requeried [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan) The period of execution when status is Unhealthy.
+
+#### Returns
+
+The .
+
+**Remarks:**
+
+The [HealthChecksPlusExtension.AddUnhealthyPolicy(IHealthChecksBuilder, Enum, TimeSpan)](./microsoft.extensions.dependencyinjection.healthchecksplusextension.md#addunhealthypolicyihealthchecksbuilder-enum-timespan) cannot be set to a value lower than 1 second.
+
+### <a id="methods-addunhealthypolicy"/>**AddUnhealthyPolicy(IHealthChecksBuilder, String, TimeSpan)**
+
+Register Unhealthy Policy for the health check
+
+```csharp
+public static IHealthChecksBuilder AddUnhealthyPolicy(IHealthChecksBuilder ihb, string namedep, TimeSpan period)
+```
+
+#### Parameters
+
+`ihb` IHealthChecksBuilder<br>
+The .
+
+`namedep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name health check to run.
 
 `period` [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan)<br>
 Requeried [TimeSpan](https://docs.microsoft.com/en-us/dotnet/api/system.timespan) The period of execution when status is Unhealthy.

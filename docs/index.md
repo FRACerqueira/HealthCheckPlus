@@ -78,13 +78,57 @@ See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/ma
 The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
 
 ```csharp
-//Create enum with all HealthCheck
+//create list all HealthCheck by enum (optional type)
 public enum MyEnum
 {
     HcTeste1,
     HcTeste2,
     Redis
 }
+//create list all HealthCheck by string (compatible type)
+private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
+```
+
+```csharp
+//At Statup / Program (without background services policies with string)
+builder.Services
+    //Add HealthCheckPlus
+    .AddHealthChecksPlus(HealthChecknames)
+    //your custom HC    
+    .AddCheckPlus<HcTeste1>("HcTest1")
+    //your custom HC    
+    .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
+    //external HC 
+    .AddRedis("connection string", "Myredis")
+    //register external HC 
+    .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy("HcTest1", TimeSpan.FromSeconds(2))
+    //policy for Degraded
+    .AddDegradedPolicy("HcTest2", TimeSpan.FromSeconds(3))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy("Redis", TimeSpan.FromSeconds(1));
+```
+
+```csharp
+//At Statup / Program (without background services policies with enum)
+builder.Services
+    //Add HealthCheckPlus
+    .AddHealthChecksPlus<MyEnum>()
+    //your custom HC    
+    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
+    //your custom HC    
+    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
+    //external HC 
+    .AddRedis("connection string", "Myredis")
+    //register external HC 
+    .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
+    //policy for Degraded
+    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
+    //policy for Unhealthy
+    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
 ```
 
 ```csharp
@@ -110,7 +154,7 @@ builder.Services
 ```
 
 ```csharp
-//At Statup / Program (with background services policies)
+//At Statup / Program (with background services policies with enum)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus<MyEnum>()
