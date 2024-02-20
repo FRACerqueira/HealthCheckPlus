@@ -150,12 +150,12 @@ namespace HealthCheckPlus.Internal
 
         #region IStateHealthChecksPlus
 
-        public HealthCheckResult StatusDep(Enum keydep)
+        public HealthCheckResult StatusResult(Enum keydep)
         {
-            return StatusDep(keydep.ToString());
+            return StatusResult(keydep.ToString());
         }
 
-        public HealthCheckResult StatusDep(string keydep)
+        public HealthCheckResult StatusResult(string keydep)
         {
             return _statusDeps[keydep].Lastresult;
         }

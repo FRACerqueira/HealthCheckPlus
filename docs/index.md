@@ -206,7 +206,7 @@ public class MyBussines
         { 
             //do something
         }
-        if (healthCheckApp.StatusDep(MyEnum.HcTeste2).Status == HealthStatus.Unhealthy)
+        if (healthCheckApp.StatusResult(MyEnum.HcTeste2).Status == HealthStatus.Unhealthy)
         { 
             //do something. This dependency 'HcTeste2' is not available
         }

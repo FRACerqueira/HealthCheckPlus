@@ -53,12 +53,12 @@ name of url request([HealthCheckPlusOptions.HealthCheckName](./healthcheckplus.o
 
 HealthStatus
 
-### <a id="methods-statusdep"/>**StatusDep(Enum)**
+### <a id="methods-statusresult"/>**StatusResult(Enum)**
 
 The last  data for HealthCheck.
 
 ```csharp
-HealthCheckResult StatusDep(Enum keydep)
+HealthCheckResult StatusResult(Enum keydep)
 ```
 
 #### Parameters
@@ -70,12 +70,12 @@ The Enum value dependence.
 
 HealthCheckResult
 
-### <a id="methods-statusdep"/>**StatusDep(String)**
+### <a id="methods-statusresult"/>**StatusResult(String)**
 
 The last  data for HealthCheck.
 
 ```csharp
-HealthCheckResult StatusDep(string keydep)
+HealthCheckResult StatusResult(string keydep)
 ```
 
 #### Parameters

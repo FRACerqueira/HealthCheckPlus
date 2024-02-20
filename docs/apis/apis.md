@@ -13,6 +13,8 @@
 
 - [HealthCheckTrigger](./healthcheckplus.healthchecktrigger.md)
 
+- [HealthReportExtensions](./healthcheckplus.healthreportextensions.md)
+
 - [IDataHealthPlus](./healthcheckplus.idatahealthplus.md)
 
 - [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)

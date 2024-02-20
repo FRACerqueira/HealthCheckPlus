@@ -19,7 +19,7 @@ namespace HealthCheckPlus
         /// <param name="keydep">
         /// The Enum value dependence.
         /// </param>
-        HealthCheckResult StatusDep(Enum keydep);
+        HealthCheckResult StatusResult(Enum keydep);
 
         /// <summary>
         /// The last <see cref="HealthCheckResult"/> data for HealthCheck.
@@ -27,7 +27,7 @@ namespace HealthCheckPlus
         /// <param name="keydep">
         /// The name dependence.
         /// </param>
-        HealthCheckResult StatusDep(string keydep);
+        HealthCheckResult StatusResult(string keydep);
 
         /// <summary>
         /// Gets a <see cref="HealthStatus"/> representing the aggregate status of all the health checks.
