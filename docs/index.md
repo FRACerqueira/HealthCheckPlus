@@ -289,6 +289,18 @@ public class MyBussines
 }
 ```
 
+```csharp
+//example of  Publisher condition to execute
+public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublisher
+{
+   public Func<HealthReport, bool> PublisherCondition => (_) => true;
+   public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
+   {
+      return Task.CompletedTask;
+   }
+}
+```
+
 ## Code of Conduct
 [**Top**](#table-of-contents)
 

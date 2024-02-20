@@ -129,7 +129,21 @@ namespace HealthCheckPlus.Internal
                             var tasks = new Task[_publishers.Length];
                             for (var i = 0; i < _publishers.Length; i++)
                             {
-                                tasks[i] = RunPublisherAsync(_publishers[i], report, _stopping.Token);
+                                if (_publishers[i].GetType().GetInterface(nameof(IHealthCheckPlusPublisher)) != null)
+                                {
+                                    if (((IHealthCheckPlusPublisher)_publishers[i]).PublisherCondition.Invoke(report))
+                                    {
+                                        tasks[i] = RunPublisherAsync(_publishers[i], report, _stopping.Token);
+                                    }
+                                    else
+                                    {
+                                        tasks[i] = Task.Run(() => { });
+                                    }
+                                }
+                                else
+                                {
+                                    tasks[i] = RunPublisherAsync(_publishers[i], report, _stopping.Token);
+                                }
                             }
                             await Task.WhenAll(tasks).ConfigureAwait(false);
                         }
