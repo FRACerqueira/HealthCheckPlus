@@ -18,19 +18,31 @@ namespace HealthCheckPlus
         /// </summary>
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="keydep">
-        /// The Enum value dependence.
+        /// The name dependence.
         /// </param>
-        public static HealthStatus StatusResult(this HealthReport report, Enum keydep)
+        public static HealthStatus StatusResult(this HealthReport report, string keydep)
         {
-             var aux = report.Entries
-                .Where(x => x.Key == keydep.ToString());
-            if (!aux.Any()) 
+            var aux = report.Entries
+               .Where(x => x.Key == keydep);
+            if (!aux.Any())
             {
                 throw new ArgumentException($"The {nameof(keydep)} must not found.", nameof(keydep));
             }
             return aux
                 .Select(X => X.Value.Status)
                 .FirstOrDefault();
+        }
+        
+        /// <summary>
+        /// The last <see cref="HealthCheckResult"/> data for HealthCheck.
+        /// </summary>
+        /// <param name="report">The <see cref="HealthReport"/>.</param>
+        /// <param name="keydep">
+        /// The Enum value dependence.
+        /// </param>
+        public static HealthStatus StatusResult(this HealthReport report, Enum keydep)
+        {
+            return StatusResult(report, keydep.ToString());
         }
 
         /// <summary>

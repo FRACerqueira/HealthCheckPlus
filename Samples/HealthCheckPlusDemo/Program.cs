@@ -49,9 +49,16 @@ namespace HealthCheckPlusDemo
             app.UseHealthChecksPlus("/health/live", new HealthCheckPlusOptions
                 {
                     HealthCheckName = "live",
-                    ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus(ctx,report, _stateHealthChecksPlus),
                     StatusHealthReport = (rep) =>
                     {
+                        if (rep.StatusResult(MyEnum.HcTest1) == HealthStatus.Unhealthy)
+                        {
+                            //do something
+                        }
+                        if (rep.TryGetNotHealthy(out var results))
+                        {
+                            //do something
+                        }
                         return HealthStatus.Degraded;
                     },
                     ResultStatusCodes =
@@ -63,6 +70,7 @@ namespace HealthCheckPlusDemo
                 })
                .UseHealthChecksPlus("/health/ready", new HealthCheckPlusOptions
                {
+                   ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus(ctx, report, _stateHealthChecksPlus),
                    ResultStatusCodes =
                     {
                         [HealthStatus.Healthy] = StatusCodes.Status200OK,

@@ -21,6 +21,26 @@ Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) 
 
 ## Methods
 
+### <a id="methods-statusresult"/>**StatusResult(HealthReport, String)**
+
+The last  data for HealthCheck.
+
+```csharp
+public static HealthStatus StatusResult(HealthReport report, string keydep)
+```
+
+#### Parameters
+
+`report` HealthReport<br>
+The .
+
+`keydep` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
+The name dependence.
+
+#### Returns
+
+HealthStatus
+
 ### <a id="methods-statusresult"/>**StatusResult(HealthReport, Enum)**
 
 The last  data for HealthCheck.
