@@ -176,7 +176,12 @@ builder.Services
         opt.HealthyPeriod = TimeSpan.FromSeconds(30);
         opt.DegradedPeriod = TimeSpan.FromSeconds(30);
         opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
-        opt.Publishing = new PublishingOptions();
+        opt.Publishing = new PublishingOptions() 
+        { 
+            //default values
+            AfterIdleCount = 1,
+            WhenReportChange = true
+        };
     });
 ```
 
