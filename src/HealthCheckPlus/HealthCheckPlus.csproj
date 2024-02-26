@@ -59,7 +59,7 @@
 	<ItemGroup>
 		<None Include="..\NugetREADME.md" Pack="true" PackagePath="\" />
 		<None Include="..\..\docs\images\icon.png" Pack="true" PackagePath="\" />
-		<None Include="..\README.md" Pack="false" />
+		<None Include="..\..\README.md" Pack="false" />
 	</ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(Configuration)|$(TargetFramework)'=='local|net8.0'">
