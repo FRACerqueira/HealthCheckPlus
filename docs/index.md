@@ -57,12 +57,22 @@
 ## Installing
 [**Top**](#table-of-contents)
 
+Top layer
 ```
 Install-Package HealthCheckPlus [-pre]
 ```
 
 ```
 dotnet add package HealthCheckPlus [--prerelease]
+```
+
+Other layer
+```
+Install-Package HealthCheckPlus.Abstractions [-pre]
+```
+
+```
+dotnet add package HealthCheckPlus.Abstractions [--prerelease]
 ```
 
 **_Note:  [-pre]/[--prerelease] usage for pre-release versions_**
