@@ -24,6 +24,13 @@ HealthCheckPlus was developed in c# with the **.Net6** , **.Net7** and **.Net8**
 Visit the official page for more documentation : 
 https://fracerqueira.github.io/HealthCheckPlus
 
+What's new V2.0.1
+*****************
+
+- Created dependency isolation package: HealthCheckPlus.Abstractions
+    - Now all public interfaces and classes are isolated in another assembly  
+
+
 What's new V2.0.0
 *****************
 

@@ -9,7 +9,7 @@
 
 # HealthReportExtensions
 
-Namespace: HealthCheckPlus
+Namespace: HealthCheckPlus.Abstractions
 
 The Extensions for HealthReport
 
@@ -17,7 +17,7 @@ The Extensions for HealthReport
 public static class HealthReportExtensions
 ```
 
-Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) → [HealthReportExtensions](./healthcheckplus.healthreportextensions.md)
+Inheritance [Object](https://docs.microsoft.com/en-us/dotnet/api/system.object) → [HealthReportExtensions](./healthcheckplus.abstractions.healthreportextensions.md)
 
 ## Methods
 

@@ -3,6 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using HealthCheckPlus.Abstractions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlus.Internal

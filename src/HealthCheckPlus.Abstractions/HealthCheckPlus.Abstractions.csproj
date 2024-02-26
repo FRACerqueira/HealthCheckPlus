@@ -4,8 +4,8 @@
 		<TargetFrameworks>net8.0;net7.0;net6.0</TargetFrameworks>
 		<LangVersion>latest</LangVersion>
 		<NeutralLanguage>en</NeutralLanguage>
-		<AssemblyName>HealthCheckPlus</AssemblyName>
-		<RootNamespace>HealthCheckPlus</RootNamespace>
+		<AssemblyName>HealthCheckPlus.Abstractions</AssemblyName>
+		<RootNamespace>HealthCheckPlus.Abstractions</RootNamespace>
 		<Configurations>Debug;Release;local</Configurations>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
@@ -13,15 +13,15 @@
 
 	<PropertyGroup>
 		<Authors>Fernando Cerqueira</Authors>
-		<Description>HealthCheck with individual check interval and Unhealth/Degraded/Healthy interval policy</Description>
+		<Description>Abstractions HealthCheck with individual check interval and Unhealth/Degraded/Healthy interval policy</Description>
 		<PackageReleaseNotes>https://github.com/FRACerqueira/HealthCheckPlus/releases</PackageReleaseNotes>
 		<PackageTags>HealthCheck;c#;</PackageTags>
 		<RepositoryUrl>https://github.com/FRACerqueira/HealthCheckPlus</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
-		<PackageId>HealthCheckPlus</PackageId>
+		<PackageId>HealthCheckPlus.Abstractions</PackageId>
 		<PackageReadmeFile>NugetREADME.md</PackageReadmeFile>
 		<PackageProjectUrl>https://fracerqueira.github.io/HealthCheckPlus</PackageProjectUrl>
-		<Version>2.0.0</Version>
+		<Version>2.0.1</Version>
 		<PackageIcon>icon.png</PackageIcon>
 		<Copyright>© 2023 - Fernando Cerqueira</Copyright>
 		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
@@ -35,7 +35,7 @@
 	<PropertyGroup Condition="'$(Configuration)'=='local'">
 		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
 	</PropertyGroup>
-	
+
 	<ItemGroup>
 		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
 			<_Parameter1>$(AssemblyName).Tests</_Parameter1>
@@ -51,24 +51,16 @@
 
 	<ItemGroup>
 		<None Include="..\NugetREADME.md" Pack="true" PackagePath="\" />
-		<None Include="..\docs\images\icon.png" Pack="true" PackagePath="\" />
-		<None Include="..\README.md" Pack="false" />
+		<None Include="..\..\docs\images\icon.png" Pack="true" PackagePath="\" />
+		<None Include="..\..\README.md" Pack="false" />
 	</ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(Configuration)|$(TargetFramework)'=='local|net8.0'">
-		<Exec Command="xmldoc2md $(SolutionDir)src\bin\local\net7.0\HealthCheckPlus.dll $(SolutionDir)docs\apis --templatefile $(SolutionDir)docapitemplate.md  --excludeinternal --index-page-name apis --back-button &quot;Back to List Api&quot; --link-back-button &quot;./apis.md&quot; --back-index-button &quot;Main&quot; --link-backindex-button &quot;../index.md#table-of-contents&quot;" />
+		<Exec Command="xmldoc2md $(SolutionDir)src\HealthCheckPlus.Abstractions\bin\local\net7.0\HealthCheckPlus.Abstractions.dll $(SolutionDir)docs\apis --templatefile $(SolutionDir)docapitemplate.md  --excludeinternal --index-page-name apisAbstractions --back-button &quot;Back to List Api&quot; --link-back-button &quot;./apis.md&quot; --back-index-button &quot;Main&quot; --link-backindex-button &quot;../index.md#table-of-contents&quot;" />
 	</Target>
-
-	<ItemGroup Condition="'$(TargetFramework)'=='net6.0'">
-		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="8.0.2" />
-		<PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
-		<PackageReference Include="System.Text.Encodings.Web" Version="8.0.0" />
-		<PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-	</ItemGroup>
-
+	
 	<ItemGroup>
-		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.HealthChecks" Version="2.2.0" />
-		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="8.0.2" />
 	</ItemGroup>
 
 </Project>

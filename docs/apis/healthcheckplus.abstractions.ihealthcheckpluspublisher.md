@@ -9,7 +9,7 @@
 
 # IHealthCheckPlusPublisher
 
-Namespace: HealthCheckPlus
+Namespace: HealthCheckPlus.Abstractions
 
 Represents a publisher of  information.
 

@@ -5,7 +5,7 @@
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace HealthCheckPlus
+namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
     /// Represents data from the last Health Check performed

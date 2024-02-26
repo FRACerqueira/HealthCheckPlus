@@ -9,7 +9,7 @@
 
 # IDataHealthPlus
 
-Namespace: HealthCheckPlus
+Namespace: HealthCheckPlus.Abstractions
 
 Represents data from the last Health Check performed
 
@@ -77,7 +77,7 @@ public abstract HealthCheckTrigger Origin { get; }
 
 #### Property Value
 
-[HealthCheckTrigger](./healthcheckplus.healthchecktrigger.md)<br>
+[HealthCheckTrigger](./healthcheckplus.abstractions.healthchecktrigger.md)<br>
 
 
 - - -

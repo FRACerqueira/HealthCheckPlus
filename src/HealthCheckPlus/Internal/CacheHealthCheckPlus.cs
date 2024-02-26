@@ -3,6 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using HealthCheckPlus.Abstractions;
 using System.Collections.Concurrent;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -204,7 +205,7 @@ namespace HealthCheckPlus.Internal
             {
                 result.Add(item.Key, item.Value.Lastresult);
             }
-            return result.Any();
+            return result.Count > 0;
         }
 
         public bool TryGetHealthy(out Dictionary<string, HealthCheckResult> result)
@@ -214,7 +215,7 @@ namespace HealthCheckPlus.Internal
             {
                 result.Add(item.Key, item.Value.Lastresult);
             }
-            return result.Any();
+            return result.Count > 0;
         }
 
         public bool TryGetDegraded(out Dictionary<string, HealthCheckResult> result)
@@ -224,7 +225,7 @@ namespace HealthCheckPlus.Internal
             {
                 result.Add(item.Key, item.Value.Lastresult);
             }
-            return result.Any();
+            return result.Count > 0;
         }
 
         public bool TryGetUnhealthy(out Dictionary<string, HealthCheckResult> result)
@@ -234,7 +235,7 @@ namespace HealthCheckPlus.Internal
             {
                 result.Add(item.Key, item.Value.Lastresult);
             }
-            return result.Any();
+            return result.Count > 0;
         }
 
         public IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)

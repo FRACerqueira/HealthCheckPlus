@@ -3,7 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-namespace HealthCheckPlus
+namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
     /// Enumerator values for origin of last status result.
