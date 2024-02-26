@@ -6,6 +6,7 @@
 // ********************************************************************************************
 
 using HealthCheckPlus.options;
+using HealthCheckPlus.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;

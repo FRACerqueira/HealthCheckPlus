@@ -3,10 +3,9 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using HealthCheckPlus.options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace HealthCheckPlus
+namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
     /// Represents the commands of the HealthChecksPlus for access data
@@ -32,7 +31,7 @@ namespace HealthCheckPlus
         /// <summary>
         /// Gets a <see cref="HealthStatus"/> representing the aggregate status of all the health checks.
         /// </summary>
-        /// <param name="name">name of url request(<see cref="HealthCheckPlusOptions.HealthCheckName"/>).</param>
+        /// <param name="name">name for url request.</param>
         /// <returns></returns>
         HealthStatus Status(string? name = null);
 

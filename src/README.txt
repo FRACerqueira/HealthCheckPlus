@@ -1,39 +1,43 @@
-# <img align="left" width="100" height="100" src="./docs/images/icon.png">Welcome to HealthCheckPlus
-[![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
-[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
-[![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
-[![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
+﻿ _   _               _  _    _
+| | | |  ___   __ _ | || |_ | |__
+| |_| | / _ \ / _` || || __|| '_ \
+|  _  ||  __/| (_| || || |_ | | | |
+|_| |_| \___| \__,_||_| \__||_| |_|
+  ____  _                  _
+ / ___|| |__    ___   ___ | | __
+| |    | '_ \  / _ \ / __|| |/ /
+| |___ | | | ||  __/| (__ |   <
+ \____||_| |_| \___| \___||_|\_\
+ ____   _
+|  _ \ | | _   _  ___
+| |_) || || | | |/ __|
+|  __/ | || |_| |\__ \
+|_|    |_| \__,_||___/
+
+ Welcome to HealthCheckPlus
+ **************************
+
+HealthCheck with individual check interval and unhealthy/degraded/healthy interval policy keeping data in cache.
+
+HealthCheckPlus was developed in c# with the **.Net6** , **.Net7** and **.Net8** target frameworks.
+
+Visit the official page for more documentation : 
+https://fracerqueira.github.io/HealthCheckPlus
+
+What's new V2.0.1
+*****************
+
+- Created dependency isolation package: HealthCheckPlus.Abstractions
+    - Now all public interfaces and classes are isolated in another assembly  
 
 
-### **HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.**
-
-**HealthCheckPlus** was developed in c# with the **.Net6** , **.Net7** and **.Net8** target frameworks.
-
-**[Visit the official page for more documentation of HealthCheckPlus](https://fracerqueira.github.io/HealthCheckPlus)**
-
-## Table of Contents
-
-- [What's new - previous versions](./docs/whatsnewprev.md)
-- [Features](#features)
-- [Installing](#installing)
-- [Examples](#examples)
-- [Usage](#usage)
-- [Code of Conduct](#code-of-conduct)
-- [Contributing](#contributing)
-- [Credits](#credits)
-- [License](#license)
-- [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
-
-## What's new in the latest version 
-
-### V2.0.0
-[**Top**](#table-of-contents)
+What's new V2.0.0
+*****************
 
 - Complete refactoring to only extend native functionalities without changing their behavior when the new features are not used.
 
-## Features
-[**Top**](#table-of-contents)
-
+Features
+********
 - Command to Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
 - Command to retrieve the last result of each HealthCheck kept in cache
 - Optional Delay and interval for each HealthCheck 
@@ -55,30 +59,14 @@
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
 - Simple and clear fluent syntax extending the native features of healt check
 
-## Installing
-[**Top**](#table-of-contents)
 
-```
-Install-Package HealthCheckPlus [-pre]
-```
+Examples
+********
 
-```
-dotnet add package HealthCheckPlus [--prerelease]
-```
+See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples
 
-**_Note:  [-pre]/[--prerelease] usage for pre-release versions_**
-
-## Examples
-[**Top**](#table-of-contents)
-
-See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples).
-
-## Usage
-[**Top**](#table-of-contents)
-
-The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
-
-```csharp
+Usage
+*****
 //create list all HealthCheck by enum (optional type)
 public enum MyEnum
 {
@@ -86,11 +74,12 @@ public enum MyEnum
     HcTeste2,
     Redis
 }
+
 //create list all HealthCheck by string (compatible type)
 private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
-```
 
-```csharp
+...
+
 //At Statup / Program (without background services policies with string)
 builder.Services
     //Add HealthCheckPlus
@@ -109,9 +98,10 @@ builder.Services
     .AddDegradedPolicy("HcTest2", TimeSpan.FromSeconds(3))
     //policy for Unhealthy
     .AddUnhealthyPolicy("Redis", TimeSpan.FromSeconds(1));
-```
+...
 
-```csharp
+...
+
 //At Statup / Program (without background services policies with enum)
 builder.Services
     //Add HealthCheckPlus
@@ -130,32 +120,9 @@ builder.Services
     .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
     //policy for Unhealthy
     .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
-```
+...
 
-```csharp
-//At Statup / Program (without background services policies)
-builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus<MyEnum>()
-    //your custom HC    
-    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
-    //your custom HC    
-    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
-    //external HC 
-    .AddRedis("connection string", "Myredis")
-    //register external HC 
-    .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
-    //policy for Degraded
-    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
-
-```
-
-```csharp
-//At Statup / Program (with background services policies with enum)
+//At Statup / Program (wit background services policies with enum)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus<MyEnum>()
@@ -184,11 +151,12 @@ builder.Services
             WhenReportChange = true
         };
     });
-```
+...
 
 
-```csharp
-//At Statup / Program (optional)
+//At Statup / Program
+
+... 
 
 var app = builder.Build();
 
@@ -197,10 +165,9 @@ using (IServiceScope startscope = app.Services.CreateScope())
 {
     _stateHealthChecksPlus = startscope.ServiceProvider.GetRequiredService<IStateHealthChecksPlus>();
 }
-```
 
-```csharp
-//At Statup / Program
+...
+
 //Endpoints HC
 app
     //Extend HealthCheckOptions with HealthCheckPlusOptions
@@ -244,9 +211,11 @@ app
             [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
         }
     });
-```
 
-```csharp
+...
+
+//At Statup / Program
+
 //example of use in the middler pipeline
 _ = app.Use(async (context, next) =>
 {
@@ -262,9 +231,9 @@ _ = app.Use(async (context, next) =>
     }
     await next();
 });
-```
 
-```csharp
+...
+
 //example of use in a business class using dependency injection
 public class MyBussines
 {
@@ -288,9 +257,9 @@ public class MyBussines
         }
     }
 }
-```
 
-```csharp
+...
+
 //example of  Publisher condition to execute
 public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublisher
 {
@@ -300,30 +269,10 @@ public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublis
       return Task.CompletedTask;
    }
 }
-```
 
-## Code of Conduct
-[**Top**](#table-of-contents)
-
-This project has adopted the code of conduct defined by the Contributor Covenant to clarify expected behavior in our community.
-For more information see the [Code of Conduct](CODE_OF_CONDUCT.md).
-
-## Contributing
-[**Top**](#table-of-contents)
-
-See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
-
-## Credits
-[**Top**](#table-of-contents)
-
-**API documentation generated by**
-
-- [xmldoc2md](https://github.com/FRACerqueira/xmldoc2md), Copyright (c) 2022 Charles de Vandière. See [LICENSE](Licenses/LICENSE-xmldoc2md.md).
-
-## License
-[**Top**](#table-of-contents)
+License
+*******
 
 Copyright 2023 @ Fernando Cerqueira
 
-HealthCheckPlus is licensed under the MIT license. See [LICENSE](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE).
-
+HealthCheckPlus is licensed under the MIT license. See https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE.

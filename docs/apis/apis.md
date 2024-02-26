@@ -7,19 +7,21 @@
 
 [**Main**](../index.md#table-of-contents)
 
+# Assembly HealthCheckPlus.Abstractions
+
+## Namespace HealthCheckPlus.Abstractions
+
+- [HealthCheckTrigger](./healthcheckplus.abstractions.healthchecktrigger.md)
+
+- [HealthReportExtensions](./healthcheckplus.abstractions.healthreportextensions.md)
+
+- [IDataHealthPlus](./healthcheckplus.abstractions.idatahealthplus.md)
+
+- [IHealthCheckPlusPublisher](./healthcheckplus.abstractions.ihealthcheckpluspublisher.md)
+
+- [IStateHealthChecksPlus](./healthcheckplus.abstractions.istatehealthchecksplus.md)
+
 # Assembly HealthCheckPlus
-
-## Namespace HealthCheckPlus
-
-- [HealthCheckTrigger](./healthcheckplus.healthchecktrigger.md)
-
-- [HealthReportExtensions](./healthcheckplus.healthreportextensions.md)
-
-- [IDataHealthPlus](./healthcheckplus.idatahealthplus.md)
-
-- [IHealthCheckPlusPublisher](./healthcheckplus.ihealthcheckpluspublisher.md)
-
-- [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)
 
 ## Namespace HealthCheckPlus.options
 

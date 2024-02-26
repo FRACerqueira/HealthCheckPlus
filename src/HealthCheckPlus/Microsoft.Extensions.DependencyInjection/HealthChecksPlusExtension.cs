@@ -4,7 +4,7 @@
 // ********************************************************************************************
 
 using System.Collections.Concurrent;
-using HealthCheckPlus;
+using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.Policies;
 using HealthCheckPlus.Internal.WrapperMicrosoft;

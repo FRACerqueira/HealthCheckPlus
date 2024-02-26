@@ -9,7 +9,7 @@
 
 # IStateHealthChecksPlus
 
-Namespace: HealthCheckPlus
+Namespace: HealthCheckPlus.Abstractions
 
 Represents the commands of the HealthChecksPlus for access data
 
@@ -21,7 +21,7 @@ public interface IStateHealthChecksPlus
 
 ### <a id="methods-converttoplus"/>**ConvertToPlus(HealthReport)**
 
-Convert  to [IDataHealthPlus](./healthcheckplus.idatahealthplus.md)
+Convert  to [IDataHealthPlus](./healthcheckplus.abstractions.idatahealthplus.md)
 
 ```csharp
 IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
@@ -47,7 +47,7 @@ HealthStatus Status(string name)
 #### Parameters
 
 `name` [String](https://docs.microsoft.com/en-us/dotnet/api/system.string)<br>
-name of url request([HealthCheckPlusOptions.HealthCheckName](./healthcheckplus.options.healthcheckplusoptions.md#healthcheckname)).
+name for url request.
 
 #### Returns
 

@@ -4,7 +4,7 @@
 // ********************************************************************************************
 
 using System.Diagnostics;
-using System.Threading;
+using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;

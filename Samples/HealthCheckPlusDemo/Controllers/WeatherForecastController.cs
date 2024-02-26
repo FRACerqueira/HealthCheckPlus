@@ -1,4 +1,4 @@
-using HealthCheckPlus;
+using HealthCheckPlus.Abstractions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 

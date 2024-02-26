@@ -131,8 +131,9 @@ The .
 `report` HealthReport<br>
 The .
 
-`statecache` [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)<br>
-The cache instance : [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md).
+`statecache` IStateHealthChecksPlus<br>
+The cache instance : [IStateHealthChecksPlus](./healthcheckplus.abstractions.istatehealthchecksplus.md).
+
 
 #### Returns
 
@@ -174,7 +175,7 @@ The .
 `report` HealthReport<br>
 The .
 
-`statecache` [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)<br>
+`statecache` IStateHealthChecksPlus<br>
 The cache instance : [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md).
 
 #### Returns
@@ -217,7 +218,7 @@ The .
 `report` HealthReport<br>
 The .
 
-`statecache` [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md)<br>
+`statecache` IStateHealthChecksPlus<br>
 The cache instance : [IStateHealthChecksPlus](./healthcheckplus.istatehealthchecksplus.md).
 
 #### Returns

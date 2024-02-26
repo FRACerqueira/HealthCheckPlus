@@ -3,7 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using HealthCheckPlus;
+using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
 using HealthCheckPlus.options;

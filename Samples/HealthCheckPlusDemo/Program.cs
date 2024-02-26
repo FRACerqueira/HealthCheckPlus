@@ -1,4 +1,4 @@
-using HealthCheckPlus;
+using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Text.Json;

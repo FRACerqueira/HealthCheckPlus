@@ -6,7 +6,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-namespace HealthCheckPlus
+namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
     /// The Extensions for HealthReport

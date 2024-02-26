@@ -5,6 +5,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal.Policies;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.DependencyInjection;
