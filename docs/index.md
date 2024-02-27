@@ -24,6 +24,10 @@
 
 ## What's new in the latest version 
 
+### V2.0.1
+- Created dependency isolation package: HealthCheckPlus.Abstractions
+    - Now all public interfaces and classes are isolated in another assembly
+
 ### V2.0.0
 [**Top**](#table-of-contents)
 
