@@ -7,7 +7,6 @@
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 
-
 **HealthCheckPlus** was developed in c# with the **.Net9** and **.Net8** target frameworks.
 
 ## Table of Contents
