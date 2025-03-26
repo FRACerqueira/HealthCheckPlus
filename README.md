@@ -1,4 +1,4 @@
-# ![/HealthCheckPlus Logo](https://raw.githubusercontent.com/FRACerqueira/HealthCheckPlus/refs/heads/main/icon.png) Welcome to HealthCheckPlus
+# ![HealthCheckPlus Logo](https://raw.githubusercontent.com/FRACerqueira/HealthCheckPlus/refs/heads/main/icon.png) Welcome to HealthCheckPlus
 
 ### **HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.**
 
