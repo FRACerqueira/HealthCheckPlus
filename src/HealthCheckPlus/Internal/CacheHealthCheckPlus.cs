@@ -13,15 +13,20 @@ namespace HealthCheckPlus.Internal
     internal class CacheHealthCheckPlus : IStateHealthChecksPlus
     {
         private readonly ConcurrentDictionary<string, ItemCacheHealth> _statusDeps;
-        private readonly ConcurrentDictionary<string, HealthStatus> _statusName = [];
-        private readonly Dictionary<string,Func<HealthReport, HealthStatus>?> _statusFunction = [];
+        private readonly ConcurrentDictionary<string, HealthStatus> _statusName;
+        private readonly Dictionary<string, Func<HealthReport, HealthStatus>?> _statusFunction;
         private readonly DateTime _dateregister;
+#pragma warning disable IDE0330
         private readonly object _lock = new();
+#pragma warning restore IDE0330
+
         public CacheHealthCheckPlus()
         {
             _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>();
+            _statusName = new ConcurrentDictionary<string, HealthStatus>();
+            _statusFunction = [];
             _dateregister = DateTime.Now;
-            _statusFunction.Add(string.Empty, (_) => _statusDeps.Values.Min(x => x.Lastresult.Status));
+            _statusFunction.Add(string.Empty, (_) => _statusDeps.Values.Min(x => x.LastResult.Status));
         }
 
         public DateTime DateRegister => _dateregister;
@@ -32,53 +37,26 @@ namespace HealthCheckPlus.Internal
             {
                 return;
             }
-            if (_statusFunction.ContainsKey(options.HealthCheckName) )
+            if (_statusFunction.ContainsKey(options.HealthCheckName))
             {
                 throw new ArgumentException("HealthCheckName already exists");
             }
-            if (options.StatusHealthReport == null)
-            {
-                _statusFunction.Add(options.HealthCheckName, (_) => _statusDeps.Values.Min(x => x.Lastresult.Status));
-            }
-            else
-            {
-                _statusFunction.Add(options.HealthCheckName, options.StatusHealthReport);
-            }
+            _statusFunction.Add(options.HealthCheckName, options.StatusHealthReport ?? (_ => _statusDeps.Values.Min(x => x.LastResult.Status)));
         }
 
         public void InitCache(IEnumerable<string> names)
         {
             foreach (var item in names)
             {
-                _statusDeps.TryAdd(item,
-                    new()
-                    {
-                        Name = item,
-                        Duration = TimeSpan.Zero,
-                        Dateref = _dateregister,
-                        Running = false,
-                        Origin = HealthCheckTrigger.None,
-                        Lastresult = new HealthCheckResult(HealthStatus.Healthy)
-                    });
-            }
-        }
-
-        public void InitCache<T>()
-        {
-            var tp = typeof(T);
-            var enumValues = Enum.GetValues(tp);
-            for (int i = 0; i < enumValues.Length; i++)
-            {
-                _statusDeps.TryAdd(enumValues!.GetValue(i)!.ToString()!,
-                    new()
-                    {
-                        Name = enumValues!.GetValue(i)!.ToString()!,
-                        Duration = TimeSpan.Zero,
-                        Dateref = _dateregister,
-                        Running = false,
-                        Origin = HealthCheckTrigger.None,
-                        Lastresult = new HealthCheckResult(HealthStatus.Healthy)
-                    });
+                _statusDeps.TryAdd(item, new ItemCacheHealth
+                {
+                    Name = item,
+                    Duration = TimeSpan.Zero,
+                    DateRef = _dateregister,
+                    Running = false,
+                    Origin = HealthCheckTrigger.None,
+                    LastResult = new HealthCheckResult(HealthStatus.Healthy)
+                });
             }
         }
 
@@ -87,24 +65,21 @@ namespace HealthCheckPlus.Internal
             var report = CreateReport();
             foreach (var item in _statusFunction)
             {
-                _statusName[item.Key] = item.Value!.Invoke(report)!;
+                _statusName[item.Key] = item.Value!.Invoke(report);
             }
         }
 
         public DateTime? LastReport()
         {
-            return _statusDeps.Values.Max(x => x.Dateref);
+            return _statusDeps.Values.Max(x => x.DateRef);
         }
 
         public HealthReport CreateReport()
         {
-            var entries = new Dictionary<string, HealthReportEntry>();
-            var index = 0;
-            foreach (var sta in _statusDeps.Values)
-            {
-                entries[sta.Name] = new HealthReportEntry(sta.Lastresult.Status, null, TimeSpan.Zero, null, null);
-                index++;
-            }
+            var entries = _statusDeps.ToDictionary(
+                kvp => kvp.Key,
+                kvp => new HealthReportEntry(kvp.Value.LastResult.Status, null, TimeSpan.Zero, null, null)
+            );
             return new HealthReport(entries, TimeSpan.Zero);
         }
 
@@ -112,53 +87,52 @@ namespace HealthCheckPlus.Internal
         {
             if (string.IsNullOrEmpty(name))
             {
-                return _statusDeps.Values.Min(x => x.Lastresult.Status);
+                return _statusDeps.Values.Min(x => x.LastResult.Status);
             }
-            if (!_statusFunction.TryGetValue(name, out Func<HealthReport, HealthStatus>? value))
+            if (!_statusFunction.TryGetValue(name, out var value))
             {
                 throw new ArgumentException("HealthCheckName not exists");
             }
-            if (_statusName.TryGetValue(name, out var status))
-            { 
-                return status;
+            if (!_statusName.TryGetValue(name, out var status))
+            {
+                status = value!.Invoke(CreateReport());
+                _statusName[name] = status;
             }
-
-            _statusName[name] = value!.Invoke(CreateReport())!;
-            return _statusName[name];
+            return status;
         }
 
         public void Running(string key, bool value)
         {
-            _statusDeps[key].Running = value;
+            if (_statusDeps.TryGetValue(key, out var item))
+            {
+                item.Running = value;
+            }
         }
 
         public void Update(string key, HealthCheckTrigger healthCheckFrom, HealthCheckResult result, DateTime lastexecute, TimeSpan duration)
         {
-            if (!_statusDeps[key].Running)
+            if (_statusDeps.TryGetValue(key, out var item) && item.Running)
             {
-                return;
+                item.LastResult = result;
+                item.DateRef = lastexecute;
+                item.Duration = duration;
+                item.Origin = healthCheckFrom;
+                item.Running = false;
             }
-            var item = _statusDeps[key];
-            item.Lastresult = result;
-            item.Dateref = lastexecute;
-            item.Duration = duration;
-            item.Origin = healthCheckFrom;
-            item.Running = false;
-            _statusDeps[key] = item;
         }
 
         public void SwithState(string key, HealthStatus status)
         {
             lock (_lock)
             {
-                if (_statusDeps[key].Running || _statusDeps[key].Lastresult.Status == status)
+                if (_statusDeps.TryGetValue(key, out var item) && (item.Running || item.LastResult.Status == status))
                 {
                     return;
                 }
                 Running(key, true);
             }
-            var itemres = new HealthCheckResult(status, _statusDeps[key].Lastresult.Description);
-            Update(key, HealthCheckTrigger.SwithTo, itemres, DateTime.Now, TimeSpan.Zero);
+            var itemres = new HealthCheckResult(status, _statusDeps[key].LastResult.Description);
+            Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.Now, TimeSpan.Zero);
         }
 
         public ItemCacheHealth FullStatus(string keydep)
@@ -168,73 +142,55 @@ namespace HealthCheckPlus.Internal
 
         #region IStateHealthChecksPlus
 
-        public HealthCheckResult StatusResult(Enum keydep)
-        {
-            return StatusResult(keydep.ToString());
-        }
-
         public HealthCheckResult StatusResult(string keydep)
         {
-            return _statusDeps[keydep].Lastresult;
+            return _statusDeps[keydep].LastResult;
         }
 
-        public void SwithToUnhealthy(Enum keydep)
-        {
-            SwithToUnhealthy(keydep.ToString());
-        }
-
-        public void SwithToUnhealthy(string keydep)
+        public void SwitchToUnhealthy(string keydep)
         {
             SwithState(keydep, HealthStatus.Unhealthy);
         }
 
-        public void SwithToDegraded(Enum keydep)
-        {
-            SwithToDegraded(keydep.ToString());
-        }
 
-        public void SwithToDegraded(string keydep)
+        public void SwitchToDegraded(string keydep)
         {
             SwithState(keydep, HealthStatus.Degraded);
         }
 
-        public bool TryGetNotHealthy(out Dictionary<string,HealthCheckResult> result)
+        public bool TryGetNotHealthy(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            result = [];
-            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status != HealthStatus.Healthy))
-            {
-                result.Add(item.Key, item.Value.Lastresult);
-            }
+            var auxresult = _statusDeps
+                .Where(kv => kv.Value.LastResult.Status != HealthStatus.Healthy)
+                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
+            result = auxresult;
             return result.Count > 0;
         }
 
-        public bool TryGetHealthy(out Dictionary<string, HealthCheckResult> result)
+        public bool TryGetHealthy(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            result = [];
-            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status == HealthStatus.Healthy))
-            {
-                result.Add(item.Key, item.Value.Lastresult);
-            }
+            var auxresult = _statusDeps
+                .Where(kv => kv.Value.LastResult.Status == HealthStatus.Healthy)
+                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
+            result = auxresult;
             return result.Count > 0;
         }
 
-        public bool TryGetDegraded(out Dictionary<string, HealthCheckResult> result)
+        public bool TryGetDegraded(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            result = [];
-            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status == HealthStatus.Degraded))
-            {
-                result.Add(item.Key, item.Value.Lastresult);
-            }
+            var auxresult = _statusDeps
+                .Where(kv => kv.Value.LastResult.Status == HealthStatus.Degraded)
+                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
+            result = auxresult;
             return result.Count > 0;
         }
 
-        public bool TryGetUnhealthy(out Dictionary<string, HealthCheckResult> result)
+        public bool TryGetUnhealthy(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            result = [];
-            foreach (var item in _statusDeps.Where(x => x.Value.Lastresult.Status == HealthStatus.Unhealthy))
-            {
-                result.Add(item.Key, item.Value.Lastresult);
-            }
+            var auxresult = _statusDeps
+                .Where(kv => kv.Value.LastResult.Status == HealthStatus.Unhealthy)
+                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
+            result = auxresult;
             return result.Count > 0;
         }
 

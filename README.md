@@ -1,40 +1,27 @@
-# <img align="left" width="100" height="100" src="./docs/images/icon.png">Welcome to HealthCheckPlus
+# ![/HealthCheckPlus Logo](https://raw.githubusercontent.com/FRACerqueira/HealthCheckPlus/refs/heads/main/icon.png) Welcome to HealthCheckPlus
+
+### **HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.**
+
 [![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
 [![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 
 
-### **HealthCheck with individual delay and interval and interval policy for unhealthy/degraded status.**
-
-**HealthCheckPlus** was developed in c# with the **.Net6** , **.Net7** and **.Net8** target frameworks.
-
-**[Visit the official page for more documentation of HealthCheckPlus](https://fracerqueira.github.io/HealthCheckPlus)**
+**HealthCheckPlus** was developed in c# with the **.Net9** and **.Net8** target frameworks.
 
 ## Table of Contents
 
-- [What's new - previous versions](./docs/whatsnewprev.md)
 - [Features](#features)
 - [Installing](#installing)
 - [Examples](#examples)
 - [Usage](#usage)
+- [Documentation](#documentation)
 - [Code of Conduct](#code-of-conduct)
 - [Contributing](#contributing)
 - [Credits](#credits)
 - [License](#license)
 - [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
-
-## What's new in the latest version 
-
-### V2.0.1
-
-- Created dependency isolation package: HealthCheckPlus.Abstractions
-    - Now all public interfaces and classes are isolated in another assembly  
-
-### V2.0.0
-[**Top**](#table-of-contents)
-
-- Complete refactoring to only extend native functionalities without changing their behavior when the new features are not used.
 
 ## Features
 [**Top**](#table-of-contents)
@@ -59,6 +46,23 @@
     - HealthCheckPlusOptions.WriteDetailsWithException
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
 - Simple and clear fluent syntax extending the native features of healt check
+
+### What's new in the latest version 
+
+- **V3.0.0 (latest version)**
+
+    - Added support for .Net9
+    - Removed support for .Net6, .Net7
+    - Removed commands with enum for list of HealthCheck¥s
+    - Some property names have been refactored for readability or syntax errors.
+    - Optimized several parts of the code to improve performance
+    - Fixed publisher improper execution bug when set to only execute when there are changes
+    - Documentation updated
+    
+- **V2.0.1**
+
+    - Created dependency isolation package: HealthCheckPlus.Abstractions
+        - Now all public interfaces and classes are isolated in another assembly  
 
 ## Installing
 [**Top**](#table-of-contents)
@@ -94,19 +98,13 @@ See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/ma
 The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
 
 ```csharp
-//create list all HealthCheck by enum (optional type)
-public enum MyEnum
-{
-    HcTeste1,
-    HcTeste2,
-    Redis
-}
+
 //create list all HealthCheck by string (compatible type)
 private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
 ```
 
 ```csharp
-//At Statup / Program (without background services policies with string)
+//At Statup / Program (without background services policies)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus(HealthChecknames)
@@ -127,61 +125,18 @@ builder.Services
 ```
 
 ```csharp
-//At Statup / Program (without background services policies with enum)
+//At Statup / Program (with background services policies)
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecksPlus<MyEnum>()
-    //your custom HC    
-    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
-    //your custom HC    
-    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
-    //external HC 
-    .AddRedis("connection string", "Myredis")
-    //register external HC 
-    .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
-    //policy for Degraded
-    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
-```
-
-```csharp
-//At Statup / Program (without background services policies)
-builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus<MyEnum>()
-    //your custom HC    
-    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
-    //your custom HC    
-    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
-    //external HC 
-    .AddRedis("connection string", "Myredis")
-    //register external HC 
-    .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
-    //policy for Degraded
-    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
-
-```
-
-```csharp
-//At Statup / Program (with background services policies with enum)
-builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus<MyEnum>()
+    .AddHealthChecksPlus(HealthChecknames)
     //your custom HC with custom delay and period   
-    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
+    .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
     //your custom HC without delay and period (using BackgroundPolicy)     
-    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
+    .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
     //external HC 
     .AddRedis("connection string", "Myredis")
     //register external HC  without delay and period (using BackgroundPolicy)
-    .AddCheckLinkTo(MyEnum.Redis, "MyRedis")
+    .AddCheckLinkTo("Redis", "MyRedis")
     //policy for running in Background service
     .AddBackgroundPolicy((opt) =>
     {
@@ -226,7 +181,7 @@ app
         //custom function for status value of report
         StatusHealthReport = (rep) =>
         {
-            if (rep.StatusResult(MyEnum.HcTest1) == HealthStatus.Unhealthy)
+            if (rep.StatusResult("HcTest1") == HealthStatus.Unhealthy)
             {
                 //do something
             }
@@ -289,7 +244,7 @@ public class MyBussines
         { 
             //do something
         }
-        if (healthCheckApp.StatusResult(MyEnum.HcTeste2).Status == HealthStatus.Unhealthy)
+        if (healthCheckApp.StatusResult("HcTeste2").Status == HealthStatus.Unhealthy)
         { 
             //do something. This dependency 'HcTeste2' is not available
         }
@@ -317,6 +272,12 @@ public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublis
 }
 ```
 
+## Documentation
+[**Top**](#table-of-contents)
+
+The documentation is available in the [Docs directory](./src/docs/docindex.md).
+
+
 ## Code of Conduct
 [**Top**](#table-of-contents)
 
@@ -333,8 +294,9 @@ See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
 
 **API documentation generated by**
 
-- [xmldoc2md](https://github.com/FRACerqueira/xmldoc2md), Copyright (c) 2022 Charles de Vandi√®re. See [LICENSE](Licenses/LICENSE-xmldoc2md.md).
-
+- [XmlDocMarkdown](https://github.com/ejball/XmlDocMarkdown), Copyright (c) 2024 [Ed Ball](https://github.com/ejball)
+    - See an unrefined customization to contain header and other adjustments in project [XmlDocMarkdownGenerator](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/src/XmlDocMarkdownGenerator)  
+     
 ## License
 [**Top**](#table-of-contents)
 

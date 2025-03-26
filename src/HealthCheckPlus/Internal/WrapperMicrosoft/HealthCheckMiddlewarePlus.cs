@@ -43,9 +43,9 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             if (!_healthCheckOptions.AllowCachingResponses)
             {
                 IHeaderDictionary headers = httpContext.Response.Headers;
-                headers["Cache-Control"] = "no-store, no-cache";
-                headers["Pragma"] = "no-cache";
-                headers["Expires"] = "Thu, 01 Jan 1970 00:00:00 GMT";
+                headers.CacheControl = "no-store, no-cache";
+                headers.Pragma = "no-cache";
+                headers.Expires = "Thu, 01 Jan 1970 00:00:00 GMT";
             }
 
             if (_healthCheckOptions.ResponseWriter != null)

@@ -6,8 +6,11 @@ using System.Text.Json;
 
 namespace HealthCheckPlusDemoBackgroudService
 {
+
     public class Program
     {
+        private static readonly string[] names = ["HcTest1", "HcTest2", "Redis"];
+
         public static void Main(string[] args)
         {
             IStateHealthChecksPlus? _stateHealthChecksPlus;
@@ -21,15 +24,15 @@ namespace HealthCheckPlusDemoBackgroudService
 
             builder.Services
                 //Add HealthCheckPlus
-                .AddHealthChecksPlus<MyEnum>()
+                .AddHealthChecksPlus(names)
                 //your custom HC with custom delay and period   
-                .AddCheckPlus<HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
+                .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
                 //your custom HC without delay and period (using BackgroundPolicy)     
-                .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
+                .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
                 //external HC 
                 .AddRedis("connection string", "Myredis")
                 //register external HC  without delay and period (using BackgroundPolicy)
-                .AddCheckLinkTo(MyEnum.Redis, "MyRedis")
+                .AddCheckLinkTo("Redis", "MyRedis")
                 //policy for running in Background service
                 .AddBackgroundPolicy((opt) =>
                 {
@@ -65,7 +68,7 @@ namespace HealthCheckPlusDemoBackgroudService
                 HealthCheckName = "live",
                 StatusHealthReport = (rep) =>
                 {
-                    if (rep.StatusResult(MyEnum.HcTest1) == HealthStatus.Unhealthy)
+                    if (rep.StatusResult("HcTest1") == HealthStatus.Unhealthy)
                     {
                         //do something
                     }

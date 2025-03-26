@@ -7,11 +7,10 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlus.Internal.Policies
 {
-    internal class HealthCheckPlusPolicyStatus(HealthStatus status, TimeSpan? policyDelay,TimeSpan? policyTime, string policyNameDep) : IHealthCheckPlusPolicyStatus
-    {
-        public HealthStatus PolicyForStatus => status;
-        public TimeSpan? PolicyPeriod { get; } = policyTime;
-        public TimeSpan? PolicyDelay { get; } = policyDelay;
-        public string PolicyNameDep { get; } = policyNameDep;
-    }
+    internal record HealthCheckPlusPolicyStatus(
+            HealthStatus PolicyForStatus,
+            TimeSpan? PolicyDelay,
+            TimeSpan? PolicyPeriod,
+            string PolicyNameDep
+        ) : IHealthCheckPlusPolicyStatus;
 }

@@ -1,17 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace HealthCheckPlus.options
+﻿namespace HealthCheckPlus.options
 {
     /// <summary>
     /// Usage for publishers registered 
     /// </summary>
     public class PublishingOptions
     {
-        private int _afterIdleCount = 1;
         private readonly bool _enabled;
 
         /// <summary>
@@ -32,31 +25,15 @@ namespace HealthCheckPlus.options
         /// Gets or sets the usage is enabled.
         /// Default value is true
         /// </summary>
-        public bool Enabled => _enabled;
+        public bool Enabled => AfterIdleCount >= 1 && _enabled;
 
         /// <summary>
-        /// Gets or sets the Number of counts idle to publish.
-        /// The default value is 1.
+        /// Gets or sets the Number of counts idle to publish.The default value is 1.
         /// </summary>
         /// <remarks>
-        /// The <see cref="AfterIdleCount"/> cannot be set to a value lower than 1.
+        /// The <see cref="AfterIdleCount"/> less than 1 the <see cref="Enabled"/> is false.
         /// </remarks>
-        public int AfterIdleCount
-        {
-            get => _afterIdleCount;
-            set
-            {
-                if (value < 1)
-                {
-                    throw new ArgumentException($"The {nameof(AfterIdleCount)} must be greater than or equal to 1.", nameof(value));
-                }
-                if (value > int.MaxValue-1)
-                {
-                    throw new ArgumentException($"The {nameof(AfterIdleCount)} must be less than or equal to {int.MaxValue-1}.", nameof(value));
-                }
-                _afterIdleCount = value;
-            }
-        }
+        public int AfterIdleCount { get; set; } = 1;
 
         /// <summary>
         /// Gets or sets publish only when the report has a status change in one of its entries

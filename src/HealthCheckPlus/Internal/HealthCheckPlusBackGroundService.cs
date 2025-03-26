@@ -28,16 +28,15 @@ namespace HealthCheckPlus.Internal
         private int _hashlaststatus;
 
         public HealthCheckPlusBackGroundService(
-            ILogger<HealthCheckPlusBackGroundService> logger, 
-            HealthCheckService healthCheckService, 
-            IOptions<HealthCheckServiceOptions> healthcheckserviceOptions, 
+            ILogger<HealthCheckPlusBackGroundService> logger,
+            HealthCheckService healthCheckService,
+            IOptions<HealthCheckServiceOptions> healthcheckserviceOptions,
             IOptions<HealthCheckPlusBackGroundOptions> options,
             IEnumerable<IHealthCheckPublisher> publishers)
         {
-
             _optionsBackGround = options;
             _publishers = [];
-            if (_optionsBackGround.Value.Publishing.Enabled  && publishers.Any())
+            if (_optionsBackGround.Value.Publishing.Enabled && publishers.Any())
             {
                 _publishers = publishers.ToArray();
                 _haspublishers = true;
@@ -57,17 +56,22 @@ namespace HealthCheckPlus.Internal
 
             // IMPORTANT - make sure this is the last thing that happens in this method. The task can
             // fire before other code runs.
-            _runningHealthCheckPlus = new Task(CheckHealthAsync);
-            _runningHealthCheckPlus.Start();
-
-
+            _runningHealthCheckPlus = Task.Run(CheckHealthAsync, _stopping.Token);
 
             return Task.CompletedTask;
         }
 
-        private async void CheckHealthAsync()
+        private async Task CheckHealthAsync()
         {
-            _stopping.Token.WaitHandle.WaitOne(_optionsBackGround.Value.Delay);
+            try
+            {
+                await Task.Delay(_optionsBackGround.Value.Delay, _stopping.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // This is a cancellation - if the app is shutting down we want to ignore it. Otherwise, it's
+                // a timeout and we want to log it.
+            }
             while (!_stopping.IsCancellationRequested)
             {
                 var duration = Stopwatch.StartNew();
@@ -79,7 +83,7 @@ namespace HealthCheckPlus.Internal
                 {
                     cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
                     cancellation.CancelAfter(_optionsBackGround.Value.Timeout);
-                    await _healthCheckService.BackGroudCheckHealthPlusAsync(_optionsBackGround.Value,cancellation.Token);
+                    await _healthCheckService.BackGroudCheckHealthPlusAsync(_optionsBackGround.Value, cancellation.Token);
                 }
                 catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
                 {
@@ -109,47 +113,29 @@ namespace HealthCheckPlus.Internal
                     _countIdletopublish++;
                     if (_countIdletopublish >= _optionsBackGround.Value.Publishing.AfterIdleCount)
                     {
-                        if (_countIdletopublish >= int.MaxValue-1)
+                        if (_countIdletopublish >= int.MaxValue - 1)
                         {
                             _countIdletopublish = _optionsBackGround.Value.Publishing.AfterIdleCount;
                         }
                         runpublish = true;
                     }
-                    if (runpublish) 
+                    if (runpublish)
                     {
                         var report = _healthCheckService.CreateReport();
-                        if (runpublish && _optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
+                        if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
                         {
                             runpublish = false;
                         }
                         if (runpublish)
                         {
-                            _hashlaststatus = HashReport(report);
+                            _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
                             _countIdletopublish = 0;
-                            var tasks = new Task[_publishers.Length];
-                            for (var i = 0; i < _publishers.Length; i++)
-                            {
-                                if (_publishers[i].GetType().GetInterface(nameof(IHealthCheckPlusPublisher)) != null)
-                                {
-                                    if (((IHealthCheckPlusPublisher)_publishers[i]).PublisherCondition.Invoke(report))
-                                    {
-                                        tasks[i] = RunPublisherAsync(_publishers[i], report, _stopping.Token);
-                                    }
-                                    else
-                                    {
-                                        tasks[i] = Task.Run(() => { });
-                                    }
-                                }
-                                else
-                                {
-                                    tasks[i] = RunPublisherAsync(_publishers[i], report, _stopping.Token);
-                                }
-                            }
+                            var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, _stopping.Token)).ToArray();
                             await Task.WhenAll(tasks).ConfigureAwait(false);
                         }
                     }
                 }
-                _stopping.Token.WaitHandle.WaitOne(_optionsBackGround.Value.Idle);
+                await Task.Delay(_optionsBackGround.Value.Idle, _stopping.Token);
             }
         }
 
@@ -170,27 +156,21 @@ namespace HealthCheckPlus.Internal
             }
             if (_runningHealthCheckPlus != null)
             {
-                var timeout = DateTime.Now.AddSeconds(10);
-                while (!_runningHealthCheckPlus.IsCompleted)
-                {
-                    Thread.Sleep(10);
-                    if (DateTime.Now > timeout)
-                    {
-                        //ignore status
-                        break;
-                    }
-                }
-                if (_runningHealthCheckPlus.IsCompleted)
-                {
-                    _runningHealthCheckPlus.Dispose();
-                }
-                _runningHealthCheckPlus = null;
+                return _runningHealthCheckPlus.ContinueWith(task => _runningHealthCheckPlus.Dispose(), TaskScheduler.Current);
             }
             return Task.CompletedTask;
         }
 
         private async Task RunPublisherAsync(IHealthCheckPublisher publisher, HealthReport report, CancellationToken cancellationToken)
         {
+            if (publisher is IHealthCheckPlusPublisher publisherPlus)
+            {
+                if (publisherPlus.PublisherCondition != null && !publisherPlus.PublisherCondition(report))
+                {
+                    return;
+                }
+            }
+
             var duration = Stopwatch.StartNew();
 
             try
@@ -218,10 +198,10 @@ namespace HealthCheckPlus.Internal
 
         private bool SameReport(HealthReport report)
         {
-            return _hashlaststatus == HashReport(report);
+            return _hashlaststatus == HealthCheckPlusBackGroundService.HashReport(report);
         }
 
-        private int HashReport(HealthReport report)
+        internal static int HashReport(HealthReport report)
         {
             return string.Join("", report.Entries.Select(x => (x.Key + x.Value.Status))).GetHashCode(StringComparison.InvariantCulture);
         }
@@ -243,7 +223,7 @@ namespace HealthCheckPlus.Internal
             public const string HealthCheckPublisherErrorName = "HealthCheckPublisherError";
             public const string HealthCheckPublisherTimeoutName = "HealthCheckPublisherTimeout";
         }
-        
+
         private static class EventIds
         {
             public const int HealthCheckPlusBackGroundProcessingBeginId = 100;
@@ -294,3 +274,4 @@ namespace HealthCheckPlus.Internal
 
     }
 }
+

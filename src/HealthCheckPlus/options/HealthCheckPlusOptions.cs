@@ -68,8 +68,8 @@ namespace HealthCheckPlus.options
                 entries = lst.Select(e => new
                 {
                     name = e.Name,
-                    status = e.Lastresult.Status.ToString(),
-                    dateref = e.Dateref,
+                    status = e.LastResult.Status.ToString(),
+                    dateRef  = e.DateRef,
                     origin = e.Origin.ToString()
                 })
             }, options: optionsSerilz);
@@ -123,9 +123,9 @@ namespace HealthCheckPlus.options
                 entries = lst.Select(e => new
                 {
                     name = e.Name,
-                    status = e.Lastresult.Status.ToString(),
-                    description = e.Lastresult.Description,
-                    dateref = e.Dateref,
+                    status = e.LastResult.Status.ToString(),
+                    description = e.LastResult.Description,
+                    dateRef = e.DateRef,
                     duration = e.Duration,
                     origin = e.Origin.ToString()
                 })
@@ -182,11 +182,11 @@ namespace HealthCheckPlus.options
                 entries = lst.Select(e => new
                 {
                     name = e.Name,
-                    status = e.Lastresult.Status.ToString(),
-                    description = e.Lastresult.Description,
-                    dateref = e.Dateref,
+                    status = e.LastResult.Status.ToString(),
+                    description = e.LastResult.Description,
+                    dateRef = e.DateRef,
                     duration = e.Duration,
-                    exception = e.Lastresult.Exception?.ToString().Replace(Environment.NewLine, ""),
+                    exception = e.LastResult.Exception?.ToString().Replace(Environment.NewLine, ""),
                     origin = e.Origin.ToString()
                 })
             }, options: optionsSerilz);

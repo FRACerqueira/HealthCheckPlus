@@ -14,27 +14,12 @@
 |  __/ | || |_| |\__ \
 |_|    |_| \__,_||___/
 
- Welcome to HealthCheckPlus
- **************************
+Welcome to HealthCheckPlus
+**************************
 
-HealthCheck with individual check interval and unhealthy/degraded/healthy interval policy keeping data in cache.
+HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.
 
-HealthCheckPlus was developed in c# with the **.Net6** , **.Net7** and **.Net8** target frameworks.
-
-Visit the official page for more documentation : 
-https://fracerqueira.github.io/HealthCheckPlus
-
-What's new V2.0.1
-*****************
-
-- Created dependency isolation package: HealthCheckPlus.Abstractions
-    - Now all public interfaces and classes are isolated in another assembly  
-
-
-What's new V2.0.0
-*****************
-
-- Complete refactoring to only extend native functionalities without changing their behavior when the new features are not used.
+HealthCheckPlus was developed in c# with the **.Net9** and **.Net8** target frameworks.
 
 Features
 ********
@@ -59,6 +44,23 @@ Features
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
 - Simple and clear fluent syntax extending the native features of healt check
 
+What's new
+----------
+
+- V3.0.0 (latest version)
+
+    - Added support for .Net9
+    - Removed support for .Net6, .Net7
+    - Removed commands with enum for list of HealthCheck´s
+    - Some property names have been refactored for readability or syntax errors.
+    - Optimized several parts of the code to improve performance
+    - Fixed publisher improper execution bug when set to only execute when there are changes
+    - Documentation updated
+    
+- V2.0.1
+
+    - Created dependency isolation package: HealthCheckPlus.Abstractions
+        - Now all public interfaces and classes are isolated in another assembly  
 
 Examples
 ********
@@ -67,20 +69,13 @@ See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples
 
 Usage
 *****
-//create list all HealthCheck by enum (optional type)
-public enum MyEnum
-{
-    HcTeste1,
-    HcTeste2,
-    Redis
-}
 
 //create list all HealthCheck by string (compatible type)
 private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
 
 ...
 
-//At Statup / Program (without background services policies with string)
+//At Statup / Program (without background services policies)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus(HealthChecknames)
@@ -100,40 +95,18 @@ builder.Services
     .AddUnhealthyPolicy("Redis", TimeSpan.FromSeconds(1));
 ...
 
-...
-
-//At Statup / Program (without background services policies with enum)
-builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus<MyEnum>()
-    //your custom HC    
-    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1)
-    //your custom HC    
-    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
-    //external HC 
-    .AddRedis("connection string", "Myredis")
-    //register external HC 
-    .AddCheckLinkTo(MyEnum.Redis, "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.HcTest1, TimeSpan.FromSeconds(2))
-    //policy for Degraded
-    .AddDegradedPolicy(MyEnum.HcTest2, TimeSpan.FromSeconds(3))
-    //policy for Unhealthy
-    .AddUnhealthyPolicy(MyEnum.Redis, TimeSpan.FromSeconds(1));
-...
-
-//At Statup / Program (wit background services policies with enum)
+//At Statup / Program (wit background services policies)
 builder.Services
     //Add HealthCheckPlus
     .AddHealthChecksPlus<MyEnum>()
     //your custom HC with custom delay and period   
-    .AddCheckPlus<HcTeste1>(MyEnum.HcTest1, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
+    .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
     //your custom HC without delay and period (using BackgroundPolicy)     
-    .AddCheckPlus<HcTeste2>(MyEnum.HcTest2, failureStatus: HealthStatus.Degraded)
+    .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
     //external HC 
     .AddRedis("connection string", "Myredis")
     //register external HC  without delay and period (using BackgroundPolicy)
-    .AddCheckLinkTo(MyEnum.Redis, "MyRedis")
+    .AddCheckLinkTo("Redis", "MyRedis")
     //policy for running in Background service
     .AddBackgroundPolicy((opt) =>
     {
@@ -178,7 +151,7 @@ app
         //custom function for status value of report
         StatusHealthReport = (rep) =>
         {
-            if (rep.StatusResult(MyEnum.HcTest1) == HealthStatus.Unhealthy)
+            if (rep.StatusResult("HcTest1") == HealthStatus.Unhealthy)
             {
                 //do something
             }
@@ -243,7 +216,7 @@ public class MyBussines
         { 
             //do something
         }
-        if (healthCheckApp.StatusResult(MyEnum.HcTeste2).Status == HealthStatus.Unhealthy)
+        if (healthCheckApp.StatusResult("HcTeste2").Status == HealthStatus.Unhealthy)
         { 
             //do something. This dependency 'HcTeste2' is not available
         }

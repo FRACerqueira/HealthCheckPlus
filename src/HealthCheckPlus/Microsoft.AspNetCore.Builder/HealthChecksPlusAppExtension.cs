@@ -12,7 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
+#pragma warning disable IDE0130 // Namespace does not match folder structure
 namespace Microsoft.AspNetCore.Builder
+#pragma warning restore IDE0130 // Namespace does not match folder structure
 {
     /// <summary>
     /// HealthChecksPlus Extension for IApplicationBuilder
@@ -93,7 +95,7 @@ namespace Microsoft.AspNetCore.Builder
             var cacheStatus = (CacheHealthCheckPlus)app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!;
             cacheStatus.AddStatusName(options);
 
-            object[] args = new IOptions<HealthCheckPlusOptions>[1] { Options.Create(options) };
+            object[] args = [Options.Create(options)];
             UseHealthChecksCore(app, path, null, args);
             return app;
         }
@@ -122,7 +124,7 @@ namespace Microsoft.AspNetCore.Builder
             var cacheStatus = (CacheHealthCheckPlus)app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!;
             cacheStatus.AddStatusName(options);
 
-            object[] args = new IOptions<HealthCheckPlusOptions>[1] { Options.Create(options) };
+            object[] args = [Options.Create(options)];
             UseHealthChecksCore(app, path, port, args);
             return app;
         }

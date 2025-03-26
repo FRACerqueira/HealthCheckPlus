@@ -1,4 +1,0 @@
-description: HealthCheck with individual check interval and unhealthy/degraded/healthy interval policy keeping data in cache.
-show_downloads: false
-google_analytics:
-theme: jekyll-theme-cayman

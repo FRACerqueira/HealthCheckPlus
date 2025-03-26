@@ -6,19 +6,17 @@ namespace HealthCheckPlusDemoBackgroudService.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class WeatherForecastController(IStateHealthChecksPlus stateHealthChecks,ILogger<WeatherForecastController> logger) : ControllerBase
+    public class WeatherForecastController(IStateHealthChecksPlus stateHealthChecks) : ControllerBase
     {
         private static readonly string[] Summaries =
         [
             "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
         ];
 
-        private readonly ILogger<WeatherForecastController> _logger = logger;
-
         [HttpGet(Name = "GetWeatherForecast")]
         public IEnumerable<WeatherForecast> Get()
         {
-            if (stateHealthChecks.StatusResult(MyEnum.HcTest1).Status != HealthStatus.Healthy)
+            if (stateHealthChecks.StatusResult("HcTest1").Status != HealthStatus.Healthy)
             {
                 //do something
             }
@@ -26,6 +24,10 @@ namespace HealthCheckPlusDemoBackgroudService.Controllers
             {
                 //do something
             }
+
+            //change status to force the pubisher report (sample only)
+            stateHealthChecks.SwitchToDegraded("HcTest1");
+
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast
             {
                 Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),

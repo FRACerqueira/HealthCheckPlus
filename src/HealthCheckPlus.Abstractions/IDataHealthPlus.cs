@@ -8,30 +8,33 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
-    /// Represents data from the last Health Check performed
+    /// Represents data from the last Health Check performed.
     /// </summary>
     public interface IDataHealthPlus
     {
         /// <summary>
-        /// Name of health check
+        /// Gets/Set the name of the health check.
         /// </summary>
-        public string Name { get; set; }
+        string Name { get; set; }
 
         /// <summary>
-        /// The time the health check took to execute.
+        /// Gets the time the health check took to execute.
         /// </summary>
-        public TimeSpan Duration { get; }
+        TimeSpan Duration { get; }
+
         /// <summary>
-        /// The date reference of last execute.
+        /// Gets the date reference of the last execution.
         /// </summary>
-        public DateTime Dateref { get; }
+        DateTime DateRef { get; }
+
         /// <summary>
-        /// The result, see <see cref="HealthCheckResult"/>.
+        /// Gets the result of the last health check, see <see cref="HealthCheckResult"/>.
         /// </summary>
-        public HealthCheckResult Lastresult { get; }
+        HealthCheckResult LastResult { get; }
+
         /// <summary>
-        /// The result source 
+        /// Gets the origin of the health check result.
         /// </summary>
-        public HealthCheckTrigger Origin { get; }
+        HealthCheckTrigger Origin { get; }
     }
 }

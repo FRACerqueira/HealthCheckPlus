@@ -79,7 +79,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     .FirstOrDefault()!;
 
                 var sta = _cacheStatus.FullStatus(item.Name);
-                switch (sta.Lastresult.Status)
+                switch (sta.LastResult.Status)
                 {
                     case HealthStatus.Unhealthy:
                         {
@@ -113,7 +113,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     Period = policy.PolicyPeriod ?? TimeSpan.Zero
                 };
 
-                if (sta.Dateref == _cacheStatus.DateRegister)
+                if (sta.DateRef == _cacheStatus.DateRegister)
                 {
                     if (_cacheStatus.DateRegister.Add(itemToRum.Delay!.Value) < DateTime.Now)
                     {
@@ -123,7 +123,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 else
                 {
-                    if (sta.Dateref.Add(itemToRum.Period!.Value) < DateTime.Now)
+                    if (sta.DateRef.Add(itemToRum.Period!.Value) < DateTime.Now)
                     {
                         _cacheStatus.Running(itemToRum.Name, true);
                         registrationstorun.Add(itemToRum);
@@ -172,8 +172,8 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             foreach (var registration in registrations)
             {
                 var sta = _cacheStatus.FullStatus(registration.Name);
-                var result = new HealthReportEntry(sta.Lastresult.Status,
-                    sta.Lastresult.Description, sta.Duration, sta.Lastresult.Exception, sta.Lastresult.Data, registration.Tags);
+                var result = new HealthReportEntry(sta.LastResult.Status,
+                    sta.LastResult.Description, sta.Duration, sta.LastResult.Exception, sta.LastResult.Data, registration.Tags);
                 entries[registration.Name] = result;
             }
             var report = new HealthReport(entries, totalTime.Elapsed);
@@ -211,7 +211,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 IHealthCheckPlusPolicyStatus policy;
                 
                 var sta = _cacheStatus.FullStatus(item.Name);
-                switch (sta.Lastresult.Status)
+                switch (sta.LastResult.Status)
                 {
                     case HealthStatus.Unhealthy:
                         {
@@ -235,7 +235,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                                 .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Healthy)
                                 .FirstOrDefault()!;
 
-                            var delay = aux.PolicyDelay ?? (sta.Dateref == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
+                            var delay = aux.PolicyDelay ?? (sta.DateRef == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
                             var period = aux.PolicyPeriod ?? backgroudoptions.HealthyPeriod;
                             policy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, item.Name);
                         }
@@ -247,7 +247,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     Period = policy.PolicyPeriod!.Value
                 };
 
-                if (sta.Dateref == _cacheStatus.DateRegister)
+                if (sta.DateRef == _cacheStatus.DateRegister)
                 {
                     if (_cacheStatus.DateRegister.Add(itemToRum.Delay.Value) < DateTime.Now)
                     {
@@ -257,7 +257,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 else
                 {
-                    if (sta.Dateref.Add(itemToRum.Period.Value) < DateTime.Now)
+                    if (sta.DateRef.Add(itemToRum.Period.Value) < DateTime.Now)
                     {
                         _cacheStatus.Running(item.Name, true);
                         registrationstorun.Add(itemToRum);
@@ -287,7 +287,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                         tasks[index].Result.Data);
                     _cacheStatus.Update(
                         registration.Name,
-                        HealthCheckTrigger.BackGround,
+                        HealthCheckTrigger.Background,
                         item,
                         dtref.Add(tasks[index].Result.Duration),
                         tasks[index].Result.Duration);

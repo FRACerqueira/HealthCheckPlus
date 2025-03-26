@@ -6,29 +6,32 @@
 namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
-    /// Enumerator values for origin of last status result.
+    /// Enumerator values for the origin of the last status result.
     /// </summary>
     public enum HealthCheckTrigger
-
     {
         /// <summary>
-        /// Initial status
+        /// Initial status.
         /// </summary>
         None,
+
         /// <summary>
-        /// From SwithTo command
+        /// From SwitchTo command.
         /// </summary>
-        SwithTo,
+        SwitchTo,
+
         /// <summary>
-        /// From url request
+        /// From URL request.
         /// </summary>
         UrlRequest,
+
         /// <summary>
-        /// From HealthCheckPlus background service
+        /// From HealthCheckPlus background service.
         /// </summary>
-        BackGround,
+        Background,
+
         /// <summary>
-        /// From default .net core
+        /// From default .NET Core.
         /// </summary>
         Default
     }

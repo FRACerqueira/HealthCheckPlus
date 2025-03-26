@@ -11,10 +11,15 @@ namespace HealthCheckPlus.Internal
     internal class ItemCacheHealth : IDataHealthPlus
     {
         public string Name { get; set; } = string.Empty;
+
         public TimeSpan Duration { get; set; }
-        public DateTime Dateref { get; set; }
-        public HealthCheckResult Lastresult { get; set; }
+
+        public DateTime DateRef { get; set; }
+
+        public HealthCheckResult LastResult { get; set; }
+
         public HealthCheckTrigger Origin { get; set; }
+
         public bool Running { get; set; }
     }
 }

@@ -8,100 +8,69 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 namespace HealthCheckPlus.Abstractions
 {
     /// <summary>
-    /// Represents the commands of the HealthChecksPlus for access data
+    /// Represents the commands of the HealthChecksPlus for access data.
     /// </summary>
     public interface IStateHealthChecksPlus
     {
         /// <summary>
-        /// The last <see cref="HealthCheckResult"/> data for HealthCheck.
+        /// Gets the last <see cref="HealthCheckResult"/> data for a health check.
         /// </summary>
-        /// <param name="keydep">
-        /// The Enum value dependence.
-        /// </param>
-        HealthCheckResult StatusResult(Enum keydep);
-
-        /// <summary>
-        /// The last <see cref="HealthCheckResult"/> data for HealthCheck.
-        /// </summary>
-        /// <param name="keydep">
-        /// The name dependence.
-        /// </param>
+        /// <param name="keydep">The name dependence.</param>
+        /// <returns>The last <see cref="HealthCheckResult"/>.</returns>
         HealthCheckResult StatusResult(string keydep);
 
         /// <summary>
         /// Gets a <see cref="HealthStatus"/> representing the aggregate status of all the health checks.
         /// </summary>
-        /// <param name="name">name for url request.</param>
-        /// <returns></returns>
+        /// <param name="name">The name for the URL request.</param>
+        /// <returns>The aggregate <see cref="HealthStatus"/>.</returns>
         HealthStatus Status(string? name = null);
 
         /// <summary>
-        /// Swith state to unhealthy.
+        /// Switches the state to unhealthy.
         /// </summary>
-        /// <param name="keydep">
-        /// The enum value dependence.
-        /// </param>
-        void SwithToUnhealthy(Enum keydep);
+        /// <param name="keydep">The name dependence.</param>
+        void SwitchToUnhealthy(string keydep);
 
         /// <summary>
-        /// Swith state to unhealthy.
+        /// Switches the state to degraded.
         /// </summary>
-        /// <param name="keydep">
-        /// The name dependence.
-        /// </param>
-        void SwithToUnhealthy(string keydep);
+        /// <param name="keydep">The name dependence.</param>
+        void SwitchToDegraded(string keydep);
 
         /// <summary>
-        /// Swith state to Degraded.
+        /// Tries to get all not healthy statuses.
         /// </summary>
-        /// <param name="keydep">
-        /// The Enum value dependence.
-        /// </param>
-        void SwithToDegraded(Enum keydep);
+        /// <param name="result">The dictionary with all <see cref="HealthCheckResult"/> with not healthy status.</param>
+        /// <returns>True if found, otherwise false.</returns>
+        bool TryGetNotHealthy(out IReadOnlyDictionary<string, HealthCheckResult> result);
 
         /// <summary>
-        /// Swith state to Degraded.
+        /// Tries to get all healthy statuses.
         /// </summary>
-        /// <param name="keydep">
-        /// The name dependence.
-        /// </param>
-        void SwithToDegraded(string keydep);
-
+        /// <param name="result">The dictionary with all <see cref="HealthCheckResult"/> with healthy status.</param>
+        /// <returns>True if found, otherwise false.</returns>
+        bool TryGetHealthy(out IReadOnlyDictionary<string, HealthCheckResult> result);
 
         /// <summary>
-        /// Try get all not healthy status.
+        /// Tries to get all degraded statuses.
         /// </summary>
-        /// <param name="result">the Dictionary with all HealthCheck Result with not healthy status</param>
-        /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetNotHealthy(out Dictionary<string,HealthCheckResult> result);
+        /// <param name="result">The dictionary with all <see cref="HealthCheckResult"/> with degraded status.</param>
+        /// <returns>True if found, otherwise false.</returns>
+        bool TryGetDegraded(out IReadOnlyDictionary<string, HealthCheckResult> result);
 
         /// <summary>
-        /// Try get all healthy status.
+        /// Tries to get all unhealthy statuses.
         /// </summary>
-        /// <param name="result">the Dictionary with all HealthCheck Result with healthy status</param>
-        /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetHealthy(out Dictionary<string, HealthCheckResult> result);
+        /// <param name="result">The dictionary with all <see cref="HealthCheckResult"/> with unhealthy status.</param>
+        /// <returns>True if found, otherwise false.</returns>
+        bool TryGetUnhealthy(out IReadOnlyDictionary<string, HealthCheckResult> result);
 
         /// <summary>
-        /// Try get all degraded status.
+        /// Converts a <see cref="HealthReport"/> to <see cref="IDataHealthPlus"/>.
         /// </summary>
-        /// <param name="result">the Dictionary with all HealthCheck Result with degraded status</param>
-        /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetDegraded(out Dictionary<string, HealthCheckResult> result);
-
-        /// <summary>
-        /// Try get all unhealthy status.
-        /// </summary>
-        /// <param name="result">the Dictionary with all HealthCheck Result with unhealthy status</param>
-        /// <returns>True if found, oyherwise false.</returns>
-        bool TryGetUnhealthy(out Dictionary<string, HealthCheckResult> result);
-
-        /// <summary>
-        /// Convert <see cref="HealthReport"/> to <see cref="IDataHealthPlus"/>
-        /// </summary>
-        /// <param name="report">The report</param>
-        /// <returns><see cref="IEnumerable{IDataHealthPlus}"/></returns>
+        /// <param name="report">The health report.</param>
+        /// <returns>An enumerable of <see cref="IDataHealthPlus"/>.</returns>
         IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report);
-
     }
 }
