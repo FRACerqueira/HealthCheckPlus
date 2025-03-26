@@ -252,7 +252,7 @@ public class MyBussines
         }
         catch (ExceptionRedis rex)
         {
-            healthCheckApp.SwithToUnhealthy(MyEnum.Redis);
+            healthCheckApp.SwithToUnhealthy("Redis");
         }
     }
 }
