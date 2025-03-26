@@ -20,7 +20,6 @@
 - [Contributing](#contributing)
 - [Credits](#credits)
 - [License](#license)
-- [API Reference](https://fracerqueira.github.io/HealthCheckPlus/apis/apis.html)
 
 ## Features
 [**Top**](#table-of-contents)
@@ -52,7 +51,7 @@
 
     - Added support for .Net9
     - Removed support for .Net6, .Net7
-    - Removed commands with enum for list of HealthCheck´s
+    - Removed commands with enum for list of HealthCheckÂ´s
     - Some property names have been refactored for readability or syntax errors.
     - Optimized several parts of the code to improve performance
     - Fixed publisher improper execution bug when set to only execute when there are changes
