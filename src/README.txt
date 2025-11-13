@@ -19,7 +19,7 @@ Welcome to HealthCheckPlus
 
 HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.
 
-HealthCheckPlus was developed in c# with the **.Net9** and **.Net8** target frameworks.
+HealthCheckPlus was developed in c# with the **.Net10**, **.Net9** and **.Net8** target frameworks.
 
 Features
 ********
@@ -47,7 +47,12 @@ Features
 What's new
 ----------
 
-- V3.0.0 (latest version)
+- V3.0.1 (latest version)
+
+    - Added support for .Net10
+    - Sanitization of references
+
+- V3.0.0
 
     - Added support for .Net9
     - Removed support for .Net6, .Net7
