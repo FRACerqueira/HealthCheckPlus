@@ -55,12 +55,13 @@ namespace HealthCheckPlus.Internal
 
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
-            var aux = await _externalCheckinstance.CheckHealthAsync(context, cancellationToken);
-            if (_externalCheckinstance is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-            return aux;
+            // Do not dispose the wrapped instance here. AddCheckLinkTo caches this wrapper (and
+            // therefore this same wrapped instance) across every polling cycle, so disposing it
+            // after the first execution would leave every later call running against an already
+            // disposed object. Disposal is this class's own IDisposable responsibility (see
+            // Dispose(bool) above), owned by whoever holds the cached wrapper — tracked as the
+            // next step in doc/progresso-plano-acao.md (P1.1).
+            return await _externalCheckinstance.CheckHealthAsync(context, cancellationToken);
         }
     }
 

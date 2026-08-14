@@ -133,8 +133,9 @@ namespace Microsoft.AspNetCore.Builder
         {
             if (app.ApplicationServices.GetService(typeof(HealthCheckService)) == null)
             {
-                throw new InvalidOperationException(string.Format("Unable Find {0})",
-                    nameof(HealthCheckServiceCollectionExtensions.AddHealthChecks)));
+                throw new InvalidOperationException(
+                    $"Unable to find the required health check services. Call '{nameof(HealthCheckServiceCollectionExtensions.AddHealthChecks)}' " +
+                    $"(via '{nameof(HealthChecksPlusExtension.AddHealthChecksPlus)}') before calling this method.");
             }
 
             // NOTE: we explicitly don't use Map here because it's really common for multiple health

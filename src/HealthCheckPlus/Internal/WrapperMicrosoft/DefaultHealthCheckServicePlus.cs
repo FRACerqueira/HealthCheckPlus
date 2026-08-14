@@ -48,6 +48,100 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             _cacheStatus = (CacheHealthCheckPlus)_services.GetRequiredService<IStateHealthChecksPlus>();
 
+            ValidateHealthyPolicies(_options.Value.Registrations, _policies);
+        }
+
+        // Product decision recorded in doc/progresso-plano-acao.md (step P0.4): a health check
+        // with no matching Healthy policy (i.e. registered without going through
+        // AddCheckPlus/AddCheckLinkTo) must fail early and clearly, instead of throwing a
+        // NullReferenceException later, at runtime, when health is evaluated.
+        private static void ValidateHealthyPolicies(IEnumerable<HealthCheckRegistration> registrations, List<IHealthCheckPlusPolicyStatus> policies)
+        {
+            var missing = registrations
+                .Where(r => !policies.Any(p => p.PolicyForStatus == HealthStatus.Healthy && p.PolicyNameDep == r.Name))
+                .Select(r => r.Name)
+                .ToArray();
+
+            if (missing.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "The following health checks have no HealthCheckPlus policy registered: " +
+                    string.Join(", ", missing) +
+                    ". Register them with AddCheckPlus or AddCheckLinkTo before building the service provider.");
+            }
+        }
+
+        // Shared by both execution paths (CheckHealthPlusAsync and BackGroudCheckHealthPlusAsync)
+        // so that policy lookup can never diverge between them again (see doc/progresso-plano-acao.md,
+        // step P0.3 — this consolidation is what fixed the Degraded-policy-ignored-on-HTTP-path bug).
+        private IHealthCheckPlusPolicyStatus? FindPolicy(string name, HealthStatus status)
+        {
+            return _policies.FirstOrDefault(x => x.PolicyNameDep == name && x.PolicyForStatus == status);
+        }
+
+        // Guaranteed non-null: ValidateHealthyPolicies (called from the constructor) already
+        // rejected any registration without a matching Healthy policy.
+        private IHealthCheckPlusPolicyStatus GetHealthyPolicy(string name)
+        {
+            return FindPolicy(name, HealthStatus.Healthy)!;
+        }
+
+        // Foreground/HTTP path: fall back to the check's own Healthy policy when there is no
+        // policy registered for the current status.
+        private IHealthCheckPlusPolicyStatus ResolveForegroundPolicy(string name, HealthStatus lastStatus)
+        {
+            return FindPolicy(name, lastStatus) ?? GetHealthyPolicy(name);
+        }
+
+        // Background path: fall back to the background service's own per-status defaults
+        // (HealthCheckPlusBackGroundOptions) when there is no explicit policy for the current
+        // status — this fallback source is only available on this path, since
+        // HealthCheckPlusBackGroundOptions only exists when AddBackgroundPolicy was used.
+        private IHealthCheckPlusPolicyStatus ResolveBackgroundPolicy(string name, ItemCacheHealth sta, HealthCheckPlusBackGroundOptions backgroudoptions)
+        {
+            switch (sta.LastResult.Status)
+            {
+                case HealthStatus.Unhealthy:
+                    return FindPolicy(name, HealthStatus.Unhealthy)
+                        ?? new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, backgroudoptions.Delay, backgroudoptions.UnhealthyPeriod, name);
+
+                case HealthStatus.Degraded:
+                    return FindPolicy(name, HealthStatus.Degraded)
+                        ?? new HealthCheckPlusPolicyStatus(HealthStatus.Degraded, backgroudoptions.Delay, backgroudoptions.DegradedPeriod, name);
+
+                default: // HealthStatus.Healthy
+                    {
+                        var healthy = GetHealthyPolicy(name);
+                        var delay = healthy.PolicyDelay ?? (sta.DateRef == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
+                        var period = healthy.PolicyPeriod ?? backgroudoptions.HealthyPeriod;
+                        return new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, name);
+                    }
+            }
+        }
+
+        // Builds the registration to run (with the resolved policy's Delay/Period applied) and
+        // marks it as running in the cache, but only if its schedule is actually due. Shared by
+        // both execution paths. `fallbackWhenNull` covers the case where a registered policy left
+        // Delay/Period unset (e.g. AddCheckPlus without explicit values, foreground-only usage).
+        private HealthCheckRegistration? ScheduleIfDue(HealthCheckRegistration item, ItemCacheHealth sta, IHealthCheckPlusPolicyStatus policy, TimeSpan fallbackWhenNull)
+        {
+            var itemToRun = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)
+            {
+                Delay = policy.PolicyDelay ?? fallbackWhenNull,
+                Period = policy.PolicyPeriod ?? fallbackWhenNull
+            };
+
+            var due = sta.DateRef == _cacheStatus.DateRegister
+                ? _cacheStatus.DateRegister.Add(itemToRun.Delay!.Value) < DateTime.UtcNow
+                : sta.DateRef.Add(itemToRun.Period!.Value) < DateTime.UtcNow;
+
+            if (!due)
+            {
+                return null;
+            }
+
+            _cacheStatus.Running(itemToRun.Name, true);
+            return itemToRun;
         }
 
         public override Task<HealthReport> CheckHealthAsync(
@@ -73,61 +167,13 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             var registrationstorun = new List<HealthCheckRegistration>();
             foreach (var item in registrations)
             {
-
-                IHealthCheckPlusPolicyStatus policy = _policies
-                    .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Healthy)
-                    .FirstOrDefault()!;
-
                 var sta = _cacheStatus.FullStatus(item.Name);
-                switch (sta.LastResult.Status)
-                {
-                    case HealthStatus.Unhealthy:
-                        {
-                            var aux = _policies
-                                .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Unhealthy)
-                                .FirstOrDefault();
-                            if (aux is not null)
-                            {
-                                policy = aux;
-                            }
-                        }
-                        break;
-                    case HealthStatus.Degraded:
-                        {
-                            var aux = _policies
-                                .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Unhealthy)
-                                .FirstOrDefault();
-                            if (aux is not null)
-                            {
-                                policy = aux;
-                            }
-                        }
-                        break;
-                    default: //HealthStatus.
-                        break;
-                }
+                var policy = ResolveForegroundPolicy(item.Name, sta.LastResult.Status);
 
-                var itemToRum = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)
+                var itemToRun = ScheduleIfDue(item, sta, policy, TimeSpan.Zero);
+                if (itemToRun != null)
                 {
-                    Delay = policy.PolicyDelay??TimeSpan.Zero,
-                    Period = policy.PolicyPeriod ?? TimeSpan.Zero
-                };
-
-                if (sta.DateRef == _cacheStatus.DateRegister)
-                {
-                    if (_cacheStatus.DateRegister.Add(itemToRum.Delay!.Value) < DateTime.Now)
-                    {
-                        _cacheStatus.Running(itemToRum.Name, true);
-                        registrationstorun.Add(itemToRum);
-                    }
-                }
-                else
-                {
-                    if (sta.DateRef.Add(itemToRum.Period!.Value) < DateTime.Now)
-                    {
-                        _cacheStatus.Running(itemToRum.Name, true);
-                        registrationstorun.Add(itemToRum);
-                    }
+                    registrationstorun.Add(itemToRun);
                 }
             }
 
@@ -143,7 +189,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 var tasks = new Task<HealthReportEntry>[registrationstorun.Count];
                 var index = 0;
 
-                var dtref = DateTime.Now;
+                var dtref = DateTime.UtcNow;
                 foreach (var registration in registrationstorun)
                 {
                     tasks[index++] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);
@@ -207,61 +253,13 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             var registrationstorun = new List<HealthCheckRegistration>();
             foreach (var item in registrations)
             {
-
-                IHealthCheckPlusPolicyStatus policy;
-                
                 var sta = _cacheStatus.FullStatus(item.Name);
-                switch (sta.LastResult.Status)
-                {
-                    case HealthStatus.Unhealthy:
-                        {
-                            var aux = _policies
-                                .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Unhealthy)
-                                .FirstOrDefault();
-                            policy = aux ?? new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, backgroudoptions.Delay, backgroudoptions.UnhealthyPeriod, item.Name);
-                        }
-                        break;
-                    case HealthStatus.Degraded:
-                        {
-                            var aux = _policies
-                                .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Degraded)
-                                .FirstOrDefault();
-                            policy = aux ?? new HealthCheckPlusPolicyStatus(HealthStatus.Degraded, backgroudoptions.Delay, backgroudoptions.DegradedPeriod, item.Name);
-                        }
-                        break;
-                    default: //HealthStatus.Healthy
-                        {
-                            var aux = _policies
-                                .Where(x => x.PolicyNameDep == item.Name && x.PolicyForStatus == HealthStatus.Healthy)
-                                .FirstOrDefault()!;
+                var policy = ResolveBackgroundPolicy(item.Name, sta, backgroudoptions);
 
-                            var delay = aux.PolicyDelay ?? (sta.DateRef == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
-                            var period = aux.PolicyPeriod ?? backgroudoptions.HealthyPeriod;
-                            policy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, item.Name);
-                        }
-                        break;
-                }
-                var itemToRum = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)
+                var itemToRun = ScheduleIfDue(item, sta, policy, TimeSpan.Zero);
+                if (itemToRun != null)
                 {
-                    Delay = policy.PolicyDelay!.Value,
-                    Period = policy.PolicyPeriod!.Value
-                };
-
-                if (sta.DateRef == _cacheStatus.DateRegister)
-                {
-                    if (_cacheStatus.DateRegister.Add(itemToRum.Delay.Value) < DateTime.Now)
-                    {
-                        _cacheStatus.Running(item.Name, true);
-                        registrationstorun.Add(itemToRum);
-                    }
-                }
-                else
-                {
-                    if (sta.DateRef.Add(itemToRum.Period.Value) < DateTime.Now)
-                    {
-                        _cacheStatus.Running(item.Name, true);
-                        registrationstorun.Add(itemToRum);
-                    }
+                    registrationstorun.Add(itemToRun);
                 }
             }
 
@@ -270,7 +268,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 var tasks = new Task<HealthReportEntry>[registrationstorun.Count];
                 var index = 0;
 
-                var dtref = DateTime.Now;
+                var dtref = DateTime.UtcNow;
                 foreach (var registration in registrationstorun)
                 {
                     tasks[index++] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);

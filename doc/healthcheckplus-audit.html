@@ -1,0 +1,390 @@
+<title>Auditoria HealthCheckPlus</title>
+<style>
+:root{
+  --bg:#f5f6f3; --surface:#ffffff; --surface-2:#eef0ec; --ink:#1a221d; --ink-soft:#4b564e;
+  --border:#dbe0da; --accent:#0e6b57; --accent-ink:#ffffff; --accent-soft:#e1f0ea;
+  --sev-critical:#9c2b1f; --sev-critical-bg:#fbe9e6;
+  --sev-high:#9c5a1a; --sev-high-bg:#faeee0;
+  --sev-medium:#7d6a13; --sev-medium-bg:#f7f2df;
+  --sev-low:#45525c; --sev-low-bg:#e9edf0;
+  --verified-ink:#ffffff; --code-bg:#eceee9;
+  --font-serif: ui-serif, Charter, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Roboto Mono", monospace;
+  --font-sans: ui-sans-serif, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10130f; --surface:#161c17; --surface-2:#1c231d; --ink:#e7ede9; --ink-soft:#a7b3ac;
+    --border:#2a332c; --accent:#5ed8b6; --accent-ink:#0a1f19; --accent-soft:#17332b;
+    --sev-critical:#f2a294; --sev-critical-bg:#3a1712;
+    --sev-high:#f0bd82; --sev-high-bg:#3a2712;
+    --sev-medium:#e3d189; --sev-medium-bg:#362f11;
+    --sev-low:#b9c4cb; --sev-low-bg:#1e262a;
+    --verified-ink:#0a1f19; --code-bg:#1c231d;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10130f; --surface:#161c17; --surface-2:#1c231d; --ink:#e7ede9; --ink-soft:#a7b3ac;
+  --border:#2a332c; --accent:#5ed8b6; --accent-ink:#0a1f19; --accent-soft:#17332b;
+  --sev-critical:#f2a294; --sev-critical-bg:#3a1712;
+  --sev-high:#f0bd82; --sev-high-bg:#3a2712;
+  --sev-medium:#e3d189; --sev-medium-bg:#362f11;
+  --sev-low:#b9c4cb; --sev-low-bg:#1e262a;
+  --verified-ink:#0a1f19; --code-bg:#1c231d;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--font-serif);
+  font-size:17px; line-height:1.65;
+}
+::selection{background:var(--accent-soft); color:var(--ink);}
+a{color:var(--accent);}
+h1,h2,h3,h4{font-family:var(--font-serif); text-wrap:balance; color:var(--ink); font-weight:600;}
+.eyebrow{
+  font-family:var(--font-sans); font-size:0.72rem; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--ink-soft); font-weight:600;
+}
+code, .mono{font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+.fileref{
+  font-family:var(--font-mono); font-size:0.82rem; background:var(--code-bg); color:var(--ink);
+  padding:0.1rem 0.45rem; border-radius:4px; white-space:nowrap; border:1px solid var(--border);
+}
+
+.wrap{max-width:1040px; margin:0 auto; padding:0 1.5rem;}
+.prose{max-width:44rem;}
+
+header.cover{
+  background:var(--surface-2); border-bottom:1px solid var(--border); padding:3.5rem 0 2.5rem;
+}
+header.cover .kicker{display:flex; align-items:center; gap:0.6rem; margin-bottom:1.1rem;}
+header.cover .dot{width:9px; height:9px; border-radius:50%; background:var(--accent); flex:none;}
+header.cover h1{font-size:2.6rem; margin:0 0 0.6rem; line-height:1.1;}
+header.cover .subtitle{font-size:1.15rem; color:var(--ink-soft); margin:0 0 1.6rem; max-width:38rem;}
+header.cover .meta{
+  display:flex; flex-wrap:wrap; gap:0.5rem 1.6rem; font-family:var(--font-sans); font-size:0.85rem; color:var(--ink-soft);
+}
+header.cover .meta b{color:var(--ink); font-weight:600;}
+
+nav.toc{
+  font-family:var(--font-sans); font-size:0.88rem; display:flex; flex-wrap:wrap; gap:0.4rem 0;
+  margin:2rem 0 0; padding-top:1.4rem; border-top:1px solid var(--border);
+}
+nav.toc a{
+  color:var(--ink-soft); text-decoration:none; padding:0.25rem 0.9rem 0.25rem 0; border-right:1px solid var(--border);
+}
+nav.toc a:last-child{border-right:none;}
+nav.toc a:hover{color:var(--accent);}
+
+section{padding:2.6rem 0;}
+section + section{border-top:1px solid var(--border);}
+section h2{font-size:1.55rem; margin:0 0 0.3rem;}
+section .section-num{font-family:var(--font-sans); color:var(--accent); font-size:0.8rem; font-weight:700; letter-spacing:0.08em;}
+section > .prose > p, section > p{margin:0 0 1.1rem;}
+section ul, section ol{margin:0 0 1.1rem; padding-left:1.3rem;}
+section li{margin-bottom:0.45rem;}
+
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin:1.8rem 0;}
+.stat{background:var(--surface); padding:1.2rem 1.1rem;}
+.stat .n{font-family:var(--font-serif); font-size:1.7rem; font-weight:600; line-height:1.15;}
+.stat .l{font-family:var(--font-sans); font-size:0.74rem; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.06em; margin-top:0.35rem;}
+@media (max-width:760px){.stats{grid-template-columns:repeat(2,1fr);}}
+
+.verdict-banner{
+  background:var(--accent-soft); border:1px solid var(--accent); border-radius:10px; padding:1.3rem 1.5rem;
+  margin:1.6rem 0; font-size:1.02rem;
+}
+.verdict-banner .eyebrow{color:var(--accent);}
+
+.pill{
+  display:inline-flex; align-items:center; gap:0.3rem; font-family:var(--font-sans); font-size:0.72rem;
+  font-weight:700; letter-spacing:0.03em; padding:0.2rem 0.55rem; border-radius:99px; white-space:nowrap;
+}
+.sev-critical{background:var(--sev-critical-bg); color:var(--sev-critical);}
+.sev-high{background:var(--sev-high-bg); color:var(--sev-high);}
+.sev-medium{background:var(--sev-medium-bg); color:var(--sev-medium);}
+.sev-low{background:var(--sev-low-bg); color:var(--sev-low);}
+.tag-verified{background:var(--accent); color:var(--verified-ink);}
+.tag-inferred{background:transparent; color:var(--ink-soft); border:1px solid var(--border);}
+
+.tablewrap{overflow-x:auto; margin:1.4rem 0; border:1px solid var(--border); border-radius:10px;}
+table{border-collapse:collapse; width:100%; min-width:640px; background:var(--surface);}
+th,td{text-align:left; padding:0.65rem 0.9rem; border-bottom:1px solid var(--border); vertical-align:top; font-size:0.92rem;}
+th{font-family:var(--font-sans); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); background:var(--surface-2);}
+tr:last-child td{border-bottom:none;}
+
+.finding{border:1px solid var(--border); border-radius:10px; padding:1.3rem 1.4rem; margin:1.2rem 0; background:var(--surface);}
+.finding .fhead{display:flex; flex-wrap:wrap; align-items:center; gap:0.55rem; margin-bottom:0.65rem;}
+.finding h4{margin:0; font-size:1.08rem; flex:1 1 auto; min-width:200px;}
+.finding .impact{background:var(--surface-2); border-radius:8px; padding:0.7rem 0.9rem; margin-top:0.8rem; font-size:0.92rem;}
+.finding .impact .eyebrow{display:block; margin-bottom:0.3rem;}
+
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:1.6rem;}
+@media (max-width:760px){.two-col{grid-template-columns:1fr;}}
+.card{border:1px solid var(--border); border-radius:10px; padding:1.2rem 1.3rem; background:var(--surface);}
+.card h4{margin:0 0 0.5rem; font-size:1rem;}
+
+.roadmap{display:flex; flex-direction:column; gap:0; border-left:2px solid var(--border); margin-left:0.4rem; padding-left:1.5rem;}
+.phase{position:relative; padding:0 0 1.8rem;}
+.phase::before{content:""; position:absolute; left:-1.94rem; top:0.35rem; width:10px; height:10px; border-radius:50%; background:var(--accent); border:2px solid var(--surface); box-shadow:0 0 0 2px var(--accent);}
+.phase:last-child{padding-bottom:0;}
+.phase .eyebrow{margin-bottom:0.25rem;}
+.phase h4{margin:0 0 0.4rem; font-size:1.08rem;}
+
+footer{padding:2.2rem 0 3rem; font-family:var(--font-sans); font-size:0.82rem; color:var(--ink-soft);}
+
+@media (prefers-reduced-motion:no-preference){
+  a{transition:color 120ms ease;}
+}
+</style>
+
+<header class="cover">
+  <div class="wrap">
+    <div class="kicker"><span class="dot"></span><span class="eyebrow">Análise de Produto &amp; Arquitetura</span></div>
+    <h1>Auditoria HealthCheckPlus</h1>
+    <p class="subtitle">Mapeamento de funcionalidades, revisão de arquitetura e documentação, e parecer de viabilidade para transformar a biblioteca em um produto robusto e resiliente. Rastreado no código-fonte, com build e suíte de testes executados como linha de base.</p>
+    <div class="meta">
+      <span><b>Repositório</b> HealthCheckPlus (branch develop)</span>
+      <span><b>Versão avaliada</b> v3.0.1</span>
+      <span><b>Data</b> 14/08/2026</span>
+      <span><b>Build/testes</b> <code>dotnet build</code> OK · <code>dotnet test</code> 31/31 ok</span>
+    </div>
+    <nav class="toc">
+      <a href="#sumario">Sumário executivo</a>
+      <a href="#mapeamento">Mapeamento</a>
+      <a href="#posicionamento">Posicionamento</a>
+      <a href="#achados">Achados técnicos</a>
+      <a href="#documentacao">Documentação</a>
+      <a href="#veredito">Veredito</a>
+      <a href="#roadmap">Proposta</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="sumario">
+  <div class="section-num">01</div>
+  <h2>Sumário executivo</h2>
+  <div class="prose">
+    <p>HealthCheckPlus é uma camada sobre o <code>Microsoft.Extensions.Diagnostics.HealthChecks</code> nativo do ASP.NET Core. Ela resolve um problema real e não coberto pelo framework: o health check padrão da Microsoft <b>reexecuta todas as verificações a cada requisição</b>, sem cache, sem intervalo por dependência e sem diferenciação de comportamento por status. HealthCheckPlus adiciona cache de resultado, política de intervalo por status (healthy/degraded/unhealthy), troca manual de estado (<code>SwitchToUnhealthy</code>/<code>SwitchToDegraded</code>) e filtros de publicação (idle count, "somente ao mudar"). Isso foi confirmado lendo o código-fonte do <code>DefaultHealthCheckService</code> do próprio ASP.NET Core: ele não lê nem <code>Delay</code> nem <code>Period</code> do registro e não faz cache algum.</p>
+    <p>Dito isso, a auditoria encontrou <b>três defeitos de correção confirmados por leitura de código</b> — dois deles atingem diretamente as duas funcionalidades mais anunciadas no README (política de degradação e integração com checks externos) — mais uma dependência estrutural de detalhes internos não documentados do ASP.NET Core, e um estado global estático incompatível com padrões modernos de teste/hospedagem (múltiplos hosts no mesmo processo). O motor central de orquestração (700+ linhas em <code>DefaultHealthCheckServicePlus</code> e no serviço de background) tem <b>cobertura de teste zero</b>: as 31 asserções existentes cobrem apenas cache, um record de política e extensões de <code>HealthReport</code>.</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n">Nicho viável</div><div class="l">Veredito de produto</div></div>
+    <div class="stat"><div class="n">3</div><div class="l">Defeitos críticos/altos confirmados</div></div>
+    <div class="stat"><div class="n">0%</div><div class="l">Cobertura do motor de orquestração</div></div>
+    <div class="stat"><div class="n">.NET 8·9·10</div><div class="l">Frameworks-alvo</div></div>
+  </div>
+  <div class="verdict-banner">
+    <span class="eyebrow">Leia isto primeiro</span>
+    O valor de negócio da proposta é real e verificável — mas hoje ela não está pronta para o adjetivo "robusto e resiliente" que o pedido busca. O caminho recomendado não é adicionar funcionalidades: é um ciclo de estabilização de 4 a 6 semanas nos itens da seção 4, seguido por uma decisão consciente de escopo (produto de nicho bem-feito vs. competir com o ecossistema Xabaril/OpenTelemetry).
+  </div>
+</section>
+
+<section id="mapeamento">
+  <div class="section-num">02</div>
+  <h2>Mapeamento de funcionalidades</h2>
+  <div class="prose">
+    <p>O que o produto realmente entrega hoje, olhando a API pública e os exemplos de uso (<code>Samples/</code>):</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <tr><th>Capacidade</th><th>Como é entregue</th><th>Existe no ASP.NET Core nativo?</th></tr>
+      <tr><td>Cache de resultado por dependência (não reexecuta a cada request)</td><td><code>CacheHealthCheckPlus</code> + <code>DefaultHealthCheckServicePlus</code></td><td>Não — nativo reexecuta sempre</td></tr>
+      <tr><td>Intervalo de reexecução diferenciado por status (healthy/degraded/unhealthy)</td><td><code>AddUnhealthyPolicy</code>, <code>AddDegradedPolicy</code>, <code>HealthCheckPlusBackGroundOptions</code></td><td>Não — nativo tem um único período global de publicação, sem diferenciar por status</td></tr>
+      <tr><td>Troca manual de estado (kill switch operacional)</td><td><code>IStateHealthChecksPlus.SwitchToUnhealthy/Degraded</code></td><td>Não</td></tr>
+      <tr><td>Publicação condicional (idle count, somente ao mudar)</td><td><code>PublishingOptions</code>, hash do relatório em <code>HealthCheckPlusBackGroundService</code></td><td>Parcial — publisher hosted service nativo não tem esses filtros</td></tr>
+      <tr><td>Serviço de background dedicado com predicados</td><td><code>AddBackgroundPolicy</code> + <code>HealthCheckPlusBackGroundService</code></td><td>Parcial — existe <code>HealthCheckPublisherHostedService</code>, mas sem política por status</td></tr>
+      <tr><td>Templates de resposta HTTP prontos (curto/detalhado, com/sem exceção)</td><td><code>HealthCheckPlusOptions.WriteXxx</code></td><td>Parcial — nativo exige implementar o writer manualmente</td></tr>
+      <tr><td>Ponte para checks de terceiros (ex.: pacotes Xabaril como Redis, SQL)</td><td><code>AddCheckLinkTo</code></td><td>N/A — é a integração com o ecossistema existente</td></tr>
+      <tr><td>Agregação de status customizada por endpoint</td><td><code>HealthCheckPlusOptions.StatusHealthReport</code>, <code>HealthCheckName</code></td><td>Parcial — nativo permite status customizado mas sem nomear "famílias" de agregação</td></tr>
+    </table>
+  </div>
+  <div class="prose">
+    <p><b>Usuários-alvo implícitos:</b> times .NET operando serviços com dependências externas (bancos, filas, APIs) atrás de probes de <i>liveness/readiness</i> (Kubernetes, App Service, ECS), que quer reduzir custo de checar dependências caras a cada poucos segundos e precisam de um botão manual para forçar unhealthy em incidentes. É um público de infraestrutura/SRE-adjacente, não um usuário final de aplicação.</p>
+  </div>
+</section>
+
+<section id="posicionamento">
+  <div class="section-num">03</div>
+  <h2>Posicionamento competitivo</h2>
+  <div class="prose">
+    <p>Esta é a pergunta que decide a viabilidade, não uma nota de rodapé. HealthCheckPlus <b>não compete</b> com o ecossistema de health checks do .NET (o pacote "AspNetCore.Diagnostics.HealthChecks" da comunidade — conhecido como Xabaril — com dezenas de integrações prontas para Redis, SQL Server, RabbitMQ etc.). A própria API do produto assume esse ecossistema como dependência: <code>AddCheckLinkTo</code> existe especificamente para "adotar" um check já registrado por um pacote de terceiro e submetê-lo às políticas do HealthCheckPlus.</p>
+    <p>Ou seja: <b>HealthCheckPlus é uma camada de política e agendamento colocada por cima do ecossistema padrão, não um substituto dele.</b> Essa é a proposta de valor correta e defensável — mas ela muda a prioridade arquitetural: o mecanismo que faz essa ponte (<code>AddCheckLinkTo</code>) deixa de ser "um detalhe de implementação com gosto de gambiarra" e passa a ser <b>a costura estrutural mais importante do produto</b>. Se ela for frágil, o produto inteiro é frágil, porque é exatamente o caminho pelo qual passam os checks mais valiosos (bancos de dados, filas, caches) — os que o time realmente quer monitorar.</p>
+    <p>Ver achado <a href="#f-reflection">"Ponte de integração depende de detalhes internos não documentados do ASP.NET Core"</a> na seção 4 — essa é, na prática, a prioridade arquitetural nº 1.</p>
+  </div>
+</section>
+
+<section id="achados">
+  <div class="section-num">04</div>
+  <h2>Achados técnicos</h2>
+  <div class="prose">
+    <p>Cada achado traz <span class="pill tag-verified">Verificado</span> quando foi confirmado lendo o caminho de código exato (arquivo:linha citados), ou <span class="pill tag-inferred">Inferido</span> quando é uma leitura de risco arquitetural sem reprodução em runtime.</p>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-critical">Crítico</span><span class="pill tag-verified">Verificado</span>
+      <h4>Política de "Degraded" é ignorada no caminho de requisição HTTP</h4>
+      <span class="fileref">DefaultHealthCheckServicePlus.cs:95-105</span>
+    </div>
+    <p>Em <code>CheckHealthPlusAsync</code> (o método chamado pelo middleware a cada acesso a <code>/health/...</code>), o <code>case HealthStatus.Degraded</code> busca a política com <code>x.PolicyForStatus == HealthStatus.Unhealthy</code> — deveria ser <code>HealthStatus.Degraded</code>. O caminho equivalente do serviço de background (<code>BackGroudCheckHealthPlusAsync</code>, linhas 224-231) faz a busca correta. As duas implementações divergiram.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Qualquer dependência configurada com <code>AddDegradedPolicy(...)</code> — a funcionalidade citada em primeiro lugar na lista de features do README — é silenciosamente ignorada sempre que o status é consultado via endpoint HTTP sem o background service ativo (o cenário do primeiro exemplo do próprio README, "sem background policies"). O check volta a usar o intervalo de unhealthy em vez do de degraded.</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-critical">Crítico</span><span class="pill tag-verified">Verificado</span>
+      <h4>NullReferenceException ao misturar checks nativos com a API do HealthCheckPlus</h4>
+      <span class="fileref">DefaultHealthCheckServicePlus.cs:76-79, 110-114, 232-243</span>
+    </div>
+    <p>A política "Healthy" é obtida com <code>_policies.Where(...).FirstOrDefault()!</code> — o <code>!</code> apenas silencia o compilador, não impede <code>null</code> em runtime. Uma política "Healthy" só existe para nomes registrados via <code>AddCheckPlus</code> ou <code>AddCheckLinkTo</code> (são as únicas duas chamadas que registram <code>IHealthCheckPlusPolicyStatus</code> com <code>PolicyForStatus == Healthy</code>). Qualquer dependência adicionada pelo <code>IHealthChecksBuilder</code> nativo (ex.: <code>.AddCheck&lt;T&gt;(...)</code> ou um pacote Xabaril chamado diretamente, sem o <code>AddCheckLinkTo</code> correspondente) resulta em <code>policy == null</code>, e a linha seguinte desreferencia <code>policy.PolicyDelay</code> — exceção não tratada.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span><code>AddHealthChecksPlus</code> substitui o <code>HealthCheckService</code> para todo o processo (não é opt-in por check). Isso significa que esquecer um único <code>AddCheckLinkTo</code> — ou simplesmente registrar um check de terceiro do jeito "padrão" do ASP.NET Core, como qualquer desenvolvedor faria por hábito — derruba a avaliação de <b>todos</b> os health checks do processo, não só do check esquecido. Os dois exemplos oficiais em <code>Samples/</code> nunca exercitam esse caminho (sempre casam <code>AddRedis</code> com <code>AddCheckLinkTo</code>), então a armadilha não aparece em nenhum teste, exemplo ou CI.</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-high">Alto</span><span class="pill tag-verified">Verificado</span>
+      <h4>Checks externos descartáveis (IDisposable) param de funcionar após a primeira execução</h4>
+      <span class="fileref">WrapperBaseHealthCheckPlus.cs:56-64 · HealthChecksPlusExtension.cs:270-277</span>
+    </div>
+    <p><code>AddCheckLinkTo</code> guarda a instância adotada em um dicionário estático (<code>_externalCheck</code>) e a reutiliza em todas as execuções seguintes. Mas <code>WrapperBaseHealthCheckPlus.CheckHealthAsync</code> chama <code>disposable.Dispose()</code> na instância encapsulada <b>ao final de toda chamada</b>, não só quando o processo encerra. Na segunda execução (seja pelo middleware, seja pelo background service), o wrapper reaproveitado chama <code>CheckHealthAsync</code> em um objeto que ele mesmo já descartou na primeira execução.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Restrito a checks de terceiros que implementam <code>IDisposable</code> — nem todo pacote Xabaril implementa (muitos apenas seguram um cliente singleton), então o efeito é intermitente e depende do pacote adotado, o que o torna mais perigoso: passa despercebido em testes manuais com um provedor e aparece em produção com outro.</div>
+  </div>
+
+  <div class="finding" id="f-reflection">
+    <div class="fhead">
+      <span class="pill sev-high">Alto</span><span class="pill tag-verified">Verificado</span>
+      <h4>Ponte de integração (<code>AddCheckLinkTo</code>) depende de detalhes internos não documentados do ASP.NET Core</h4>
+      <span class="fileref">HealthChecksPlusExtension.cs:132-159, 231-300</span>
+    </div>
+    <p><code>AddHealthChecksPlus</code> localiza e remove o serviço nativo comparando <code>x.ImplementationType.Name.Equals("DefaultHealthCheckService")</code> — uma string, não um tipo. <code>AddCheckLinkTo</code> vai além: varre a coleção de serviços procurando <code>ImplementationInstance</code> cujo tipo contenha "HealthCheckServiceOptions" no nome, faz cast para <code>ConfigureNamedOptions&lt;HealthCheckServiceOptions&gt;</code> e reinvoca a <code>Action</code> configurada para reconstruir o registro original do pacote de terceiro. Nenhuma dessas estruturas é API pública contratual da Microsoft.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Este é exatamente o mecanismo que, conforme a seção 3, carrega o valor central do produto (adotar checks Redis/SQL/etc. de terceiros). O próprio changelog do projeto já registra a cicatriz disso: a versão 3.0.0 precisou de "sanitização de referências" ao subir de .NET 6/7 para 8/9/10. Cada major do .NET é um risco de quebra silenciosa nesta costura específica — e quando quebra, quebra sem erro de compilação, só em runtime.</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-high">Alto</span><span class="pill tag-inferred">Inferido</span>
+      <h4>Estado estático global impede múltiplos hosts no mesmo processo</h4>
+      <span class="fileref">HealthChecksPlusExtension.cs:25-26</span>
+    </div>
+    <p><code>_addedHealthChecksPlus</code> (bool) e <code>_externalCheck</code> (dicionário, chaveado só pelo nome do check) são <code>static</code> na classe de extensão — compartilhados por <b>todo o processo</b>, não por container de DI. Isso é incomum: toda a stack padrão de DI do .NET é desenhada para permitir múltiplos <code>IServiceCollection</code>/<code>IHost</code> isolados no mesmo processo.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Testes de integração com <code>WebApplicationFactory</code> (o padrão recomendado pela própria Microsoft), execução paralela de testes, e cenários .NET Aspire com múltiplos hosts no mesmo processo passam a compartilhar involuntariamente o dicionário de checks externos entre instâncias de aplicação supostamente isoladas — dois hosts diferentes registrando um check chamado "Redis" via <code>AddCheckLinkTo</code> acabam reaproveitando a mesma instância adotada. Não reproduzido em runtime nesta auditoria; sinalizado como risco arquitetural a validar antes de qualquer decisão de investimento em testabilidade (seção 6, fase 2).</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-medium">Médio</span><span class="pill tag-verified">Verificado</span>
+      <h4>Uso de relógio local (<code>DateTime.Now</code>) em toda a lógica de agendamento</h4>
+      <span class="fileref">CacheHealthCheckPlus.cs:28,135 · DefaultHealthCheckServicePlus.cs:118,126,146,252,260,273</span>
+    </div>
+    <p>Toda comparação de "já passou o período X" usa <code>DateTime.Now</code> (fuso local) em vez de <code>DateTime.UtcNow</code>. Em troca de horário de verão, mudança de fuso do host, ou contêineres configurados com fusos diferentes por ambiente, uma alteração retroativa do relógio do sistema pode congelar o reagendamento de um check pelo tamanho do salto de horário.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Baixa probabilidade, mas é exatamente o tipo de falha silenciosa e difícil de diagnosticar que contradiz o objetivo de "resiliente" do pedido original. Correção é mecânica (trocar por UtcNow) e deve entrar no ciclo de estabilização.</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-medium">Médio</span><span class="pill tag-verified">Verificado</span>
+      <h4>Duplicação de lógica de política entre caminho HTTP e caminho de background</h4>
+      <span class="fileref">DefaultHealthCheckServicePlus.cs:60-194 vs 196-298</span>
+    </div>
+    <p>A resolução de política (qual delay/period aplicar dado o último status) está escrita duas vezes, quase idêntica, em <code>CheckHealthPlusAsync</code> e <code>BackGroudCheckHealthPlusAsync</code>. O achado do topo desta seção (política Degraded ignorada) é a prova de que essa duplicação já divergiu uma vez — o padrão de risco continua presente para qualquer mudança futura nessa regra.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Todo ajuste de regra de negócio precisa ser replicado manualmente em dois lugares, sem teste que capture a divergência.</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-medium">Médio</span><span class="pill tag-verified">Verificado</span>
+      <h4>Motor de orquestração sem nenhum teste automatizado</h4>
+      <span class="fileref">src/HealthCheckPlusTests/*.cs</span>
+    </div>
+    <p><code>dotnet test</code> executa 31 testes, 100% verdes, distribuídos em 3 arquivos: cache de estado (<code>CacheHealthCheckPlusTests</code>), o record de política (<code>HealthCheckPlusPolicyStatusTests</code>) e as extensões de <code>HealthReport</code>. Não existe nenhum teste para <code>DefaultHealthCheckServicePlus</code> (a classe com a lógica de política, cache e execução — o núcleo do produto), <code>HealthCheckPlusBackGroundService</code>, as extensões de DI (<code>HealthChecksPlusExtension</code>) ou o middleware.</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Os dois bugs críticos desta seção vivem exatamente nas classes sem cobertura. A suíte atual dá falsa confiança: 31 testes verdes, mas zero deles teria pego qualquer um dos achados acima.</div>
+  </div>
+
+  <div class="finding">
+    <div class="fhead">
+      <span class="pill sev-low">Baixo</span><span class="pill tag-verified">Verificado</span>
+      <h4>Higiene de API e documentação — janela de breaking change</h4>
+      <span class="fileref">IStateHealthChecksPlus.cs:33 · README.md:109 · CONTRIBUTING.md · SECURITY.md</span>
+    </div>
+    <p>Nome público com typo perpetuado na API (<code>SwithToUnhealthy</code>, <code>SwithState</code>); comentários e README com erros recorrentes ("Statup", "Requeried", "Bussines", "healt check"); <code>SECURITY.md</code> declara suporte apenas à série 2.x enquanto o pacote publicado é 3.0.1; <code>CONTRIBUTING.md</code> referencia um "PrompPLus Team" que não corresponde ao nome do projeto (provável resíduo de um template reaproveitado).</p>
+    <div class="impact"><span class="eyebrow">Impacto</span>Nenhum é funcional, mas juntos comunicam falta de revisão — e como o pedido autoriza breaking changes sem compromisso com a versão atual, é o momento certo de corrigir de uma vez, antes de qualquer promessa nova de estabilidade de API.</div>
+  </div>
+
+</section>
+
+<section id="documentacao">
+  <div class="section-num">05</div>
+  <h2>Revisão de documentação</h2>
+  <div class="two-col">
+    <div class="card">
+      <h4>O que funciona</h4>
+      <ul>
+        <li>README com exemplo de ponta a ponta executável (registro, políticas, endpoints, middleware, publisher) — raro em bibliotecas pequenas e vale preservar.</li>
+        <li>Geração automática de referência de API a partir de XML doc comments (<code>XmlDocMarkdownGenerator</code> + <code>src/docs</code>), mantendo a documentação de tipo/membro perto do código-fonte.</li>
+        <li>Guia de contribuição existe e é detalhado (ainda que copiado de outro projeto sem adaptação completa).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>O que falta</h4>
+      <ul>
+        <li>Nenhum documento de arquitetura: como o cache, a política e o background service se relacionam, e por que <code>AddCheckLinkTo</code> precisa existir. Sem isso, cada decisão frágil da seção 4 parece arbitrária em vez de intencional.</li>
+        <li>Nenhuma nota operacional sobre as armadilhas reais: "todo check precisa passar por <code>AddCheckPlus</code>/<code>AddCheckLinkTo</code>, senão o processo derruba a avaliação inteira" deveria estar em destaque, não descoberto lendo código.</li>
+        <li>Nenhum CHANGELOG separado e versionado — o "What's new" vive dentro do README e se perde a cada release.</li>
+        <li><code>SECURITY.md</code> desatualizado (seção 4) — mina a credibilidade do canal de report de vulnerabilidade.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="veredito">
+  <div class="section-num">06</div>
+  <h2>Veredito de viabilidade (visão de PO)</h2>
+  <div class="prose">
+    <p><b>Sim, é viável — como produto de nicho bem executado, não como concorrente do ecossistema de health checks do .NET.</b> A proposta de valor (agendamento adaptativo por status, cache de resultado, override manual, filtro de publicação) preenche uma lacuna real e verificada do framework nativo. O público é específico (times operando probes de liveness/readiness com dependências caras de checar) mas esse público existe e a dor é real.</p>
+    <p>O que falta hoje não é visão de produto — é confiabilidade da implementação da própria visão. Dois dos quatro recursos citados primeiro no README (política de degradação, integração com checks externos) têm bugs que os invalidam em cenários de uso comuns e não-exóticos. Isso não é uma crítica de estilo: é o tipo de defeito que, descoberto em produção por um cliente, destrói a confiança na categoria inteira do produto ("os health checks mentem"), que é o pior resultado possível para uma biblioteca cujo único trabalho é dizer a verdade sobre a saúde do sistema.</p>
+    <p>Recomendação: não anunciar nem promover a v3 atual como "pronta para produção crítica" até o ciclo de estabilização da seção 7 ser concluído. Depois disso, o produto tem uma base defensável para crescer deliberadamente.</p>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="section-num">07</div>
+  <h2>Proposta de evolução</h2>
+  <div class="prose"><p>Sequenciada por dependência, não por facilidade. Breaking changes são aceitáveis e usados deliberadamente nas fases 0–2.</p></div>
+  <div class="roadmap">
+    <div class="phase">
+      <div class="eyebrow">Fase 0 · 1–2 semanas</div>
+      <h4>Parar a sangria: corrigir os defeitos confirmados</h4>
+      <p>Corrigir o roteamento de política Degraded (achado crítico 1); eliminar o <code>FirstOrDefault()!</code> nulo aplicando uma política Healthy padrão quando nenhuma foi registrada, em vez de assumir que sempre existe (achado crítico 2); revisar o ciclo de vida de <code>WrapperBaseHealthCheckPlus</code> para não descartar uma instância que será reutilizada (achado alto); trocar <code>DateTime.Now</code> por <code>DateTime.UtcNow</code>; corrigir a mensagem de erro malformada em <code>HealthChecksPlusAppExtension.cs:136</code>; atualizar <code>SECURITY.md</code>. Nenhum destes exige redesenho — são correções pontuais, mas só valem se vierem acompanhadas de teste de regressão (fase 3 pode começar em paralelo, cobrindo exatamente esses casos).</p>
+    </div>
+    <div class="phase">
+      <div class="eyebrow">Fase 1 · 1 semana</div>
+      <h4>Remover o estado estático global</h4>
+      <p>Mover <code>_addedHealthChecksPlus</code> e <code>_externalCheck</code> de campos <code>static</code> da classe de extensão para estado pertencente ao <code>IServiceCollection</code>/container (ex.: um serviço singleton registrado por host). Sem isso, a biblioteca continua incompatível com o padrão de teste de integração recomendado pela própria Microsoft (<code>WebApplicationFactory</code>) e com hospedagem multi-host no mesmo processo.</p>
+    </div>
+    <div class="phase">
+      <div class="eyebrow">Fase 2 · 2–3 semanas de design + implementação</div>
+      <h4>Substituir a ponte reflectiva do <code>AddCheckLinkTo</code></h4>
+      <p>Esta é a prioridade arquitetural nº 1 (seção 3). Eliminar a dependência de nomes de tipo internos do ASP.NET Core (<code>"DefaultHealthCheckService"</code>, <code>ConfigureNamedOptions&lt;HealthCheckServiceOptions&gt;</code>). Caminho recomendado: expor um ponto de extensão explícito onde o consumidor passa a <i>factory</i> ou registro do check de terceiro diretamente (o pacote Xabaril já expõe isso), em vez de este projeto reconstruir esse registro por engenharia reversa da coleção de serviços. É uma mudança de API pública — aceitável agora, mas não depois que a fase 4 trouxer mais consumidores.</p>
+    </div>
+    <div class="phase">
+      <div class="eyebrow">Fase 3 · contínuo, começando já na fase 0</div>
+      <h4>Suíte de testes de integração real</h4>
+      <p><code>WebApplicationFactory</code> cobrindo: <code>DefaultHealthCheckServicePlus</code> (política por status, os dois caminhos HTTP e background lado a lado para impedir nova divergência), o serviço de background e filtros de publicação, o middleware fim a fim, e — explicitamente — o cenário "check nativo registrado sem <code>AddCheckPlus</code>/<code>AddCheckLinkTo</code>" como teste de regressão permanente do achado crítico 2. Adicionar também um teste com dois hosts no mesmo processo para validar (ou refutar) o achado da fase 1.</p>
+    </div>
+    <div class="phase">
+      <div class="eyebrow">Fase 4 · próximo trimestre</div>
+      <h4>Diferenciação deliberada, só depois da base estar sólida</h4>
+      <p>Com a fundação estabilizada, escolher conscientemente onde investir: documentação de arquitetura e runbook operacional (seção 5); suporte opcional a cache compartilhado (ex.: Redis) para cenários com múltiplas réplicas que quiserem compartilhar estado de saúde; emissão de métricas/OpenTelemetry a partir do relatório de saúde; avaliar reintroduzir uma API fortemente tipada (enum ou source generator) como alternativa opcional ao registro por <i>string</i> em <code>AddHealthChecksPlus</code>, sem tornar isso pré-requisito de adoção.</p>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap">Auditoria baseada em leitura integral do código-fonte em <code>src/</code> e <code>Samples/</code>, execução de <code>dotnet build</code> (0 erros/avisos) e <code>dotnet test</code> (31/31) na branch <code>develop</code>, e verificação cruzada com o código-fonte público do <code>DefaultHealthCheckService</code> do ASP.NET Core (repositório dotnet/aspnetcore).</div>
+</footer>

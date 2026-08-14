@@ -25,7 +25,7 @@ namespace HealthCheckPlus.Internal
             _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>();
             _statusName = new ConcurrentDictionary<string, HealthStatus>();
             _statusFunction = [];
-            _dateregister = DateTime.Now;
+            _dateregister = DateTime.UtcNow;
             _statusFunction.Add(string.Empty, (_) => _statusDeps.Values.Min(x => x.LastResult.Status));
         }
 
@@ -132,7 +132,7 @@ namespace HealthCheckPlus.Internal
                 Running(key, true);
             }
             var itemres = new HealthCheckResult(status, _statusDeps[key].LastResult.Description);
-            Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.Now, TimeSpan.Zero);
+            Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.UtcNow, TimeSpan.Zero);
         }
 
         public ItemCacheHealth FullStatus(string keydep)

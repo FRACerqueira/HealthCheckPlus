@@ -1,0 +1,74 @@
+# Progresso — Plano de Ação HealthCheckPlus
+
+Acompanha a execução de `doc/plano-acao-healthcheckplus.md`. Atualize esta tabela a cada passo concluído — é este arquivo que permite retomar o trabalho em uma sessão futura sem reconstruir o contexto do zero.
+
+**Nota de baseline**: todos os números de linha citados no plano e na auditoria (`doc/healthcheckplus-audit.html`) são válidos para a árvore **anterior à Fase 0**. Assim que P0.3 (consolidação) e P0.6 (troca de `DateTime.Now`) forem concluídos, esses números ficam obsoletos — use os símbolos/métodos citados no plano para se orientar, não as linhas.
+
+**Como preencher cada linha**: Status (`Pendente` / `Em andamento` / `Concluído` / `Bloqueado`), Data, Commit/branch onde a mudança aterrissou, Arquivos tocados, e — principalmente para os passos de decisão — a decisão tomada e o porquê. Um passo marcado "Concluído" sem a decisão registrada (quando aplicável) não é considerado retomável.
+
+## Fase 0 — Estabilização
+
+| Passo | Status | Data | Commit/branch | Arquivos tocados | Decisão/Notas |
+|---|---|---|---|---|---|
+| P0.1 — Teste de regressão: Degraded ignorado no caminho HTTP | Concluído (teste vermelho, fix ainda não aplicado) | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlusTests/DefaultHealthCheckServicePlusTests.cs` (novo) | Teste `CheckHealthPlusAsync_ShouldUseDegradedPolicy_WhenLastStatusIsDegraded` construído com `DefaultHealthCheckServicePlus` real via DI in-process (sem WebApplicationFactory), conforme decidido no plano. Falha hoje como esperado: `Assert.Equal() Failure: Expected UrlRequest, Actual Background` — prova o achado crítico 1. Suíte completa: 31 pré-existentes verdes + 1 novo vermelho (intencional) = 32 total. Este teste só deve ficar verde depois de P0.3 (consolidação); não "corrigir" isoladamente aqui. |
+| P0.2 — Teste de regressão: NRE sem política Healthy | Concluído | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlusTests/DefaultHealthCheckServicePlusTests.cs` | Teste `Constructor_ShouldThrowClearException_WhenRegistrationHasNoHealthyPolicy`. Implementado junto com P0.4 (fail-fast). Verde. |
+| P0.3 — Consolidar resolução de política em método único | Concluído | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlus/Internal/WrapperMicrosoft/DefaultHealthCheckServicePlus.cs`, `src/HealthCheckPlusTests/DefaultHealthCheckServicePlusTests.cs` | Extraídos os helpers `FindPolicy`/`GetHealthyPolicy` (lookup único, parametrizado pelo status — elimina a possibilidade do bug de enum errado), `ResolveForegroundPolicy` (fallback para a política Healthy quando não há override), `ResolveBackgroundPolicy` (fallback para os defaults de `HealthCheckPlusBackGroundOptions` — comportamento distinto do caminho HTTP, mantido de propósito) e `ScheduleIfDue` (monta o registro e decide se deve rodar, compartilhado pelos dois caminhos). O switch duplicado foi removido dos dois métodos (`CheckHealthPlusAsync` e `BackGroudCheckHealthPlusAsync`). Teste de P0.1 (Degraded) ficou verde como efeito colateral, sem alteração própria. Adicionados 2 testes de caracterização (Unhealthy no caminho HTTP; fallback para defaults do background quando falta política explícita) para blindar os ramos que não tinham bug mas foram tocados pelo refactor. Suíte: 35/35 verdes (31 pré-existentes + 4 novos desta fase). `dotnet build` limpo nos 3 TFMs. |
+| P0.4 — Comportamento sem política Healthy (Opção A fail-fast vs Opção B default+warning) | Concluído | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlus/Internal/WrapperMicrosoft/DefaultHealthCheckServicePlus.cs` | **Decisão tomada: Opção A (fail-fast).** Motivo duplo: (1) sem compromisso de compatibilidade com versão anterior; (2) argumento de produto — um health check que aplica período padrão em silêncio quando mal configurado contradiz o propósito da biblioteca (dizer a verdade sobre a saúde do sistema); falhar alto e cedo (erro de construção, com nome do check) é preferível a degradar sem avisar. Implementado: método `ValidateHealthyPolicies` chamado no fim do construtor de `DefaultHealthCheckServicePlus`, lança `InvalidOperationException` listando os nomes dos checks sem política Healthy. P2.6 vira apenas confirmação, não mais reavaliação. |
+| P0.5 — Remover Dispose por execução em WrapperBaseHealthCheckPlus | Concluído | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlus/Internal/WrapperBaseHealthCheckPlus.cs`, `src/HealthCheckPlusTests/WrapperBaseHealthCheckPlusTests.cs` (novo) | Removida a chamada `disposable.Dispose()` de dentro de `CheckHealthAsync`. Teste `CheckHealthAsync_ShouldNotDisposeWrappedInstance_AcrossMultipleCalls` escrito e confirmado vermelho contra o código anterior (`ObjectDisposedException` na 2ª chamada), depois verde após o fix. Disposal de fato no encerramento do processo continua adiado para P1.1, como planejado. Suíte: 36/36 verdes, build limpo nos 3 TFMs. |
+| P0.6 — Trocar DateTime.Now por DateTime.UtcNow | Concluído | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlus/Internal/CacheHealthCheckPlus.cs`, `src/HealthCheckPlus/Internal/WrapperMicrosoft/DefaultHealthCheckServicePlus.cs`, `src/HealthCheckPlusTests/DefaultHealthCheckServicePlusTests.cs` | Todas as 6 ocorrências em `src/HealthCheckPlus/` trocadas (confirmado por `Grep` vazio). Também ajustados os 3 testes de P0.1/P0.3 que alimentavam `DateRef` com `DateTime.Now` — passaram a usar `DateTime.UtcNow` para não ficarem sensíveis ao fuso horário local da máquina, já que a comparação de produção agora é sempre em UTC. Suíte: 36/36 verdes, build limpo nos 3 TFMs. |
+| P0.7 — Corrigir mensagem de erro malformada | Concluído | 2026-08-14 | working tree (não commitado) | `src/HealthCheckPlus/Microsoft.AspNetCore.Builder/HealthChecksPlusAppExtension.cs`, `src/HealthCheckPlusTests/HealthChecksPlusAppExtensionTests.cs` (novo) | Mensagem reescrita para citar `AddHealthChecks` e `AddHealthChecksPlus` claramente, sem o parêntese sobrando. Teste `UseHealthChecksPlus_ShouldThrowClearException_WhenAddHealthChecksNotCalled` escrito e confirmado vermelho contra a mensagem antiga (`Assert.DoesNotContain` pegou "Unable Find"), depois verde após o fix. Suíte: 37/37 verdes, build limpo nos 3 TFMs. |
+| P0.8 — Atualizar SECURITY.md | Concluído | 2026-08-14 | working tree (não commitado) | `SECURITY.md` | Tabela de versões suportadas atualizada de "2.x" para "4.x" (< 4.x sem suporte), refletindo o bump de versão e a ausência de compromisso de compatibilidade com versões anteriores. Mudança em Markdown, não exige build/teste. |
+| P0.9 — Gate de fechamento da Fase 0 | **Concluído — Fase 0 fechada** | 2026-08-14 | working tree (não commitado) | — | Todos os critérios atendidos: (1) `dotnet build` limpo nos 3 TFMs (net8/9/10); (2) `dotnet test` → 37/37 verdes = 31 pré-existentes + 6 novos (P0.1 Degraded, P0.2 fail-fast, P0.3 caracterização Unhealthy, P0.3 caracterização fallback background, P0.5 dispose, P0.7 mensagem de erro); (3) P0.1 e P0.2, que nasceram vermelhos, agora passam; (4) `Grep` por `DateTime.Now` em `src/HealthCheckPlus/` retorna vazio; (5) decisão de P0.4 registrada (Opção A, fail-fast). Bônus fora do plano original: bump de versão para 4.0.0 nos dois pacotes, a pedido do usuário. Nada commitado ainda — toda a Fase 0 está na working tree. |
+
+## Fase 1 — Escopo de estado por instância
+
+| Passo | Status | Data | Commit/branch | Arquivos tocados | Decisão/Notas |
+|---|---|---|---|---|---|
+| P1.1 — Mover estado estático para o container de DI (+ disposal do cache adiado de P0.5) | Pendente | | | | |
+| P1.2 — Teste com dois hosts no mesmo processo | Pendente | | | | Resultado promove o achado "Inferido" da auditoria para "Verificado" (registrar aqui qual dos dois) |
+| P1.3 — Gate de fechamento da Fase 1 | Pendente | | | | |
+
+## Fase 2 — Substituir a ponte reflectiva do AddCheckLinkTo
+
+| Passo | Status | Data | Commit/branch | Arquivos tocados | Decisão/Notas |
+|---|---|---|---|---|---|
+| P2.1 — Desenhar a nova API de adoção | Pendente | | | | Registrar aqui a assinatura escolhida |
+| P2.2 — Implementar a nova API | Pendente | | | | |
+| P2.3 — Atualizar Samples/ e README.md | Pendente | | | | |
+| P2.4 — Testes de integração da nova adoção | Pendente | | | | |
+| P2.5 — Remover código reflectivo antigo | Pendente | | | | |
+| P2.6 — Revisitar decisão de P0.4 | Pendente | | | | |
+| P2.7 — Gate de fechamento da Fase 2 | Pendente | | | | |
+
+## Fase 3 — Suíte de testes de integração real
+
+| Passo | Status | Data | Commit/branch | Arquivos tocados | Decisão/Notas |
+|---|---|---|---|---|---|
+| P3.1 — Infraestrutura WebApplicationFactory | Pendente | | | | |
+| P3.2 — Cobertura DefaultHealthCheckServicePlus fim a fim | Pendente | | | | |
+| P3.3 — Cobertura background service + filtros de publicação | Pendente | | | | |
+| P3.4 — Cobertura middleware fim a fim | Pendente | | | | |
+| P3.5 — Cobertura DI extensions + cenário dois hosts | Pendente | | | | Reaproveita/migra P1.2 |
+| P3.6 — Medir cobertura e definir meta | Pendente | | | | Registrar aqui o número medido e a meta definida após a medição |
+| P3.7 — Gate de fechamento da Fase 3 | Pendente | | | | |
+
+## Fase 4 — Diferenciação
+
+Não detalhada em passos ainda — só planejar depois que Fases 0–3 estiverem com todos os gates acima marcados "Concluído".
+
+---
+
+## Log de sessões
+
+Registrar aqui, em ordem cronológica, um resumo curto do que foi feito em cada sessão de trabalho neste plano — serve de complemento à tabela acima quando o "porquê" de uma decisão for mais longo do que cabe em uma célula.
+
+- **2026-08-14** — Plano criado a partir da auditoria (`doc/healthcheckplus-audit.html`). Nenhum passo de execução iniciado ainda.
+- **2026-08-14** — P0.1 executado: criado `src/HealthCheckPlusTests/DefaultHealthCheckServicePlusTests.cs` com o teste de regressão do achado crítico 1. Confirmado vermelho contra o código atual (`dotnet test` → 31 passando + 1 falhando = 32). Próximo passo sugerido: P0.2 (teste de regressão do achado crítico 2 — mas depende da decisão de P0.4 ainda pendente) ou adiantar P0.4 antes.
+- **2026-08-14** — Decisão de P0.4 tomada com o usuário: Opção A (fail-fast). Implementado `ValidateHealthyPolicies` em `DefaultHealthCheckServicePlus` (lança `InvalidOperationException` no construtor, listando checks sem política Healthy). Teste P0.2 (`Constructor_ShouldThrowClearException_WhenRegistrationHasNoHealthyPolicy`) escrito primeiro (vermelho), depois confirmado verde após a implementação. Suíte completa: 31 pré-existentes + 1 de P0.1 (ainda vermelho, intencional) + 1 de P0.2 (verde) = 33 total, `dotnet build` limpo nos 3 TFMs. Próximo passo: P0.3 (consolidar resolução de política em método único), que deve fazer o teste de P0.1 ficar verde como efeito colateral.
+- **2026-08-14** — Convenção de idioma esclarecida pelo usuário: a conversa continua em pt-BR, mas toda documentação nova, comentários de código, mensagens de exceção/log etc. daqui para frente devem ser em en-US. Exceção explícita: estes três arquivos já gerados (`doc/healthcheckplus-audit.html`, `doc/plano-acao-healthcheckplus.md`, `doc/progresso-plano-acao.md`) ficam em pt-BR, inclusive em edições futuras. Comentários em pt-BR que haviam entrado em `DefaultHealthCheckServicePlus.cs` e `DefaultHealthCheckServicePlusTests.cs` (durante P0.2/P0.4) foram traduzidos para en-US; suíte revalidada (32 verdes + 1 vermelho intencional = 33, igual antes da tradução).
+- **2026-08-14** — P0.3 executado: resolução de política consolidada em helpers únicos (`FindPolicy`, `GetHealthyPolicy`, `ResolveForegroundPolicy`, `ResolveBackgroundPolicy`, `ScheduleIfDue`), removendo o switch duplicado dos dois métodos de execução. Teste de P0.1 ficou verde sem alteração própria. Adicionados 2 testes de caracterização (Unhealthy no HTTP; fallback de background sem política explícita). Suíte: 35/35 verdes, build limpo nos 3 TFMs. Próximo passo: P0.5 (remover o Dispose por chamada em `WrapperBaseHealthCheckPlus`) — P0.6 (DateTime.Now → UtcNow) só depois, porque a consolidação já mexeu onde essas comparações vivem.
+- **2026-08-14** — P0.5 executado: removida a chamada de `Dispose()` de dentro de `CheckHealthAsync` em `WrapperBaseHealthCheckPlus`. Teste novo escrito e confirmado vermelho (revertendo o fix temporariamente para provar `ObjectDisposedException` na 2ª chamada), depois reaplicado o fix e confirmado verde. Suíte: 36/36 verdes, build limpo nos 3 TFMs. Próximo passo: P0.6 (trocar `DateTime.Now` por `DateTime.UtcNow`, agora que P0.3 já consolidou onde essas comparações vivem).
+- **2026-08-14** — P0.6 executado: `DateTime.Now` → `DateTime.UtcNow` em `CacheHealthCheckPlus` (`DateRegister`, `SwithState`) e `DefaultHealthCheckServicePlus` (`ScheduleIfDue`, `dtref` nos dois caminhos). `Grep` por `DateTime.Now` em `src/HealthCheckPlus/` retorna vazio. Testes de P0.1/P0.3 ajustados para alimentar `DateRef` com `DateTime.UtcNow` também (senão ficariam quebrados fora do fuso UTC). Suíte: 36/36 verdes, build limpo nos 3 TFMs. Próximo passo: P0.7 (mensagem de erro malformada em `HealthChecksPlusAppExtension`).
+- **2026-08-14** — Pausa a pedido do usuário após P0.6. Antes de retomar, bump de versão pedido explicitamente: adicionado `<Version>4.0.0</Version>` em `src/HealthCheckPlus/HealthCheckPlus.csproj` e `src/HealthCheckPlus.Abstractions/HealthCheckPlus.Abstractions.csproj` (nenhum dos dois tinha `<Version>` fixo antes — a versão só era injetada no `publish.yml` via `-p:Version=` a partir da tag git; agora o valor também fica explícito no repositório, e o `-p:Version=` do CI continua tendo prioridade quando uma tag for publicada). Confirmado com `dotnet pack` → `HealthCheckPlus.4.0.0.nupkg`. Isso muda o que P0.8 deve escrever no `SECURITY.md` (série 4.x, não 3.x). Nada commitado ainda.
+- **2026-08-14** — P0.7 executado: mensagem de erro de `HealthChecksPlusAppExtension.UseHealthChecksCore` reescrita (removido o parêntese sobrando, texto agora cita `AddHealthChecks`/`AddHealthChecksPlus` com clareza). Teste escrito e confirmado vermelho contra a mensagem antiga, depois verde após o fix. Suíte: 37/37 verdes, build limpo nos 3 TFMs. Próximo e último passo da Fase 0: P0.8 (atualizar `SECURITY.md` para a série 4.x), seguido do gate P0.9.
+- **2026-08-14** — P0.8 executado: `SECURITY.md` atualizado de "2.x" para "4.x" como série suportada. P0.9 (gate de fechamento) executado logo em seguida: build limpo nos 3 TFMs, 37/37 testes verdes, `Grep` de `DateTime.Now` vazio, decisão de P0.4 registrada. **Fase 0 (Estabilização) está fechada.** Próximo passo: Fase 1 (P1.1 — mover `_addedHealthChecksPlus`/`_externalCheck` de campos estáticos para o container de DI) ou Fase 2 (substituir a ponte reflectiva do `AddCheckLinkTo`) — as duas podem correr em paralelo/independentemente, conforme o plano. Nada commitado ainda; toda a Fase 0 está na working tree.
