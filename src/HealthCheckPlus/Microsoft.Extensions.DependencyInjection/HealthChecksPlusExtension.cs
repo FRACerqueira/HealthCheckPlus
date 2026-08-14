@@ -3,7 +3,6 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using System.Collections.Concurrent;
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.Policies;
@@ -22,8 +21,21 @@ namespace Microsoft.Extensions.DependencyInjection
     /// </summary>
     public static class HealthChecksPlusExtension
     {
-        private static readonly ConcurrentDictionary<string, WrapperBaseHealthCheckPlus> _externalCheck = new();
-        private static bool _addedHealthChecksPlus;
+        // Retrieves (or creates and registers) the HealthChecksPlusRegistrationState instance
+        // scoped to this specific IServiceCollection. See HealthChecksPlusRegistrationState for
+        // why this replaced process-wide static fields (doc/progresso-plano-acao.md, step P1.1).
+        private static HealthChecksPlusRegistrationState GetOrCreateState(IServiceCollection services)
+        {
+            var descriptor = services.FirstOrDefault(x => x.ServiceType == typeof(HealthChecksPlusRegistrationState));
+            if (descriptor?.ImplementationInstance is HealthChecksPlusRegistrationState existing)
+            {
+                return existing;
+            }
+
+            var state = new HealthChecksPlusRegistrationState();
+            services.AddSingleton(state);
+            return state;
+        }
 
         /// <summary>
         /// Register HealthChecksPlus Background service with <see cref="HealthCheckPlusBackGroundOptions"/> options.
@@ -42,7 +54,7 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(ihb);
 
-            if (!_addedHealthChecksPlus)
+            if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
@@ -81,7 +93,7 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(ihb);
 
-            if (!_addedHealthChecksPlus)
+            if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
@@ -110,7 +122,7 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(ihb);
 
-            if (!_addedHealthChecksPlus)
+            if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
@@ -137,7 +149,7 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 throw new ArgumentException("Not any List of HealthChecks names");
             }
-            _addedHealthChecksPlus = true;
+            GetOrCreateState(sc).AddedHealthChecksPlus = true;
 
             IHealthChecksBuilder ihb = sc.AddHealthChecks();
             //remove Microsoft DefaultHealthCheckService
@@ -183,7 +195,7 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(ihb);
 
-            if (!_addedHealthChecksPlus)
+            if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
@@ -233,7 +245,7 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(ihb);
 
-            if (!_addedHealthChecksPlus)
+            if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
@@ -246,6 +258,8 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 throw new ArgumentException($"Enum Name({namedep}) has same name of registered check name({name}).");
             }
+
+            var state = GetOrCreateState(ihb.Services);
 
             ServiceDescriptor[] srvs_opt = ihb.Services
                 .Where(x => x.ImplementationInstance != null && x.ServiceType.UnderlyingSystemType.FullName!.Contains("HealthCheckServiceOptions"))
@@ -267,13 +281,13 @@ namespace Microsoft.Extensions.DependencyInjection
                             namedep,
                             (sp) =>
                             {
-                                if (_externalCheck.TryGetValue(namedep, out WrapperBaseHealthCheckPlus? value))
+                                if (state.ExternalCheck.TryGetValue(namedep, out WrapperBaseHealthCheckPlus? value))
                                 {
                                     return value;
                                 }
                                 //ensure existed in dict.
-                                _externalCheck.TryAdd(namedep, new WrapperBaseHealthCheckPlus(act_opt.Registrations.First().Factory.Invoke(sp)));
-                                return _externalCheck[namedep];
+                                state.ExternalCheck.TryAdd(namedep, new WrapperBaseHealthCheckPlus(act_opt.Registrations.First().Factory.Invoke(sp)));
+                                return state.ExternalCheck[namedep];
                             },
                             act_opt.Registrations.First().FailureStatus,
                             act_opt.Registrations.First().Tags,
