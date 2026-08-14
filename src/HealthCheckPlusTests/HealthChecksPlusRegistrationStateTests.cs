@@ -30,6 +30,21 @@ namespace HealthCheckPlusTests
             }
         }
 
+        private sealed class DisposableTrackingCheck : IHealthCheck, IDisposable
+        {
+            public bool Disposed { get; private set; }
+
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(HealthCheckResult.Healthy());
+            }
+
+            public void Dispose()
+            {
+                Disposed = true;
+            }
+        }
+
         private static ServiceProvider BuildHostWithAdoptedCheck(string linkName)
         {
             var services = new ServiceCollection();
@@ -59,6 +74,33 @@ namespace HealthCheckPlusTests
             Assert.True(state1.ExternalCheck.ContainsKey("MyCheck"));
             Assert.True(state2.ExternalCheck.ContainsKey("MyCheck"));
             Assert.NotSame(state1.ExternalCheck["MyCheck"], state2.ExternalCheck["MyCheck"]);
+        }
+
+        // Regression test for the R3 follow-up (doc/progresso-plano-acao.md): disposing the
+        // container must dispose adopted external check instances cached in
+        // HealthChecksPlusRegistrationState.ExternalCheck. DefaultHealthCheckServicePlus — a
+        // factory-registered, container-managed singleton, unlike HealthChecksPlusRegistrationState
+        // itself — now does this in its own Dispose().
+        [Fact]
+        public async Task DisposingTheContainer_ShouldDisposeAdoptedExternalCheckInstances()
+        {
+            var check = new DisposableTrackingCheck();
+
+            var services = new ServiceCollection();
+            services.AddLogging();
+            var ihb = services.AddHealthChecksPlus(["MyCheck"]);
+            ihb.Add(new HealthCheckRegistration("Original", _ => check, null, null));
+            ihb.AddCheckLinkTo("MyCheck", "Original");
+
+            var provider = services.BuildServiceProvider();
+            var service = (DefaultHealthCheckServicePlus)provider.GetRequiredService<HealthCheckService>();
+            await service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, CancellationToken.None);
+
+            Assert.False(check.Disposed);
+
+            provider.Dispose();
+
+            Assert.True(check.Disposed);
         }
     }
 }

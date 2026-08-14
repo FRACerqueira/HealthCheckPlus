@@ -18,7 +18,7 @@ using System.Text;
 
 namespace HealthCheckPlus.Internal.WrapperMicrosoft
 {
-    internal partial class DefaultHealthCheckServicePlus : HealthCheckService
+    internal partial class DefaultHealthCheckServicePlus : HealthCheckService, IDisposable
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IOptions<HealthCheckServiceOptions> _options;
@@ -26,17 +26,20 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         private readonly ILogger<HealthCheckService> _logger;
         private readonly List<IHealthCheckPlusPolicyStatus> _policies;
         private readonly CacheHealthCheckPlus _cacheStatus;
+        private readonly HealthChecksPlusRegistrationState _registrationState;
 
         public DefaultHealthCheckServicePlus(
             IServiceScopeFactory scopeFactory,
             IServiceProvider services,
             ILogger<HealthCheckService> logger,
-            IOptions<HealthCheckServiceOptions> options)
+            IOptions<HealthCheckServiceOptions> options,
+            HealthChecksPlusRegistrationState registrationState)
         {
             _services = services;
             _logger = logger;
             _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _options = options ?? throw new ArgumentNullException(nameof(options));
+            _registrationState = registrationState ?? throw new ArgumentNullException(nameof(registrationState));
             // We're specifically going out of our way to do this at startup time. We want to make sure you
             // get any kind of health-check related error as early as possible. Waiting until someone
             // actually tries to **run** health checks would be real baaaaad.
@@ -49,6 +52,22 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             _cacheStatus = (CacheHealthCheckPlus)_services.GetRequiredService<IStateHealthChecksPlus>();
 
             ValidateHealthyPolicies(_options.Value.Registrations, _policies);
+        }
+
+        // DefaultHealthCheckServicePlus is a container-constructed singleton (registered via
+        // TryAddSingleton<HealthCheckService, DefaultHealthCheckServicePlus>() — a factory
+        // registration, not a ready-made instance), so the container reliably disposes it at host
+        // shutdown. Piggybacking the adopted external check instances' disposal here closes the
+        // residual resource leak deferred since P0.5/P1.1 (doc/progresso-plano-acao.md): those
+        // instances live in HealthChecksPlusRegistrationState, which — unlike this class — is
+        // registered as a ready-made instance and therefore is NOT disposed automatically by the
+        // container (documented .NET DI behavior), so nothing was disposing them at shutdown.
+        public void Dispose()
+        {
+            foreach (WrapperBaseHealthCheckPlus wrapper in _registrationState.ExternalCheck.Values)
+            {
+                wrapper.Dispose();
+            }
         }
 
         // Product decision recorded in doc/progresso-plano-acao.md (step P0.4): a health check

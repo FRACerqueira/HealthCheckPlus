@@ -59,8 +59,21 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
 
-            //remove Microsoft DefaultHealthCheckService
-            ServiceDescriptor? hcs = ihb.Services.FirstOrDefault(x => x.ImplementationType != null && x.ImplementationType.Name.Equals("HealthCheckPublisherHostedService"));
+            // Remove the native HealthCheckPublisherHostedService so publishers aren't driven both
+            // by it and by HealthCheckPlusBackGroundService. Unlike the HealthCheckService removal
+            // in AddHealthChecksPlus, this one genuinely cannot be matched by a public service or
+            // implementation type: it's registered as ServiceDescriptor.Singleton<IHostedService,
+            // HealthCheckPublisherHostedService>() (internal sealed, implements only IHostedService
+            // — no distinguishing public marker), and matching on ServiceType == typeof(IHostedService)
+            // alone would risk removing unrelated hosted services the consumer's own app registered
+            // (background workers, SignalR, etc.). Matching the fully qualified internal type name
+            // (not just the short name) is the narrowest correct option available. If a future .NET
+            // version renames/moves this type, this silently stops matching — the native and
+            // HealthCheckPlus background services would then both run and both invoke publishers.
+            // Tracked as a known residual risk (doc/progresso-plano-acao.md, Fase 2 follow-up);
+            // no public replacement exists, unlike the HealthCheckService case.
+            ServiceDescriptor? hcs = ihb.Services.FirstOrDefault(x =>
+                x.ImplementationType?.FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService");
             if (hcs != null)
             {
                 ihb.Services.Remove(hcs!);

@@ -28,6 +28,32 @@ namespace HealthCheckPlusTests.Integration
             }
         }
 
+        private sealed class AlwaysHealthyCheck : IHealthCheck
+        {
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(HealthCheckResult.Healthy());
+            }
+        }
+
+        // HttpContext.Connection.LocalPort is settable directly even without a real socket bound,
+        // which is what lets a TestServer-backed request exercise the port-matching predicate
+        // inside HealthChecksPlusAppExtension.UseHealthChecksCore.
+        private static void UsePortFromHeader(IApplicationBuilder app)
+        {
+            app.Use(async (ctx, next) =>
+            {
+                if (ctx.Request.Headers.TryGetValue("X-Test-Port", out var portHeader) && int.TryParse(portHeader, out var port))
+                {
+                    ctx.Connection.LocalPort = port;
+                }
+                await next();
+            });
+        }
+
+        private static HttpRequestMessage HealthRequest(int port) =>
+            new(HttpMethod.Get, "/health") { Headers = { { "X-Test-Port", port.ToString() } } };
+
         [Fact]
         public async Task GetHealth_ShouldMapUnhealthyStatus_ToConfiguredStatusCode()
         {
@@ -87,6 +113,80 @@ namespace HealthCheckPlusTests.Integration
             var entry = root.GetProperty("entries").EnumerateArray().Single();
             Assert.Equal("Test1", entry.GetProperty("name").GetString());
             Assert.Equal("simulated failure", entry.GetProperty("description").GetString());
+        }
+
+        // Closes the coverage gap noted in doc/progresso-plano-acao.md (Fase 3 follow-up): the
+        // UseHealthChecksPlus(path, port) overload had never been exercised by any test.
+        [Fact]
+        public async Task UseHealthChecksPlus_WithPortOverload_ShouldOnlyMatchConfiguredPort()
+        {
+            const int expectedPort = 5443;
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
+                },
+                app =>
+                {
+                    UsePortFromHeader(app);
+                    app.UseHealthChecksPlus("/health", expectedPort);
+                    app.Run(async ctx =>
+                    {
+                        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+                        await ctx.Response.WriteAsync("not-health");
+                    });
+                });
+
+            var client = host.GetTestClient();
+
+            var matchingResponse = await client.SendAsync(HealthRequest(expectedPort), TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, matchingResponse.StatusCode);
+
+            var mismatchingResponse = await client.SendAsync(HealthRequest(expectedPort + 1), TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.NotFound, mismatchingResponse.StatusCode);
+            Assert.Equal("not-health", await mismatchingResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        }
+
+        // Closes the coverage gap noted in doc/progresso-plano-acao.md (Fase 3 follow-up): the
+        // UseHealthChecksPlus(path, port, options) overload had never been exercised by any test.
+        [Fact]
+        public async Task UseHealthChecksPlus_WithPortAndOptionsOverload_ShouldApplyOptionsOnlyWhenPortMatches()
+        {
+            const int expectedPort = 6443;
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
+                },
+                app =>
+                {
+                    UsePortFromHeader(app);
+                    app.UseHealthChecksPlus("/health", expectedPort, new HealthCheckPlusOptions
+                    {
+                        ResponseWriter = HealthCheckPlusOptions.WriteShortDetails
+                    });
+                    app.Run(async ctx =>
+                    {
+                        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+                        await ctx.Response.WriteAsync("not-health");
+                    });
+                });
+
+            var client = host.GetTestClient();
+
+            var matchingResponse = await client.SendAsync(HealthRequest(expectedPort), TestContext.Current.CancellationToken);
+            var body = await matchingResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            using var json = JsonDocument.Parse(body);
+            Assert.Equal("Healthy", json.RootElement.GetProperty("status").GetString());
+
+            var mismatchingResponse = await client.SendAsync(HealthRequest(expectedPort + 1), TestContext.Current.CancellationToken);
+            Assert.Equal("not-health", await mismatchingResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
     }
 }

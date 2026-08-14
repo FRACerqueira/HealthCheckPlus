@@ -3,9 +3,11 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using HealthCheckPlus.Internal;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 
 namespace HealthCheckPlusTests.Integration
 {
@@ -73,6 +75,32 @@ namespace HealthCheckPlusTests.Integration
 
             Assert.True(check.CallCount >= 2, $"Expected the background service to have rerun the check at least twice, got {check.CallCount}.");
             Assert.Equal(1, publisher.PublishCount);
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Direct, timing-independent regression test for the native HealthCheckPublisherHostedService
+        // removal in AddBackgroundPolicy (residual risk noted in doc/progresso-plano-acao.md, Fase 2
+        // follow-up) — the test above infers this indirectly from publish counts within a timing
+        // window, which a fast/slow CI run could make inconclusive; this asserts the DI wiring
+        // directly instead.
+        [Fact]
+        public async Task AddBackgroundPolicy_ShouldRemoveNativeHealthCheckPublisherHostedService()
+        {
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<CountingCheck>("Test1");
+                    ihb.AddBackgroundPolicy();
+                },
+                _ => { });
+
+            var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+
+            Assert.DoesNotContain(hostedServices, s => s.GetType().FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService");
+            Assert.Contains(hostedServices, s => s is HealthCheckPlusBackGroundService);
 
             await host.StopAsync(TestContext.Current.CancellationToken);
         }

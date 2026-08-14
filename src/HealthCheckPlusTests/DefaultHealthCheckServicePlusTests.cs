@@ -45,7 +45,8 @@ namespace HealthCheckPlusTests
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 provider,
                 NullLogger<HealthCheckService>.Instance,
-                Options.Create(hcOptions));
+                Options.Create(hcOptions),
+                new HealthChecksPlusRegistrationState());
         }
 
         // Critical finding: "Degraded policy is ignored on the HTTP request path"
