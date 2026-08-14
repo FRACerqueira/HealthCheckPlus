@@ -152,11 +152,15 @@ namespace Microsoft.Extensions.DependencyInjection
             GetOrCreateState(sc).AddedHealthChecksPlus = true;
 
             IHealthChecksBuilder ihb = sc.AddHealthChecks();
-            //remove Microsoft DefaultHealthCheckService
-            ServiceDescriptor? hcs = sc.FirstOrDefault(x => x.ImplementationType != null && x.ImplementationType.Name.Equals("DefaultHealthCheckService"));
-            if (hcs != null)
+
+            // Replace the HealthCheckService implementation registered by AddHealthChecks() with
+            // DefaultHealthCheckServicePlus. Matched by the public HealthCheckService service type,
+            // not by the internal DefaultHealthCheckService implementation type name — that
+            // internal type is not a supported contract and has already been renamed/restructured
+            // once across .NET versions (see doc/progresso-plano-acao.md, Fase 2).
+            foreach (ServiceDescriptor descriptor in sc.Where(x => x.ServiceType == typeof(HealthCheckService)).ToArray())
             {
-                sc.Remove(hcs!);
+                sc.Remove(descriptor);
             }
 
             //add custom DefaultHealthCheckServicePlus
@@ -261,55 +265,51 @@ namespace Microsoft.Extensions.DependencyInjection
 
             var state = GetOrCreateState(ihb.Services);
 
-            ServiceDescriptor[] srvs_opt = ihb.Services
-                .Where(x => x.ImplementationInstance != null && x.ServiceType.UnderlyingSystemType.FullName!.Contains("HealthCheckServiceOptions"))
-                .ToArray();
-
-            foreach (ServiceDescriptor? item in srvs_opt)
+            // Adopt the existing registration named `name` (e.g. one added by a third-party
+            // package's own IHealthChecksBuilder extension, such as AddRedis) by hooking into the
+            // same public, documented Options pipeline that registration itself used to get there,
+            // instead of reaching into internal ASP.NET Core types.
+            //
+            // Configure<HealthCheckServiceOptions> callbacks run in registration order against the
+            // one, real HealthCheckServiceOptions instance when IOptions<HealthCheckServiceOptions>
+            // is first resolved — so as long as AddCheckLinkTo is called after the original
+            // registration (the documented usage), `name`'s HealthCheckRegistration is already
+            // present in `options.Registrations` by the time this callback runs. This replaces the
+            // previous approach of scanning ServiceDescriptor.ImplementationInstance for a
+            // ConfigureNamedOptions<HealthCheckServiceOptions> and reflecting into its captured
+            // Action to reconstruct a throwaway copy of the options (doc/progresso-plano-acao.md,
+            // Fase 2 — the ponte reflectiva).
+            ihb.Services.Configure<HealthCheckServiceOptions>(options =>
             {
-                ConfigureNamedOptions<HealthCheckServiceOptions> hc_srvopt = (ConfigureNamedOptions<HealthCheckServiceOptions>)item.ImplementationInstance!;
-                HealthCheckServiceOptions act_opt = new();
-                hc_srvopt.Action!.Invoke(act_opt);
-                if (act_opt.Registrations.Any(x => x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase)))
+                HealthCheckRegistration? original = options.Registrations
+                    .FirstOrDefault(x => x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase));
+
+                if (original is null)
                 {
-                    //IHealthCheckPlusPolicyStatus? policy = null;
-
-                    //save default register
-                    ServiceDescriptor hcs = item;
-
-                    HealthCheckRegistration reg = new(
-                            namedep,
-                            (sp) =>
-                            {
-                                if (state.ExternalCheck.TryGetValue(namedep, out WrapperBaseHealthCheckPlus? value))
-                                {
-                                    return value;
-                                }
-                                //ensure existed in dict.
-                                state.ExternalCheck.TryAdd(namedep, new WrapperBaseHealthCheckPlus(act_opt.Registrations.First().Factory.Invoke(sp)));
-                                return state.ExternalCheck[namedep];
-                            },
-                            act_opt.Registrations.First().FailureStatus,
-                            act_opt.Registrations.First().Tags,
-                            act_opt.Registrations.First().Timeout)
-                    {
-                        Delay = delay,
-                        Period = period
-                    };
-                    ihb.Add(reg);
-
-                    //add policy for Healthy
-                    ihb.Services.AddSingleton<IHealthCheckPlusPolicyStatus>(
-                        new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, reg.Delay, reg.Period, namedep));
-
-                    //remove default register
-                    if (hcs != null)
-                    {
-                        ihb.Services.Remove(hcs!);
-                    }
-
+                    throw new InvalidOperationException(
+                        $"No health check named '{name}' was found. Register it (e.g. via the third-party package's own " +
+                        $"IHealthChecksBuilder extension) before calling {nameof(AddCheckLinkTo)}.");
                 }
-            }
+
+                options.Registrations.Remove(original);
+
+                HealthCheckRegistration reg = new(
+                        namedep,
+                        (sp) => state.ExternalCheck.GetOrAdd(namedep, _ => new WrapperBaseHealthCheckPlus(original.Factory(sp))),
+                        original.FailureStatus,
+                        original.Tags,
+                        original.Timeout)
+                {
+                    Delay = delay,
+                    Period = period
+                };
+                options.Registrations.Add(reg);
+            });
+
+            //add policy for Healthy
+            ihb.Services.AddSingleton<IHealthCheckPlusPolicyStatus>(
+                new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, namedep));
+
             return ihb;
         }
     }
