@@ -64,9 +64,42 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // container (documented .NET DI behavior), so nothing was disposing them at shutdown.
         public void Dispose()
         {
-            foreach (WrapperBaseHealthCheckPlus wrapper in _registrationState.ExternalCheck.Values)
+            foreach (var (name, lazyWrapper) in _registrationState.ExternalCheck)
             {
-                wrapper.Dispose();
+                if (!lazyWrapper.IsValueCreated)
+                {
+                    // Never actually constructed (adopted but never scheduled to run before
+                    // shutdown) - nothing to dispose, and evaluating .Value here would construct
+                    // it just to immediately dispose it.
+                    continue;
+                }
+
+                try
+                {
+                    lazyWrapper.Value.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    // A consumer-supplied IDisposable.Dispose() throwing must not abort the loop:
+                    // without this try/catch, every adopted check after the first failing one was
+                    // silently left undisposed for the rest of process shutdown, with no signal
+                    // anywhere that it happened (found during the advisor re-validation pass,
+                    // doc/progresso-plano-acao.md).
+                    Log.HealthCheckDisposeError(_logger, name, ex);
+
+                    try
+                    {
+                        HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.AdoptedCheckDisposeFailed);
+                    }
+                    catch (Exception metricsEx)
+                    {
+                        // Metrics must never be able to break Dispose() either (same MeterListener
+                        // risk as everywhere else metrics are recorded) - but swallowing this without
+                        // its own log is exactly the silent-catch mistake this whole pass exists to
+                        // eliminate, so log it explicitly instead of assuming the log above covers it.
+                        Log.HealthCheckMetricsRecordingError(_logger, metricsEx);
+                    }
+                }
             }
         }
 
@@ -489,6 +522,16 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             public static void HealthCheckError(ILogger logger, HealthCheckRegistration registration, Exception exception, TimeSpan duration) =>
                 HealthCheckError(logger, registration.Name, duration.TotalMilliseconds, exception);
 
+            [LoggerMessage(EventIds.HealthCheckDisposeErrorId, LogLevel.Warning,
+                "Disposing the adopted external health check '{HealthCheckName}' threw an exception; continuing to dispose the remaining adopted checks.",
+                EventName = EventIds.HealthCheckDisposeErrorName)]
+            public static partial void HealthCheckDisposeError(ILogger logger, string HealthCheckName, Exception exception);
+
+            [LoggerMessage(EventIds.HealthCheckMetricsRecordingErrorId, LogLevel.Warning,
+                "Recording the anomaly metric for a health check dispose failure also failed; the dispose failure itself was already logged above.",
+                EventName = EventIds.HealthCheckMetricsRecordingErrorName)]
+            public static partial void HealthCheckMetricsRecordingError(ILogger logger, Exception exception);
+
             public static void HealthCheckData(ILogger logger, HealthCheckRegistration registration, HealthReportEntry entry)
             {
                 if (entry.Data.Count > 0 && logger.IsEnabled(LogLevel.Debug))
@@ -578,6 +621,8 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             public const int HealthCheckEndId = 103;
             public const int HealthCheckErrorId = 104;
             public const int HealthCheckDataId = 105;
+            public const int HealthCheckDisposeErrorId = 106;
+            public const int HealthCheckMetricsRecordingErrorId = 107;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
             public const string HealthCheckProcessingBeginName = "HealthCheckProcessingBegin";
@@ -586,6 +631,8 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             public const string HealthCheckEndName = "HealthCheckEnd";
             public const string HealthCheckErrorName = "HealthCheckError";
             public const string HealthCheckDataName = "HealthCheckData";
+            public const string HealthCheckMetricsRecordingErrorName = "HealthCheckPlusMetricsRecordingError";
+            public const string HealthCheckDisposeErrorName = "HealthCheckDisposeError";
 
             public static readonly EventId HealthCheckData = new(HealthCheckDataId, HealthCheckDataName);
         }

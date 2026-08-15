@@ -159,10 +159,57 @@ Prioridade arquitetural nº 1 do produto (ver seção 3 da auditoria) — é o c
 
 ---
 
-## Fase 4 — Diferenciação deliberada (backlog, não detalhado)
+## Fase 4 — Diferenciação deliberada
 
-Só entra em planejamento passo a passo depois que as Fases 0–3 estiverem fechadas e o gate de cada uma tiver sido cumprido. Itens candidatos (da auditoria, seção 7):
-- Documentação de arquitetura e runbook operacional.
-- Suporte opcional a cache compartilhado (ex.: Redis) para múltiplas réplicas.
-- Métricas/OpenTelemetry a partir do `HealthReport`.
-- Avaliar API fortemente tipada (enum/source generator) como alternativa opcional ao registro por string em `AddHealthChecksPlus`.
+Escopo fechado em conversa dedicada com o usuário (2026-08-14), item por item da lista original da auditoria (seção 7), com contexto/opções/trade-offs discutidos para cada um antes de decidir:
+
+| Item candidato (auditoria) | Decisão | Motivo |
+|---|---|---|
+| Documentação de arquitetura e runbook operacional | **Dentro do escopo** (arquitetura + `CONTRIBUTING.md` reescrito + runbook operacional) | Maior retorno por esforço, fecha achado direto da auditoria. **Sequenciado por último** dentro da Fase 4 — a doc deve descrever o sistema já com as métricas desenhadas, não uma versão intermediária que mudaria depois. |
+| Métricas/OpenTelemetry | **Dentro do escopo** — via `System.Diagnostics.Metrics` nativo do .NET, sem depender do SDK do OpenTelemetry | Preserva a regra de zero dependências externas do pacote principal (`CONTRIBUTING.md`); qualquer exportador (OTel, Prometheus, App Insights) consegue consumir via um `Meter` nomeado. Bom encaixe com o público-alvo (SRE/infra que já usa essas stacks). |
+| Cache distribuído (Redis) para múltiplas réplicas | **Fora de escopo** | Muda a categoria do produto (de "cada instância sabe de si mesma" para "estado agregado entre réplicas") sem demanda concreta identificada. Único cenário genuíno seria "dependência cara + N réplicas martelando simultaneamente" — não descartado para sempre, mas só revisitado se esse cenário aparecer de verdade. |
+| API fortemente tipada (enum/source generator) | **Fora de escopo** | O fail-fast de P0.4 já mitiga o problema prático (erro claro e imediato citando o nome errado). Ganho residual é ergonomia de IDE, não correção de bug — não compete bem com os outros itens em retorno. |
+
+Ordem de execução dentro da Fase 4: **P4.1–P4.6 (métricas) primeiro, depois P4.7 (corrigir a race de agendamento), depois P4.8–P4.11 (documentação)**.
+
+### P4.1 — Desenhar os instrumentos de métrica
+- **O quê**: fixar a convenção de nomenclatura (prefixo `healthcheckplus.*`), o nome/versão do `Meter` (ex.: `"HealthCheckPlus"`), e o conjunto inicial de instrumentos com suas tags:
+  - `healthcheckplus.check.duration` (Histogram) — tags: nome do check, status, origem (`HealthCheckTrigger`).
+  - `healthcheckplus.check.executions` (Counter) — tags: nome do check, origem.
+  - `healthcheckplus.check.status_transitions` (Counter) — tags: nome do check, status anterior, status novo — dispara só quando o status realmente muda, não a cada execução.
+  - `healthcheckplus.publisher.invocations` (Counter) — tags: nome/tipo do publisher.
+- **Critério de aceite**: nomes e tags revisados antes de implementar — isso vira um contrato público difícil de mudar depois de publicado.
+- **Cuidado de cardinalidade**: tags restritas a valores de conjunto conhecido e limitado (nomes de check, enums de status/origem) — nunca mensagens de exceção ou valores não limitados.
+
+### P4.2 — Implementar o `Meter` e os instrumentos
+- **O quê**: nova classe interna (ex. `HealthCheckPlusMetrics`) expondo um `Meter` estático/singleton e os instrumentos desenhados em P4.1. Sem `IMeterFactory`/DI — um `Meter` module-level simples funciona independente de o consumidor ter chamado algum `AddMetrics()` ou não, e é o padrão mais comum para bibliotecas pequenas.
+
+### P4.3 — Instrumentar a execução de checks
+- **O quê**: registrar duração/contagem em `DefaultHealthCheckServicePlus.RunCheckAsync`; registrar transição de status em `CacheHealthCheckPlus.Update` (comparando o status anterior com o novo antes de sobrescrever).
+
+### P4.4 — Instrumentar publicação
+- **O quê**: registrar contagem de invocações em `HealthCheckPlusBackGroundService.RunPublisherAsync`.
+
+### P4.5 — Testes
+- **O quê**: usar `System.Diagnostics.Metrics.MeterListener` para capturar os valores emitidos nos testes (padrão comum para testar `System.Diagnostics.Metrics`, sem precisar de um exportador real) — cobrir ao menos um caso de cada instrumento.
+
+### P4.6 — Gate de fechamento das métricas
+- `dotnet build` + `dotnet test` verdes nos 3 TFMs; confirmar que nenhuma dependência NuGet nova foi adicionada ao pacote principal (`HealthCheckPlus.csproj`).
+
+### P4.7 — Corrigir a race de agendamento em `ScheduleIfDue`
+- **O quê**: `ScheduleIfDue` (`DefaultHealthCheckServicePlus.cs`) decide se um check "está devido" comparando `DateRef`/período contra `DateTime.UtcNow`, e só depois marca `_cacheStatus.Running(name, true)` — a decisão e a marcação não são atômicas. Encontrado durante a auditoria de revalidação pós-fix do publisher (doc/progresso-plano-acao.md): duas chamadas concorrentes para o mesmo check (ex.: uma requisição HTTP e um ciclo de background quase simultâneos) podem ambas ler "ainda não rodando, já passou do período" antes de qualquer uma marcar `Running = true`, e ambas decidirem "devido" — o check roda duas vezes concorrentemente, e a que termina depois tem seu resultado descartado por `Update()` (agora visível via log/métrica `update_result_dropped`, mas não eliminado).
+- **Não é regressão desta sessão** — pré-existente, só ficou mais evidente porque a lacuna irmã (dupla construção do check adotado via `ExternalCheck.GetOrAdd`) já foi corrigida com `Lazy<T>`. Esta é a raiz mais profunda que resta: tornar o "checar-e-marcar" atômico (ex.: `CompareExchange`/lock por chave em `Running`), mexendo na lógica de agendamento compartilhada pelos dois caminhos (HTTP e background).
+- **Critério de aceite**: teste de regressão provando que, sob concorrência, no máximo uma execução por ciclo é agendada para o mesmo check (vermelho contra o código atual, depois verde); suíte estável em 3 execuções.
+- Deve ser fechado **antes** de P4.8–P4.11 (documentação), para que a arquitetura documentada já reflita o agendamento corrigido, não uma versão intermediária.
+
+### P4.8 — Escrever `docs/ARCHITECTURE.md`
+- **O quê**: visão geral dos componentes, os dois caminhos de execução (HTTP vs background), o mecanismo de política (`ResolveForegroundPolicy`/`ResolveBackgroundPolicy`), a adoção de checks externos via `AddCheckLinkTo`, as decisões de design registradas ao longo das Fases 0–4 (fail-fast de P0.4, isolamento de estado de P1.1, a ponte via Options de P2, os instrumentos de métrica de P4.1, o agendamento atômico de P4.7). Em inglês, conforme a convenção de idioma do projeto.
+
+### P4.9 — Escrever a seção de runbook operacional
+- **O quê**: dentro do mesmo documento ou em arquivo próprio — o que cada valor de `HealthCheckTrigger` (`Origin`) significa, o que fazer se um check trava (timeout, `FailureStatus`), como ler os campos do JSON de resposta, quais métricas/logs observar para diagnosticar problemas comuns (incluindo `healthcheckplus.anomalies` e os logs `HealthCheckDisposeError`/`HealthCheckPublisherCycleError`/`HealthCheckPlusUpdateDropped`).
+
+### P4.10 — Reescrever `CONTRIBUTING.md`
+- **O quê**: remover o template genérico copiado de outro projeto (inclui referência a um "PrompPLus Team" que não corresponde a este projeto — achado de higiene da auditoria, seção 4). Reescrever focado na arquitetura real e no processo deste repositório.
+
+### P4.11 — Gate de fechamento da Fase 4
+- Documentos revisados, links cruzados corretos (README → `docs/ARCHITECTURE.md` → runbook), nenhuma referência desatualizada aos achados já corrigidos nas Fases 0–3.

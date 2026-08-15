@@ -16,6 +16,22 @@ namespace HealthCheckPlus.Internal
     {
         public bool AddedHealthChecksPlus { get; set; }
 
-        public ConcurrentDictionary<string, WrapperBaseHealthCheckPlus> ExternalCheck { get; } = new();
+        // Lazy<T>, not the wrapper type directly: ConcurrentDictionary.GetOrAdd's valueFactory has
+        // no once-only guarantee under contention (two threads racing to add the same key can both
+        // run it), so caching a bare WrapperBaseHealthCheckPlus let two concurrent callers (e.g. an
+        // HTTP request and a background cycle both finding the check "due" for its first run at the
+        // same time) each construct a real underlying check instance, with the loser silently
+        // discarded and never disposed. Lazy<T>'s default thread-safety mode (ExecutionAndPublication)
+        // guarantees the inner factory runs exactly once even when GetOrAdd's own factory (which just
+        // constructs the Lazy<T> wrapper, a cheap no-side-effect operation) runs more than once.
+        // Lazy<T>, not the wrapper type directly: ConcurrentDictionary.GetOrAdd's valueFactory has
+        // no once-only guarantee under contention (two threads racing to add the same key can both
+        // run it), so caching a bare WrapperBaseHealthCheckPlus let two concurrent callers (e.g. an
+        // HTTP request and a background cycle both finding the check "due" for its first run at the
+        // same time) each construct a real underlying check instance, with the loser silently
+        // discarded and never disposed. Lazy<T>'s default thread-safety mode (ExecutionAndPublication)
+        // guarantees the inner factory runs exactly once even when GetOrAdd's own factory (which just
+        // constructs the Lazy<T> wrapper, a cheap no-side-effect operation) runs more than once.
+        public ConcurrentDictionary<string, Lazy<WrapperBaseHealthCheckPlus>> ExternalCheck { get; } = new();
     }
 }

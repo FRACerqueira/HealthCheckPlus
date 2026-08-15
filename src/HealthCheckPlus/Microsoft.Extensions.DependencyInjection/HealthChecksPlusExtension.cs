@@ -10,6 +10,7 @@ using HealthCheckPlus.Internal.WrapperMicrosoft;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 #pragma warning disable IDE0130 // Namespace does not match folder structure
@@ -177,9 +178,9 @@ namespace Microsoft.Extensions.DependencyInjection
             }
 
             //add custom DefaultHealthCheckServicePlus
-            sc.TryAddSingleton<IStateHealthChecksPlus>((_) =>
+            sc.TryAddSingleton<IStateHealthChecksPlus>((sp) =>
             {
-                CacheHealthCheckPlus inst = new();
+                CacheHealthCheckPlus inst = new(sp.GetService<ILogger<CacheHealthCheckPlus>>());
                 inst.InitCache(names);
                 return inst;
             });
@@ -308,7 +309,7 @@ namespace Microsoft.Extensions.DependencyInjection
 
                 HealthCheckRegistration reg = new(
                         namedep,
-                        (sp) => state.ExternalCheck.GetOrAdd(namedep, _ => new WrapperBaseHealthCheckPlus(original.Factory(sp))),
+                        (sp) => state.ExternalCheck.GetOrAdd(namedep, _ => new Lazy<WrapperBaseHealthCheckPlus>(() => new WrapperBaseHealthCheckPlus(original.Factory(sp)))).Value,
                         original.FailureStatus,
                         original.Tags,
                         original.Timeout)

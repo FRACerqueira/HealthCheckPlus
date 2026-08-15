@@ -7,21 +7,28 @@ using HealthCheckPlus.Abstractions;
 using System.Collections.Concurrent;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace HealthCheckPlus.Internal
 {
     internal class CacheHealthCheckPlus : IStateHealthChecksPlus
     {
+        private static readonly EventId MetricsRecordingErrorEventId = new(100, "HealthCheckPlusMetricsRecordingError");
+        private static readonly EventId UpdateDroppedEventId = new(101, "HealthCheckPlusUpdateDropped");
+
         private readonly ConcurrentDictionary<string, ItemCacheHealth> _statusDeps;
         private readonly ConcurrentDictionary<string, HealthStatus> _statusName;
         private readonly Dictionary<string, Func<HealthReport, HealthStatus>?> _statusFunction;
         private readonly DateTime _dateregister;
+        private readonly ILogger<CacheHealthCheckPlus> _logger;
 #pragma warning disable IDE0330
         private readonly object _lock = new();
 #pragma warning restore IDE0330
 
-        public CacheHealthCheckPlus()
+        public CacheHealthCheckPlus(ILogger<CacheHealthCheckPlus>? logger = null)
         {
+            _logger = logger ?? NullLogger<CacheHealthCheckPlus>.Instance;
             _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>();
             _statusName = new ConcurrentDictionary<string, HealthStatus>();
             _statusFunction = [];
@@ -111,13 +118,61 @@ namespace HealthCheckPlus.Internal
 
         public void Update(string key, HealthCheckTrigger healthCheckFrom, HealthCheckResult result, DateTime lastexecute, TimeSpan duration)
         {
-            if (_statusDeps.TryGetValue(key, out var item) && item.Running)
+            if (!_statusDeps.TryGetValue(key, out var item))
             {
-                item.LastResult = result;
-                item.DateRef = lastexecute;
-                item.Duration = duration;
-                item.Origin = healthCheckFrom;
-                item.Running = false;
+                _logger.LogWarning(UpdateDroppedEventId,
+                    "The result for health check '{HealthCheckName}' was dropped: no such check is registered in the cache.", key);
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.UpdateResultDropped), key);
+                return;
+            }
+
+            if (!item.Running)
+            {
+                // Reachable under overlapping executions of the same check (e.g. an HTTP request
+                // and a background cycle both deciding the check is "due" at the same time — a
+                // known, separately-tracked scheduling race in ScheduleIfDue, not fixed here): the
+                // first execution to finish clears Running and applies its result; a second,
+                // overlapping execution finishing afterwards finds Running already false and its
+                // result (and metrics) would previously be dropped with no trace at all.
+                _logger.LogWarning(UpdateDroppedEventId,
+                    "The result for health check '{HealthCheckName}' was dropped: no execution was marked as running for it (likely an overlapping execution already applied its result).", key);
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.UpdateResultDropped), key);
+                return;
+            }
+
+            var previousStatus = item.LastResult.Status;
+
+            item.LastResult = result;
+            item.DateRef = lastexecute;
+            item.Duration = duration;
+            item.Origin = healthCheckFrom;
+            item.Running = false;
+
+            // This is the single point every execution path (foreground/HTTP and background)
+            // and the manual SwitchTo override converge on, so it's the right place to emit
+            // metrics once instead of duplicating the call at each call site.
+            SafeRecordMetric(() =>
+            {
+                HealthCheckPlusMetrics.RecordStatusTransition(key, previousStatus, result.Status);
+                HealthCheckPlusMetrics.RecordCheckExecution(key, result.Status, healthCheckFrom, duration);
+            }, key);
+        }
+
+        // A MeterListener callback (e.g. a third-party OTel exporter) runs synchronously on this
+        // thread, so a bug in it would otherwise propagate out of Update() and, on the HTTP path
+        // (DefaultHealthCheckServicePlus.CheckHealthPlusAsync has no try/catch around this call),
+        // turn an instrumentation failure into a 500 response on /health. Metrics must never be
+        // able to break health evaluation — every metrics call in this class goes through here.
+        private void SafeRecordMetric(Action recordMetric, string key)
+        {
+            try
+            {
+                recordMetric();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(MetricsRecordingErrorEventId, ex,
+                    "Recording metrics for health check '{HealthCheckName}' failed; the check result itself was not affected.", key);
             }
         }
 

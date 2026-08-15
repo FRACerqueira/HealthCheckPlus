@@ -104,5 +104,44 @@ namespace HealthCheckPlusTests.Integration
 
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
+
+        // Gap found while auditing metric coverage after P4.6: healthcheckplus.check.executions/
+        // duration had only ever been exercised by calling CacheHealthCheckPlus.Update directly
+        // with HealthCheckTrigger.UrlRequest — never through a real background-triggered run, so
+        // the "check.origin=Background" tag had never actually been observed end-to-end.
+        [Fact]
+        public async Task BackgroundService_ShouldRecordCheckExecutionMetrics_WithBackgroundOrigin()
+        {
+            const string checkName = nameof(BackgroundService_ShouldRecordCheckExecutionMetrics_WithBackgroundOrigin);
+            using var capture = new MetricsCapture();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus([checkName]);
+                    ihb.AddCheckPlus<CountingCheck>(checkName);
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(100);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            var executions = capture.Measurements
+                .Where(m => m.InstrumentName == "healthcheckplus.check.executions" && (string?)m.Tags["healthcheckplus.check.name"] == checkName)
+                .ToArray();
+
+            Assert.NotEmpty(executions);
+            Assert.All(executions, m => Assert.Equal("Background", m.Tags["healthcheckplus.check.origin"]));
+
+            Assert.Contains(capture.Measurements, m =>
+                m.InstrumentName == "healthcheckplus.check.duration" && (string?)m.Tags["healthcheckplus.check.name"] == checkName);
+        }
     }
 }

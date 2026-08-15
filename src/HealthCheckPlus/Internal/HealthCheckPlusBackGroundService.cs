@@ -125,13 +125,56 @@ namespace HealthCheckPlus.Internal
                         if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
                         {
                             runpublish = false;
+                            // The whole publish cycle is skipped here, before any per-publisher
+                            // dispatch, so record the "filtered by WhenReportChange" outcome for
+                            // each registered publisher rather than leaving it invisible.
+                            foreach (var publisher in _publishers)
+                            {
+                                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedNoChange);
+                            }
                         }
                         if (runpublish)
                         {
                             _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
                             _countIdletopublish = 0;
                             var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, _stopping.Token)).ToArray();
-                            await Task.WhenAll(tasks).ConfigureAwait(false);
+                            try
+                            {
+                                await Task.WhenAll(tasks).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+                            {
+                                // Shutting down - let the loop's natural exit path (the Task.Delay
+                                // below) observe the cancellation, same as the check execution
+                                // block above.
+                            }
+                            catch (Exception ex)
+                            {
+                                // Each failing publisher already logged its own error/timeout and
+                                // recorded the "error" metric inside RunPublisherAsync (with which
+                                // publisher, duration, and exception). This log adds the signal
+                                // that was otherwise missing: that the background loop is
+                                // continuing despite the failure above, instead of silently living
+                                // or dying with no operational trace either way — before this fix,
+                                // Task.WhenAll's rethrown exception was unhandled at this call site
+                                // (unlike the check-execution block above it, which already had a
+                                // try/catch), faulting the loop's fire-and-forget Task silently.
+                                Log.HealthCheckPublisherCycleError(_logger, ex);
+
+                                try
+                                {
+                                    HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublisherCycleFailedButContinued);
+                                }
+                                catch (Exception metricsEx)
+                                {
+                                    // Metrics must never be able to break this loop either (same
+                                    // MeterListener risk as everywhere else metrics are recorded) -
+                                    // but a bare swallow here would repeat the exact silent-catch
+                                    // mistake this whole pass exists to eliminate, so it gets its
+                                    // own explicit log instead.
+                                    Log.HealthCheckPublisherMetricsRecordingError(_logger, metricsEx);
+                                }
+                            }
                         }
                     }
                 }
@@ -167,6 +210,7 @@ namespace HealthCheckPlus.Internal
             {
                 if (publisherPlus.PublisherCondition != null && !publisherPlus.PublisherCondition(report))
                 {
+                    HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedCondition);
                     return;
                 }
             }
@@ -178,20 +222,28 @@ namespace HealthCheckPlus.Internal
                 Log.HealthCheckPublisherBegin(_logger, publisher);
                 await publisher.PublishAsync(report, cancellationToken).ConfigureAwait(false);
                 Log.HealthCheckPublisherEnd(_logger, publisher, duration.ElapsedMilliseconds);
+                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Published, duration.Elapsed);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // This is a cancellation - if the app is shutting down we want to ignore it. Otherwise, it's
-                // a timeout and we want to log it.
+                // Shutting down - deliberately not logged as an error (this mirrors ASP.NET Core's
+                // own HealthCheckPublisherHostedService behavior) and, unlike every other outcome
+                // in this method, deliberately not recorded as a metric either: a shutdown-time
+                // cancellation is not an operational failure an operator needs to see counted, and
+                // recording one more result value here would mean "invocations" no longer means
+                // "attempts to publish while the app was actually running". This is the one place
+                // where healthcheckplus.publisher.invocations intentionally under-counts.
             }
             catch (OperationCanceledException)
             {
                 Log.HealthCheckPublisherTimeout(_logger, publisher, duration.ElapsedMilliseconds);
+                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed);
                 throw;
             }
             catch (Exception ex)
             {
                 Log.HealthCheckPublisherError(_logger, publisher, duration.ElapsedMilliseconds, ex);
+                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed);
                 throw;
             }
         }
@@ -214,6 +266,8 @@ namespace HealthCheckPlus.Internal
             public const int HealthCheckPublisherEndId = 103;
             public const int HealthCheckPublisherErrorId = 104;
             public const int HealthCheckPublisherTimeoutId = 104;
+            public const int HealthCheckPublisherCycleErrorId = 106;
+            public const int HealthCheckPublisherMetricsRecordingErrorId = 107;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
             public const string HealthCheckPublisherProcessingBeginName = "HealthCheckPublisherProcessingBegin";
@@ -222,6 +276,8 @@ namespace HealthCheckPlus.Internal
             public const string HealthCheckPublisherEndName = "HealthCheckPublisherEnd";
             public const string HealthCheckPublisherErrorName = "HealthCheckPublisherError";
             public const string HealthCheckPublisherTimeoutName = "HealthCheckPublisherTimeout";
+            public const string HealthCheckPublisherCycleErrorName = "HealthCheckPublisherCycleError";
+            public const string HealthCheckPublisherMetricsRecordingErrorName = "HealthCheckPlusPublisherMetricsRecordingError";
         }
 
         private static class EventIds
@@ -255,6 +311,16 @@ namespace HealthCheckPlus.Internal
             [LoggerMessage(EventIdsPublisher.HealthCheckPublisherTimeoutId, LogLevel.Error, "Health check {HealthCheckPublisher} was canceled after {ElapsedMilliseconds}ms", EventName = EventIdsPublisher.HealthCheckPublisherTimeoutName)]
 #pragma warning restore SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             public static partial void HealthCheckPublisherTimeout(ILogger logger, IHealthCheckPublisher HealthCheckPublisher, double ElapsedMilliseconds);
+
+            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherCycleErrorId, LogLevel.Warning,
+                "One or more health check publishers failed this cycle (see the HealthCheckPublisherError/HealthCheckPublisherTimeout entries above for which one and why); HealthCheckPlus Background-Service will continue running.",
+                EventName = EventIdsPublisher.HealthCheckPublisherCycleErrorName)]
+            public static partial void HealthCheckPublisherCycleError(ILogger logger, Exception exception);
+
+            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherMetricsRecordingErrorId, LogLevel.Warning,
+                "Recording the anomaly metric for a publisher cycle failure also failed; the cycle failure itself was already logged above.",
+                EventName = EventIdsPublisher.HealthCheckPublisherMetricsRecordingErrorName)]
+            public static partial void HealthCheckPublisherMetricsRecordingError(ILogger logger, Exception exception);
 
             [LoggerMessage(EventIds.HealthCheckPlusBackGroundProcessingBeginId, LogLevel.Debug, "Running HealthCheckPlus Background-Service checks", EventName = EventIds.HealthCheckProcessingBeginName)]
             public static partial void ProcessingBegin(ILogger logger);
