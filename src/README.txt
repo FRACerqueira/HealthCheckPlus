@@ -35,6 +35,7 @@ Features
     - Integration with registered publishers with the interface IHealthCheckPublisher with extra filters:
         - Number of counts idle to publish.
         - Run publish only when the report has a status change in one of its entries.
+        - Optional per-publisher custom condition via IHealthCheckPlusPublisher.PublisherCondition.
 - Response templates with small/full details in "application/json" ContentType
     - HealthCheckPlusOptions.WriteShortDetails
     - HealthCheckPlusOptions.WriteShortDetailsPlus (with extra fields : cache source and reference date of last run)
@@ -43,29 +44,12 @@ Features
     - HealthCheckPlusOptions.WriteDetailsWithException
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
 - Simple and clear fluent syntax extending the native features of healt check
+- Native metrics via System.Diagnostics.Metrics (check executions, status transitions, publisher invocations) - no extra package dependency, consumable by any exporter (OpenTelemetry, Prometheus, App Insights, ...)
 
 What's new
 ----------
 
-- V3.0.1 (latest version)
-
-    - Added support for .Net10
-    - Sanitization of references
-
-- V3.0.0
-
-    - Added support for .Net9
-    - Removed support for .Net6, .Net7
-    - Removed commands with enum for list of HealthCheck´s
-    - Some property names have been refactored for readability or syntax errors.
-    - Optimized several parts of the code to improve performance
-    - Fixed publisher improper execution bug when set to only execute when there are changes
-    - Documentation updated
-    
-- V2.0.1
-
-    - Created dependency isolation package: HealthCheckPlus.Abstractions
-        - Now all public interfaces and classes are isolated in another assembly  
+See the full changelog: https://github.com/FRACerqueira/HealthCheckPlus/blob/main/CHANGELOG.md
 
 Examples
 ********
@@ -89,7 +73,7 @@ builder.Services
     //your custom HC    
     .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
     //external HC 
-    .AddRedis("connection string", "Myredis")
+    .AddRedis("connection string", "MyRedis")
     //register external HC 
     .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
     //policy for Unhealthy
@@ -103,13 +87,13 @@ builder.Services
 //At Statup / Program (wit background services policies)
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecksPlus<MyEnum>()
-    //your custom HC with custom delay and period   
+    .AddHealthChecksPlus(HealthChecknames)
+    //your custom HC with custom delay and period
     .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
     //your custom HC without delay and period (using BackgroundPolicy)     
     .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
     //external HC 
-    .AddRedis("connection string", "Myredis")
+    .AddRedis("connection string", "MyRedis")
     //register external HC  without delay and period (using BackgroundPolicy)
     .AddCheckLinkTo("Redis", "MyRedis")
     //policy for running in Background service
@@ -231,7 +215,7 @@ public class MyBussines
         }
         catch (ExceptionRedis rex)
         {
-            healthCheckApp.SwithToUnhealthy("Redis");
+            healthCheckApp.SwitchToUnhealthy("Redis");
         }
     }
 }
@@ -239,9 +223,9 @@ public class MyBussines
 ...
 
 //example of  Publisher condition to execute
-public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublisher
+public class SamplePublishHealth : IHealthCheckPlusPublisher
 {
-   public Func<HealthReport, bool> PublisherCondition => (_) => true;
+   public Func<HealthReport, bool>? PublisherCondition { get; set; } = (_) => true;
    public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
    {
       return Task.CompletedTask;

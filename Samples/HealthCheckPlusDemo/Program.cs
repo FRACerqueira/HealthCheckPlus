@@ -27,9 +27,9 @@ namespace HealthCheckPlusDemo
                 .AddCheckPlus<HcTeste1>("HcTest1")
                 //your custom HC    
                 .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
-                //external HC 
-                .AddRedis("connection string", "Myredis")
-                //register external HC 
+                //external HC
+                .AddRedis("connection string", "MyRedis")
+                //register external HC
                 .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
                 //policy for Unhealthy
                 .AddUnhealthyPolicy("HcTest1", TimeSpan.FromSeconds(2))

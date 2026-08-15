@@ -1,0 +1,77 @@
+# HealthCheckPlus Operational Runbook
+
+This is a reference for operators and on-call engineers running a service that uses HealthCheckPlus: what the health endpoint's response actually means, what happens when a check misbehaves, and which logs/metrics to check first when something looks wrong. For how the library is built internally, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+## Reading a health check response
+
+A `UseHealthChecksPlus` endpoint returns one of the standard ASP.NET Core status codes by default: **200** for `Healthy`/`Degraded`, **503** for `Unhealthy`. If nothing else is configured, the response body is empty — the status code alone is the signal. A `ResponseWriter` (set via `HealthCheckPlusOptions`) adds a JSON body; all of the built-in templates share the same top-level shape:
+
+```json
+{
+  "status": "Healthy",
+  "entries": [
+    { "name": "Redis", "status": "Healthy" }
+  ]
+}
+```
+
+| Template | Adds to each entry | Use when |
+|---|---|---|
+| `WriteShortDetails` | — (name/status only) | You only need to know *which* check is unhealthy, not why. |
+| `WriteDetailsWithoutException` | `description`, `duration` | You want the check's own message, without stack traces in the response body. |
+| `WriteDetailsWithException` | `description`, `duration`, `exception` | Debugging in an environment where exposing exception details in the response is acceptable (internal-only endpoints — avoid on a public-facing one). |
+| `...Plus` variants of any of the above | `dateRef` (when the cached result was produced), `origin` (see below) | You need to know how *stale* a cached result is, or what triggered it — since HealthCheckPlus doesn't necessarily re-run every check on every request (see below). |
+
+**Point of attention**: because results are cached and re-run according to each check's policy, `status`/`description` in the response can reflect a result from several seconds (or minutes) ago, not the instant the request arrived. If you need to know exactly how old a result is, use a `...Plus` response writer and read `dateRef`.
+
+## The `origin` field
+
+Every cached result records what triggered it — surfaced as `origin` in the `...Plus` response templates, and as the `check.origin` tag on the `healthcheckplus.check.executions`/`healthcheckplus.check.duration` metrics:
+
+| Origin | Meaning |
+|---|---|
+| `None` | Initial value, before the check has ever run. |
+| `SwitchTo` | Set by application code via `IStateHealthChecksPlus.SwitchToUnhealthy`/`SwitchToDegraded` — no check code actually ran; something in the application detected a failure directly (e.g. a caught exception from a dependency call) and forced the status. |
+| `UrlRequest` | Produced by a request to a `UseHealthChecksPlus` endpoint. |
+| `Background` | Produced by the background polling service (only present if background polling is enabled). |
+| `Default` | Produced by a direct call to the native `HealthCheckService.CheckHealthAsync` (e.g. resolved from DI and called directly, bypassing the HTTP endpoint). |
+
+A result with `origin: SwitchTo` staying in place for a long time is expected — it stays until either a scheduled poll runs again and overwrites it, or application code switches it back. It is **not** evidence the polling engine is stuck.
+
+## When a check times out or fails
+
+Two independent timeouts exist, and they apply at different scopes:
+
+- **Per-check timeout** (`AddCheckPlus`/`AddCheckLinkTo`'s `timeout` parameter, or the native `HealthCheckRegistration.Timeout`): if the check itself doesn't complete in time, its result becomes `FailureStatus` (`Unhealthy` unless configured otherwise) with `description: "A timeout occurred while running check."`. Only that one check is affected — other checks and publishing continue normally.
+- **Background-cycle timeout** (`HealthCheckPlusBackGroundOptions.Timeout`, default 30s): a safety net around an *entire* background polling cycle (all checks scheduled that cycle, run concurrently). If the whole cycle doesn't finish in time, it's logged as a Warning (`ProcessingTimeout`) and the loop moves on to its next idle wait — this only ever affects the background path, never an HTTP request.
+
+An unhandled exception from a check's own code (not a timeout) is caught, logged as `HealthCheckError`, and turned into a result with `FailureStatus` and the exception's message as `description` — the check's own exception is never allowed to fail the request or crash the background loop.
+
+## Diagnosing common situations
+
+**A check appears stuck reporting the same status longer than its configured period.**
+Check whether its policy's period for the *current* status is what you expect — `Healthy`/`Degraded`/`Unhealthy` can each have a different period, and if none was explicitly registered for the current status, the fallback differs by path (the check's own Healthy policy on the HTTP path; the background service's own per-status default on the background path — see `ARCHITECTURE.md`). Also check `origin`: a `SwitchTo` result only clears on the next successful poll or another manual call.
+
+**The background service seems to have stopped running checks entirely.**
+Look for a `HealthCheckPublisherCycleError` (Warning) in the logs — this means a publisher threw during a cycle; the loop logs this and *continues*, so its presence alone isn't the problem. If checks have genuinely stopped (no new `healthcheckplus.check.executions` measurements, and no periodic `HealthCheckPlus Background-Service` debug/processing logs), that indicates the background hosted service itself isn't running — check that `AddBackgroundPolicy()` was actually called and that the host started successfully.
+
+**A publisher isn't firing when you expect it to.**
+Check `healthcheckplus.publisher.invocations` filtered by that publisher's type name and look at the `result` tag: `skipped_no_change` means the aggregate report hasn't changed since the last publish (`WhenReportChange`); `skipped_condition` means the publisher's own `IHealthCheckPlusPublisher.PublisherCondition` returned false; `error` means it threw (see the paired `HealthCheckPublisherError`/`HealthCheckPublisherTimeout` log for which publisher and why).
+
+**You're seeing `healthcheckplus.anomalies` measurements or their paired Warning logs.**
+These are defensive paths that were handled without failing a request or crashing a loop — see the reason:
+
+| `anomaly.reason` | Paired log | What it means | What to do |
+|---|---|---|---|
+| `update_result_dropped` | `HealthCheckPlusUpdateDropped` | A check's result arrived but was discarded — either the check name isn't registered (a configuration bug), or two overlapping executions of the same check both finished and the second one's result was dropped. | If frequent for a specific check, its period may be shorter than the check's own typical execution time, causing overlap; consider lengthening the period or shortening the check's own work. |
+| `adopted_check_dispose_failed` | `HealthCheckDisposeError` | An adopted external check's own `IDisposable.Dispose()` threw during host shutdown. | Investigate the underlying dependency's disposal behavior (e.g. a connection multiplexer failing because its socket was already force-closed) — shutdown still completed correctly, but that resource's cleanup didn't. |
+| `publisher_cycle_failed_but_continued` | `HealthCheckPublisherCycleError` | A publisher threw during a cycle; the background loop kept running. | See the specific publisher's own `HealthCheckPublisherError`/`HealthCheckPublisherTimeout` log entry for which one and why. |
+
+A `HealthCheckPlusMetricsRecordingError` log with no matching `healthcheckplus.anomalies` measurement means the metrics pipeline itself failed to record something (e.g. a broken exporter/listener) — health evaluation and publishing are unaffected, but check whatever is consuming the `"HealthCheckPlus"` meter for its own errors.
+
+## Metrics quick reference
+
+See `ARCHITECTURE.md`'s [Metrics](./ARCHITECTURE.md#metrics) section for the full instrument list and tags. For alerting, the two worth watching by default are:
+
+- `healthcheckplus.check.status_transitions{status=Unhealthy}` — rate of checks becoming unhealthy.
+- `healthcheckplus.anomalies` — any nonzero rate here means a defensive path fired; read the paired log for detail (table above).

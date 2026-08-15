@@ -29,9 +29,9 @@ namespace HealthCheckPlusDemoBackgroudService
                 .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
                 //your custom HC without delay and period (using BackgroundPolicy)     
                 .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
-                //external HC 
-                .AddRedis("connection string", "Myredis")
-                //register external HC  without delay and period (using BackgroundPolicy)
+                //external HC
+                .AddRedis("connection string", "MyRedis")
+                //register external HC without delay and period (using BackgroundPolicy)
                 .AddCheckLinkTo("Redis", "MyRedis")
                 //policy for running in Background service
                 .AddBackgroundPolicy((opt) =>
@@ -61,6 +61,8 @@ namespace HealthCheckPlusDemoBackgroudService
                 _stateHealthChecksPlus = startscope.ServiceProvider.GetRequiredService<IStateHealthChecksPlus>();
             }
 
+            var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+
 
             //Endpoints HC
             app.UseHealthChecksPlus("/health/live", new HealthCheckPlusOptions
@@ -68,13 +70,17 @@ namespace HealthCheckPlusDemoBackgroudService
                 HealthCheckName = "live",
                 StatusHealthReport = (rep) =>
                 {
+                    // The aggregate status this HealthCheckName ("live") reports is computed by
+                    // this function, not just the worst individual status - override it to fold in
+                    // whatever rule your app needs (here: always Degraded, to keep this sample's
+                    // output interesting instead of a constant Healthy).
                     if (rep.StatusResult("HcTest1") == HealthStatus.Unhealthy)
                     {
-                        //do something
+                        startupLogger.LogWarning("HcTest1 is Unhealthy while computing the 'live' aggregate status.");
                     }
                     if (rep.TryGetNotHealthy(out var results))
                     {
-                        //do something
+                        startupLogger.LogInformation("Not-Healthy checks: {Checks}", string.Join(", ", results.Keys));
                     }
                     return HealthStatus.Degraded;
                 },
@@ -85,8 +91,26 @@ namespace HealthCheckPlusDemoBackgroudService
                                 [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
                             }
             })
+               //Default HealthCheckPlusOptions (empty body, just the mapped status code)
                .UseHealthChecksPlus("/health/ready")
-               .UseHealthChecks("/health/Test", new HealthCheckOptions
+               //WriteShortDetails: name + status only, no description/duration/exception - the
+               //smallest body worth having, for callers that only need a per-check breakdown.
+               .UseHealthChecksPlus("/health/short", new HealthCheckPlusOptions
+               {
+                   ResponseWriter = HealthCheckPlusOptions.WriteShortDetails
+               })
+               //WriteDetailsWithExceptionPlus: the richest template - description, duration,
+               //exception text, plus cache source (dateRef/origin). Useful for an internal-only
+               //diagnostics endpoint; avoid exposing exception details on a public-facing one.
+               .UseHealthChecksPlus("/health/full", new HealthCheckPlusOptions
+               {
+                   ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithExceptionPlus(ctx, report, _stateHealthChecksPlus)
+               })
+               //HealthCheckPlus only replaces the HealthCheckService implementation, so the
+               //native UseHealthChecks middleware keeps working unchanged - including with a
+               //HealthCheckPlus response writer, since ResponseWriter is just a plain delegate.
+               //Useful if you're migrating an existing app incrementally, one endpoint at a time.
+               .UseHealthChecks("/health/native", new HealthCheckOptions
                {
                    ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus(ctx, report, _stateHealthChecksPlus),
                    ResultStatusCodes =
