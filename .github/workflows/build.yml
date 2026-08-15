@@ -4,7 +4,11 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v5
 
@@ -12,6 +16,8 @@ jobs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '10.0.x' # SDK Version to use.
+        cache: true
+        cache-dependency-path: '**/*.csproj'
 
     - name: Build project
       run: dotnet build HealthCheckPlus.sln -c Release
