@@ -1,9 +1,9 @@
 # Plano de Ação — HealthCheckPlus
 
-Origem: `doc/healthcheckplus-audit.html` (auditoria de 14/08/2026).
+Origem: `TODO/healthcheckplus-audit.html` (auditoria de 14/08/2026).
 Objetivo: executar as fases 0–3 do roadmap da auditoria como passos concretos, verificáveis e sequenciados por dependência real (não por facilidade). A Fase 4 (diferenciação) fica registrada em alto nível no final — só deve ser detalhada depois que as Fases 0–3 estiverem fechadas.
 
-Este arquivo é o plano. O estado de execução (o que já foi feito, quando, em que commit, com que decisão tomada) vive em `doc/progresso-plano-acao.md`, no mesmo diretório. **Sempre atualize os dois juntos**: o plano descreve o que fazer, o progresso registra o que já foi feito e por quê.
+Este arquivo é o plano. O estado de execução (o que já foi feito, quando, em que commit, com que decisão tomada) vive em `TODO/progresso-plano-acao.md`, no mesmo diretório. **Sempre atualize os dois juntos**: o plano descreve o que fazer, o progresso registra o que já foi feito e por quê.
 
 ## Convenção de referência
 
@@ -57,7 +57,7 @@ Este passo não é um fix mecânico: é uma decisão de produto com duas alterna
 
 **Recomendação para a Fase 0**: Opção B (padrão implícito + warning) — é a mudança mais segura para não quebrar consumidores existentes no meio de um ciclo de estabilização. **Revisitar esta decisão em P2.6**, depois que a Fase 2 redefinir como a adoção de checks de terceiros funciona — nesse ponto, a Opção A (fail-fast) pode fazer mais sentido, porque a nova API de adoção deve tornar o "esquecimento" menos provável.
 
-- **Ação imediata**: registrar a decisão tomada (A ou B, e por quê) em `doc/progresso-plano-acao.md` antes de implementar P0.2/P0.4 — o teste de P0.2 depende de qual opção foi escolhida.
+- **Ação imediata**: registrar a decisão tomada (A ou B, e por quê) em `TODO/progresso-plano-acao.md` antes de implementar P0.2/P0.4 — o teste de P0.2 depende de qual opção foi escolhida.
 
 ### P0.5 — Corrigir a chamada de Dispose por execução no WrapperBaseHealthCheckPlus
 - **O quê**: remover a chamada `disposable.Dispose()` de dentro de `WrapperBaseHealthCheckPlus.CheckHealthAsync` — esta é a parte da correção que resolve o bug funcional (instância descartada sendo reutilizada) e deve entrar na Fase 0 porque é barata e não depende de mais nada.
@@ -79,10 +79,10 @@ Este passo não é um fix mecânico: é uma decisão de produto com duas alterna
 ### P0.9 — Gate de fechamento da Fase 0
 - **Critério de aceite explícito**:
   1. `dotnet build ./HealthCheckPlus.sln` limpo (0 erros, 0 warnings) nos três TFMs (net8.0, net9.0, net10.0).
-  2. `dotnet test` verde com **31 testes pré-existentes + N novos** (contar e registrar N em `doc/progresso-plano-acao.md`) — nenhum teste antigo pode ter sido removido ou marcado `Skip` para "resolver" uma falha.
+  2. `dotnet test` verde com **31 testes pré-existentes + N novos** (contar e registrar N em `TODO/progresso-plano-acao.md`) — nenhum teste antigo pode ter sido removido ou marcado `Skip` para "resolver" uma falha.
   3. P0.1 e P0.2 (que nasceram falhando) agora passam.
   4. `Grep` por `DateTime.Now` em `src/HealthCheckPlus/` retorna vazio.
-  5. Decisão de P0.4 registrada em `doc/progresso-plano-acao.md` com justificativa.
+  5. Decisão de P0.4 registrada em `TODO/progresso-plano-acao.md` com justificativa.
 
 ---
 
@@ -124,7 +124,7 @@ Prioridade arquitetural nº 1 do produto (ver seção 3 da auditoria) — é o c
 - Remover a varredura de `ServiceDescriptor`/`ImplementationInstance`/cast para `ConfigureNamedOptions<HealthCheckServiceOptions>` em `HealthChecksPlusExtension.AddCheckLinkTo`, e a comparação de string `"DefaultHealthCheckService"` em `AddHealthChecksPlus`, substituindo por comparação de tipo (`typeof(...)`) onde a remoção do serviço nativo ainda for necessária.
 
 ### P2.6 — Revisitar a decisão de P0.4
-- Com a nova API de adoção em vigor, reavaliar se a Opção A (fail-fast no startup) passa a ser viável sem quebrar consumidores — registrar a decisão final (mantida ou trocada) em `doc/progresso-plano-acao.md`.
+- Com a nova API de adoção em vigor, reavaliar se a Opção A (fail-fast no startup) passa a ser viável sem quebrar consumidores — registrar a decisão final (mantida ou trocada) em `TODO/progresso-plano-acao.md`.
 
 ### P2.7 — Gate de fechamento da Fase 2
 - `dotnet build` + `dotnet test` verdes.
@@ -151,7 +151,7 @@ Prioridade arquitetural nº 1 do produto (ver seção 3 da auditoria) — é o c
 - Reaproveitar P1.2 neste ponto, migrando-o (se fizer sentido) para o mesmo formato de teste desta fase.
 
 ### P3.6 — Medir cobertura e definir meta
-- Rodar `coverlet` sobre a suíte completa e registrar o número resultante em `doc/progresso-plano-acao.md`. **Não inventar uma meta antes de medir** — a meta mínima de cobertura para o assembly `HealthCheckPlus` deve ser definida depois da primeira medição real. O gate qualitativo, esse sim, vale desde já: nenhum ponto de entrada público de `HealthChecksPlusExtension`, `HealthCheckMiddlewarePlus` ou `HealthCheckPlusBackGroundService` pode ficar sem pelo menos um teste de integração.
+- Rodar `coverlet` sobre a suíte completa e registrar o número resultante em `TODO/progresso-plano-acao.md`. **Não inventar uma meta antes de medir** — a meta mínima de cobertura para o assembly `HealthCheckPlus` deve ser definida depois da primeira medição real. O gate qualitativo, esse sim, vale desde já: nenhum ponto de entrada público de `HealthChecksPlusExtension`, `HealthCheckMiddlewarePlus` ou `HealthCheckPlusBackGroundService` pode ficar sem pelo menos um teste de integração.
 
 ### P3.7 — Gate de fechamento da Fase 3
 - `dotnet build` + `dotnet test` verdes, incluindo toda a suíte de integração.
@@ -197,7 +197,7 @@ Ordem de execução dentro da Fase 4: **P4.1–P4.6 (métricas) primeiro, depois
 - `dotnet build` + `dotnet test` verdes nos 3 TFMs; confirmar que nenhuma dependência NuGet nova foi adicionada ao pacote principal (`HealthCheckPlus.csproj`).
 
 ### P4.7 — Corrigir a race de agendamento em `ScheduleIfDue`
-- **O quê**: `ScheduleIfDue` (`DefaultHealthCheckServicePlus.cs`) decide se um check "está devido" comparando `DateRef`/período contra `DateTime.UtcNow`, e só depois marca `_cacheStatus.Running(name, true)` — a decisão e a marcação não são atômicas. Encontrado durante a auditoria de revalidação pós-fix do publisher (doc/progresso-plano-acao.md): duas chamadas concorrentes para o mesmo check (ex.: uma requisição HTTP e um ciclo de background quase simultâneos) podem ambas ler "ainda não rodando, já passou do período" antes de qualquer uma marcar `Running = true`, e ambas decidirem "devido" — o check roda duas vezes concorrentemente, e a que termina depois tem seu resultado descartado por `Update()` (agora visível via log/métrica `update_result_dropped`, mas não eliminado).
+- **O quê**: `ScheduleIfDue` (`DefaultHealthCheckServicePlus.cs`) decide se um check "está devido" comparando `DateRef`/período contra `DateTime.UtcNow`, e só depois marca `_cacheStatus.Running(name, true)` — a decisão e a marcação não são atômicas. Encontrado durante a auditoria de revalidação pós-fix do publisher (TODO/progresso-plano-acao.md): duas chamadas concorrentes para o mesmo check (ex.: uma requisição HTTP e um ciclo de background quase simultâneos) podem ambas ler "ainda não rodando, já passou do período" antes de qualquer uma marcar `Running = true`, e ambas decidirem "devido" — o check roda duas vezes concorrentemente, e a que termina depois tem seu resultado descartado por `Update()` (agora visível via log/métrica `update_result_dropped`, mas não eliminado).
 - **Não é regressão desta sessão** — pré-existente, só ficou mais evidente porque a lacuna irmã (dupla construção do check adotado via `ExternalCheck.GetOrAdd`) já foi corrigida com `Lazy<T>`. Esta é a raiz mais profunda que resta: tornar o "checar-e-marcar" atômico (ex.: `CompareExchange`/lock por chave em `Running`), mexendo na lógica de agendamento compartilhada pelos dois caminhos (HTTP e background).
 - **Critério de aceite**: teste de regressão provando que, sob concorrência, no máximo uma execução por ciclo é agendada para o mesmo check (vermelho contra o código atual, depois verde); suíte estável em 3 execuções.
 - Deve ser fechado **antes** de P4.8–P4.11 (documentação), para que a arquitetura documentada já reflita o agendamento corrigido, não uma versão intermediária.
