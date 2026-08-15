@@ -57,11 +57,11 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // DefaultHealthCheckServicePlus is a container-constructed singleton (registered via
         // TryAddSingleton<HealthCheckService, DefaultHealthCheckServicePlus>() — a factory
         // registration, not a ready-made instance), so the container reliably disposes it at host
-        // shutdown. Piggybacking the adopted external check instances' disposal here closes the
-        // residual resource leak deferred since P0.5/P1.1 (doc/progresso-plano-acao.md): those
-        // instances live in HealthChecksPlusRegistrationState, which — unlike this class — is
-        // registered as a ready-made instance and therefore is NOT disposed automatically by the
-        // container (documented .NET DI behavior), so nothing was disposing them at shutdown.
+        // shutdown. Piggybacking the adopted external check instances' disposal here matters
+        // because those instances live in HealthChecksPlusRegistrationState, which — unlike this
+        // class — is registered as a ready-made instance and therefore is NOT disposed
+        // automatically by the container (documented .NET DI behavior), so nothing else disposes
+        // them at shutdown.
         public void Dispose()
         {
             foreach (var (name, lazyWrapper) in _registrationState.ExternalCheck)
@@ -81,10 +81,9 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 catch (Exception ex)
                 {
                     // A consumer-supplied IDisposable.Dispose() throwing must not abort the loop:
-                    // without this try/catch, every adopted check after the first failing one was
-                    // silently left undisposed for the rest of process shutdown, with no signal
-                    // anywhere that it happened (found during the advisor re-validation pass,
-                    // doc/progresso-plano-acao.md).
+                    // without this try/catch, every adopted check after the first failing one would
+                    // be silently left undisposed for the rest of process shutdown, with no signal
+                    // anywhere that it happened.
                     Log.HealthCheckDisposeError(_logger, name, ex);
 
                     try
@@ -94,17 +93,16 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     catch (Exception metricsEx)
                     {
                         // Metrics must never be able to break Dispose() either (same MeterListener
-                        // risk as everywhere else metrics are recorded) - but swallowing this without
-                        // its own log is exactly the silent-catch mistake this whole pass exists to
-                        // eliminate, so log it explicitly instead of assuming the log above covers it.
+                        // risk as everywhere else metrics are recorded). Logged explicitly here
+                        // rather than swallowed, since the log above is about the dispose failure,
+                        // not about this separate metrics-recording failure.
                         Log.HealthCheckMetricsRecordingError(_logger, metricsEx);
                     }
                 }
             }
         }
 
-        // Product decision recorded in doc/progresso-plano-acao.md (step P0.4): a health check
-        // with no matching Healthy policy (i.e. registered without going through
+        // A health check with no matching Healthy policy (i.e. registered without going through
         // AddCheckPlus/AddCheckLinkTo) must fail early and clearly, instead of throwing a
         // NullReferenceException later, at runtime, when health is evaluated.
         private static void ValidateHealthyPolicies(IEnumerable<HealthCheckRegistration> registrations, List<IHealthCheckPlusPolicyStatus> policies)
@@ -124,8 +122,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         }
 
         // Shared by both execution paths (CheckHealthPlusAsync and BackGroudCheckHealthPlusAsync)
-        // so that policy lookup can never diverge between them again (see doc/progresso-plano-acao.md,
-        // step P0.3 — this consolidation is what fixed the Degraded-policy-ignored-on-HTTP-path bug).
+        // so that policy lookup can never diverge between them.
         private IHealthCheckPlusPolicyStatus? FindPolicy(string name, HealthStatus status)
         {
             return _policies.FirstOrDefault(x => x.PolicyNameDep == name && x.PolicyForStatus == status);
@@ -177,13 +174,12 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // registered policy left Delay/Period unset (e.g. AddCheckPlus without explicit values,
         // foreground-only usage).
         //
-        // The due-check and the Running flag used to be two separate steps here (read sta.DateRef,
-        // then call _cacheStatus.Running(name, true) if due) - two concurrent callers for the same
-        // check (e.g. an HTTP request and a background cycle) could both read "not running, due"
-        // before either marked it, both schedule the same check, and run it twice concurrently,
-        // with whichever finished second having its result silently dropped by Update() (see
-        // AnomalyReason.UpdateResultDropped). CacheHealthCheckPlus.TryBeginRun makes the check and
-        // the mark one atomic operation instead (doc/plano-acao-healthcheckplus.md, P4.7).
+        // The due-check and marking the check Running must happen as one atomic operation
+        // (CacheHealthCheckPlus.TryBeginRun), not two separate steps - otherwise two concurrent
+        // callers for the same check (e.g. an HTTP request and a background cycle) could both read
+        // "not running, due" before either marked it, both schedule the same check, and run it
+        // twice concurrently, with whichever finished second having its result silently dropped by
+        // Update() (see AnomalyReason.UpdateResultDropped).
         private HealthCheckRegistration? ScheduleIfDue(HealthCheckRegistration item, IHealthCheckPlusPolicyStatus policy, TimeSpan fallbackWhenNull)
         {
             var itemToRun = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)

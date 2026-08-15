@@ -24,7 +24,7 @@ namespace Microsoft.Extensions.DependencyInjection
     {
         // Retrieves (or creates and registers) the HealthChecksPlusRegistrationState instance
         // scoped to this specific IServiceCollection. See HealthChecksPlusRegistrationState for
-        // why this replaced process-wide static fields (doc/progresso-plano-acao.md, step P1.1).
+        // why registration-time state must be per-collection rather than process-wide.
         private static HealthChecksPlusRegistrationState GetOrCreateState(IServiceCollection services)
         {
             var descriptor = services.FirstOrDefault(x => x.ServiceType == typeof(HealthChecksPlusRegistrationState));
@@ -71,8 +71,7 @@ namespace Microsoft.Extensions.DependencyInjection
             // (not just the short name) is the narrowest correct option available. If a future .NET
             // version renames/moves this type, this silently stops matching — the native and
             // HealthCheckPlus background services would then both run and both invoke publishers.
-            // Tracked as a known residual risk (doc/progresso-plano-acao.md, Fase 2 follow-up);
-            // no public replacement exists, unlike the HealthCheckService case.
+            // Known residual risk; no public replacement exists, unlike the HealthCheckService case.
             ServiceDescriptor? hcs = ihb.Services.FirstOrDefault(x =>
                 x.ImplementationType?.FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService");
             if (hcs != null)
@@ -171,7 +170,7 @@ namespace Microsoft.Extensions.DependencyInjection
             // DefaultHealthCheckServicePlus. Matched by the public HealthCheckService service type,
             // not by the internal DefaultHealthCheckService implementation type name — that
             // internal type is not a supported contract and has already been renamed/restructured
-            // once across .NET versions (see doc/progresso-plano-acao.md, Fase 2).
+            // once across .NET versions.
             foreach (ServiceDescriptor descriptor in sc.Where(x => x.ServiceType == typeof(HealthCheckService)).ToArray())
             {
                 sc.Remove(descriptor);
@@ -288,11 +287,11 @@ namespace Microsoft.Extensions.DependencyInjection
             // one, real HealthCheckServiceOptions instance when IOptions<HealthCheckServiceOptions>
             // is first resolved — so as long as AddCheckLinkTo is called after the original
             // registration (the documented usage), `name`'s HealthCheckRegistration is already
-            // present in `options.Registrations` by the time this callback runs. This replaces the
-            // previous approach of scanning ServiceDescriptor.ImplementationInstance for a
+            // present in `options.Registrations` by the time this callback runs. Deliberately not
+            // done by scanning ServiceDescriptor.ImplementationInstance for a
             // ConfigureNamedOptions<HealthCheckServiceOptions> and reflecting into its captured
-            // Action to reconstruct a throwaway copy of the options (doc/progresso-plano-acao.md,
-            // Fase 2 — the ponte reflectiva).
+            // Action to reconstruct a throwaway copy of the options — that would reach into an
+            // internal ASP.NET Core type with no supported contract.
             ihb.Services.Configure<HealthCheckServiceOptions>(options =>
             {
                 HealthCheckRegistration? original = options.Registrations

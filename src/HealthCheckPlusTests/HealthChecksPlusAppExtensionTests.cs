@@ -9,10 +9,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlusTests
 {
-    // Regression test for the action plan (doc/plano-acao-healthcheckplus.md), step P0.7.
-    // Low finding from the audit (doc/healthcheckplus-audit.html): the error thrown when
-    // UseHealthChecksPlus is called before AddHealthChecks had a malformed message
-    // ("Unable Find AddHealthChecks)" — stray parenthesis, missing words).
+    // Regression test: UseHealthChecksPlus called before AddHealthChecksPlus must throw a clear,
+    // well-formed error naming both methods.
     public class HealthChecksPlusAppExtensionTests
     {
         [Fact]

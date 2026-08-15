@@ -263,12 +263,11 @@ namespace HealthCheckPlusTests
             Assert.False(began);
         }
 
-        // Regression test for the scheduling race the advisor re-validation pass surfaced
-        // (doc/plano-acao-healthcheckplus.md, P4.7): the check-then-mark used to be two separate
-        // steps in DefaultHealthCheckServicePlus.ScheduleIfDue, so two concurrent callers could
-        // both observe "not running, due" and both proceed. TryBeginRun makes the two one atomic
-        // operation; this drives many concurrent calls at the same instant (via Barrier) to prove
-        // only one of them can ever win for the same key.
+        // Regression test for a scheduling race: if the check-then-mark were two separate steps
+        // (as it is in DefaultHealthCheckServicePlus.ScheduleIfDue without this method), two
+        // concurrent callers could both observe "not running, due" and both proceed. TryBeginRun
+        // makes the two one atomic operation; this drives many concurrent calls at the same instant
+        // (via Barrier) to prove only one of them can ever win for the same key.
         [Fact]
         public void TryBeginRun_ShouldAllowOnlyOneCaller_WhenCalledConcurrently()
         {

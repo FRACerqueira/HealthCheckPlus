@@ -9,10 +9,9 @@ using Microsoft.Extensions.Options;
 
 namespace HealthCheckPlusTests
 {
-    // Integration tests for the action plan (doc/plano-acao-healthcheckplus.md), step P2.4.
-    // Covers the AddCheckLinkTo mechanism that replaced the reflective bridge into internal
-    // ASP.NET Core option types (Fase 2 — architectural priority #1 from the audit,
-    // doc/healthcheckplus-audit.html).
+    // Integration tests covering the AddCheckLinkTo mechanism, which adopts an existing
+    // registration via the public Options pipeline instead of reaching into internal ASP.NET Core
+    // types.
     public class AddCheckLinkToTests
     {
         private sealed class AlwaysHealthyCheck : IHealthCheck
@@ -62,11 +61,10 @@ namespace HealthCheckPlusTests
             }
         }
 
-        // Gap found during the advisor re-validation pass after the publisher-cycle-error fix
-        // (doc/progresso-plano-acao.md, Fase 4 session log): the adopted check's factory used
-        // ConcurrentDictionary.GetOrAdd(key, valueFactory) to cache the constructed
-        // WrapperBaseHealthCheckPlus — but GetOrAdd's valueFactory has no once-only guarantee under
-        // contention. Two overlapping calls to registration.Factory (e.g. an HTTP request and a
+        // Regression test: the adopted check's factory caches the constructed
+        // WrapperBaseHealthCheckPlus via ConcurrentDictionary.GetOrAdd(key, valueFactory) — but
+        // GetOrAdd's valueFactory has no once-only guarantee under contention. Two overlapping
+        // calls to registration.Factory (e.g. an HTTP request and a
         // background cycle both finding the check "due" for its first run at the same time) could
         // each construct a real underlying check instance, with the loser silently discarded and
         // never disposed. This test drives many concurrent factory calls at once, before the check

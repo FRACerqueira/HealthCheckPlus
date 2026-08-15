@@ -13,9 +13,9 @@ using Microsoft.Extensions.Hosting;
 
 namespace HealthCheckPlusTests.Integration
 {
-    // End-to-end coverage for the action plan (doc/plano-acao-healthcheckplus.md), step P3.2 —
-    // repeats the policy scenario already covered in-process by DefaultHealthCheckServicePlusTests
-    // (Fase 0, P0.1), but now through a real HTTP request against a real ASP.NET Core pipeline.
+    // End-to-end coverage: repeats the policy scenario already covered in-process by
+    // DefaultHealthCheckServicePlusTests, but now through a real HTTP request against a real
+    // ASP.NET Core pipeline.
     public class DefaultHealthCheckServicePlusEndToEndTests
     {
         private sealed class CountingCheck : IHealthCheck
@@ -66,9 +66,8 @@ namespace HealthCheckPlusTests.Integration
             Assert.Equal(2, check.CallCount);
         }
 
-        // Closes a coverage gap found while measuring P3.6: AddUnhealthyPolicy (the extension
-        // method itself, not just the underlying HealthCheckPlusPolicyStatus record already
-        // exercised by the Fase 0 characterization tests) had never been called by any test.
+        // Coverage for AddUnhealthyPolicy (the extension method itself, not just the underlying
+        // HealthCheckPlusPolicyStatus record), through a real HTTP request.
         [Fact]
         public async Task GetHealth_ShouldRerunCheck_AfterUnhealthyPeriodElapses_ThroughRealHttpPipeline()
         {

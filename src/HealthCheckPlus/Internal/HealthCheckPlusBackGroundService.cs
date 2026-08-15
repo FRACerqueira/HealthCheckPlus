@@ -154,11 +154,11 @@ namespace HealthCheckPlus.Internal
                                 // recorded the "error" metric inside RunPublisherAsync (with which
                                 // publisher, duration, and exception). This log adds the signal
                                 // that was otherwise missing: that the background loop is
-                                // continuing despite the failure above, instead of silently living
-                                // or dying with no operational trace either way — before this fix,
-                                // Task.WhenAll's rethrown exception was unhandled at this call site
-                                // (unlike the check-execution block above it, which already had a
-                                // try/catch), faulting the loop's fire-and-forget Task silently.
+                                // continuing despite the failure above, instead of leaving no
+                                // operational trace of whether it's still alive or has silently died -
+                                // without this try/catch (unlike the check-execution block above it,
+                                // which already has one), Task.WhenAll's rethrown exception would
+                                // fault the loop's fire-and-forget Task silently.
                                 Log.HealthCheckPublisherCycleError(_logger, ex);
 
                                 try
@@ -168,10 +168,10 @@ namespace HealthCheckPlus.Internal
                                 catch (Exception metricsEx)
                                 {
                                     // Metrics must never be able to break this loop either (same
-                                    // MeterListener risk as everywhere else metrics are recorded) -
-                                    // but a bare swallow here would repeat the exact silent-catch
-                                    // mistake this whole pass exists to eliminate, so it gets its
-                                    // own explicit log instead.
+                                    // MeterListener risk as everywhere else metrics are recorded).
+                                    // Logged explicitly rather than swallowed, since the log above is
+                                    // about the publisher cycle failure, not this separate
+                                    // metrics-recording failure.
                                     Log.HealthCheckPublisherMetricsRecordingError(_logger, metricsEx);
                                 }
                             }

@@ -12,15 +12,11 @@ using Microsoft.Extensions.Logging;
 
 namespace HealthCheckPlusTests
 {
-    // Regression test for the action plan (doc/plano-acao-healthcheckplus.md), step P1.2.
-    // High finding from the audit (doc/healthcheckplus-audit.html), previously "Inferido"
-    // (architectural risk, not reproduced at runtime): a process-wide static field shared the
-    // "AddHealthChecksPlus was called" flag and adopted external check instances across every
-    // IServiceCollection in the process, which would leak state between hosts built in the same
-    // process (WebApplicationFactory, .NET Aspire, parallel tests). This is now "Verificado":
-    // step P1.1 replaced the static fields with a HealthChecksPlusRegistrationState instance
-    // scoped to each IServiceCollection, and this test proves two independent hosts no longer
-    // share it.
+    // Regression test: registration-time state (the "AddHealthChecksPlus was called" flag and
+    // adopted external check instances) must be scoped per IServiceCollection, not process-wide —
+    // a process-wide static field would leak state between hosts built in the same process
+    // (WebApplicationFactory, .NET Aspire, parallel tests). This test proves two independent hosts
+    // don't share HealthChecksPlusRegistrationState.
     public class HealthChecksPlusRegistrationStateTests
     {
         private sealed class AlwaysHealthyCheck : IHealthCheck
@@ -90,11 +86,10 @@ namespace HealthCheckPlusTests
             Assert.NotSame(state1.ExternalCheck["MyCheck"].Value, state2.ExternalCheck["MyCheck"].Value);
         }
 
-        // Regression test for the R3 follow-up (doc/progresso-plano-acao.md): disposing the
-        // container must dispose adopted external check instances cached in
-        // HealthChecksPlusRegistrationState.ExternalCheck. DefaultHealthCheckServicePlus — a
-        // factory-registered, container-managed singleton, unlike HealthChecksPlusRegistrationState
-        // itself — now does this in its own Dispose().
+        // Regression test: disposing the container must dispose adopted external check instances
+        // cached in HealthChecksPlusRegistrationState.ExternalCheck. DefaultHealthCheckServicePlus
+        // — a factory-registered, container-managed singleton, unlike
+        // HealthChecksPlusRegistrationState itself — does this in its own Dispose().
         [Fact]
         public async Task DisposingTheContainer_ShouldDisposeAdoptedExternalCheckInstances()
         {
@@ -117,14 +112,10 @@ namespace HealthCheckPlusTests
             Assert.True(check.Disposed);
         }
 
-        // Gap found during the advisor re-validation pass after the publisher-cycle-error fix
-        // (doc/progresso-plano-acao.md, Fase 4 session log): DefaultHealthCheckServicePlus.Dispose()
-        // looped over every adopted external check with no fault isolation and no operator signal
-        // — the same class of mistake just caught in the background service's publish dispatch,
-        // just in the disposal path. A consumer-supplied IDisposable.Dispose() throwing (a real
-        // scenario, e.g. a connection multiplexer failing because its socket was already force-
-        // closed) aborted the loop, silently leaking every remaining adopted check for the rest of
-        // process shutdown.
+        // Regression test: DefaultHealthCheckServicePlus.Dispose() must not let one adopted check's
+        // Dispose() throwing abort the loop and silently leak every remaining adopted check. A
+        // consumer-supplied IDisposable.Dispose() throwing is a real scenario (e.g. a connection
+        // multiplexer failing because its socket was already force-closed).
         [Fact]
         public async Task Dispose_ShouldIsolateFaults_WhenOneAdoptedCheckThrowsOnDispose()
         {

@@ -8,12 +8,9 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlusTests
 {
-    // Regression test for the action plan (doc/plano-acao-healthcheckplus.md), step P0.5.
-    // High finding from the audit (doc/healthcheckplus-audit.html): "Disposable external checks
-    // stop working after the first execution". AddCheckLinkTo caches this wrapper (and the
-    // wrapped instance) across every polling cycle, so disposing the wrapped instance inside
-    // CheckHealthAsync on every call left every call after the first running against an already
-    // disposed object.
+    // Regression test: AddCheckLinkTo caches this wrapper (and the wrapped instance) across every
+    // polling cycle, so disposing the wrapped instance inside CheckHealthAsync on every call would
+    // leave every call after the first running against an already disposed object.
     public class WrapperBaseHealthCheckPlusTests
     {
         private sealed class DisposableTrackingCheck : IHealthCheck, IDisposable

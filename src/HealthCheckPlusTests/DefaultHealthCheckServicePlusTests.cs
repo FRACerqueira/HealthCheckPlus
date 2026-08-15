@@ -15,9 +15,7 @@ using Microsoft.Extensions.Options;
 
 namespace HealthCheckPlusTests
 {
-    // Regression tests for the action plan (doc/plano-acao-healthcheckplus.md), Fase 0.
-    // Each test here reproduces a finding from the audit (doc/healthcheckplus-audit.html) and is
-    // expected to fail against the pre-Fase-0 code — that's intentional, it's proof the bug exists.
+    // Regression tests covering DefaultHealthCheckServicePlus's policy resolution and scheduling.
     public class DefaultHealthCheckServicePlusTests
     {
         private sealed class AlwaysHealthyCheck : IHealthCheck
@@ -61,16 +59,11 @@ namespace HealthCheckPlusTests
                 new HealthChecksPlusRegistrationState());
         }
 
-        // Critical finding: "Degraded policy is ignored on the HTTP request path"
-        // (DefaultHealthCheckServicePlus.CheckHealthPlusAsync, case HealthStatus.Degraded branch).
-        // Setup: check "Test1" has been Degraded for 10s. The Healthy policy has a 1000s period
-        // (should NOT trigger a rerun). The Degraded policy has a 3s period (should trigger).
-        // No Unhealthy policy is registered.
-        // Current (buggy) behavior: the Degraded branch mistakenly looks up an Unhealthy policy,
-        // doesn't find one, and `policy` keeps its initial value (the Healthy policy) — uses the
-        // 1000s period and does NOT rerun the check.
-        // Expected behavior (after the fix): should use the Degraded period (3s), which has
-        // already elapsed, and rerun the check.
+        // The Degraded status must resolve to its own policy on the HTTP request path, not the
+        // Healthy policy. Setup: check "Test1" has been Degraded for 10s. The Healthy policy has a
+        // 1000s period (must NOT trigger a rerun on its own). The Degraded policy has a 3s period
+        // (must trigger). No Unhealthy policy is registered, ruling out a Degraded-falls-through-to-
+        // Unhealthy-lookup regression too.
         [Fact]
         public async Task CheckHealthPlusAsync_ShouldUseDegradedPolicy_WhenLastStatusIsDegraded()
         {
@@ -94,13 +87,12 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Healthy, status.LastResult.Status);
         }
 
-        // Critical finding: "NullReferenceException when mixing native checks with the
-        // HealthCheckPlus API". Product decision (P0.4, recorded in doc/progresso-plano-acao.md):
-        // Option A — fail early and clearly at service construction time, instead of letting
-        // health evaluation throw a NullReferenceException later, at runtime.
-        // Setup: "NativeCheck" is registered in HealthCheckServiceOptions (as would happen via
-        // the native IHealthChecksBuilder) but no Healthy policy was registered for it (as would
-        // happen if a developer forgot AddCheckPlus/AddCheckLinkTo).
+        // A health check registered without a matching Healthy policy must fail fast and clearly at
+        // service construction time, instead of throwing a NullReferenceException later, at
+        // runtime, when health is evaluated. Setup: "NativeCheck" is registered in
+        // HealthCheckServiceOptions (as would happen via the native IHealthChecksBuilder) but no
+        // Healthy policy was registered for it (as would happen if a developer forgot
+        // AddCheckPlus/AddCheckLinkTo).
         [Fact]
         public void Constructor_ShouldThrowClearException_WhenRegistrationHasNoHealthyPolicy()
         {
@@ -114,10 +106,8 @@ namespace HealthCheckPlusTests
             Assert.Contains("NativeCheck", ex.Message, StringComparison.Ordinal);
         }
 
-        // Characterization test added alongside the P0.3 consolidation (doc/plano-acao-healthcheckplus.md)
-        // to confirm the Unhealthy branch of the foreground/HTTP path — which was already correct
-        // before the refactor — still behaves the same after ResolveForegroundPolicy replaced the
-        // inline switch statement.
+        // Characterization test confirming the Unhealthy branch of the foreground/HTTP path behaves
+        // correctly through ResolveForegroundPolicy.
         [Fact]
         public async Task CheckHealthPlusAsync_ShouldUseUnhealthyPolicy_WhenLastStatusIsUnhealthy()
         {
@@ -141,12 +131,11 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Healthy, status.LastResult.Status);
         }
 
-        // Characterization test added alongside the P0.3 consolidation. Unlike the foreground
-        // path, the background path (ResolveBackgroundPolicy) falls back to the background
-        // service's own per-status defaults (HealthCheckPlusBackGroundOptions), not to the
-        // check's Healthy policy, when no explicit policy is registered for the current status.
-        // This is intentionally different behavior between the two paths (see ADR-style rationale
-        // in doc/plano-acao-healthcheckplus.md, Fase 0) and must survive the consolidation.
+        // Characterization test: unlike the foreground path, the background path
+        // (ResolveBackgroundPolicy) falls back to the background service's own per-status defaults
+        // (HealthCheckPlusBackGroundOptions), not to the check's Healthy policy, when no explicit
+        // policy is registered for the current status. This is an intentional difference between
+        // the two paths, not a bug — see ResolveForegroundPolicy/ResolveBackgroundPolicy.
         [Fact]
         public async Task BackGroudCheckHealthPlusAsync_ShouldFallBackToBackgroundOptionsDefault_WhenNoExplicitPolicy()
         {
@@ -175,12 +164,11 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Healthy, status.LastResult.Status);
         }
 
-        // Regression test for the scheduling race the advisor re-validation pass surfaced
-        // (doc/progresso-plano-acao.md, P4.7): ScheduleIfDue used to read "due" and mark Running
-        // as two separate steps, so concurrent callers deciding the same check is due at the same
-        // time (e.g. an HTTP request racing a background cycle) could both schedule and run it.
-        // This drives many concurrent CheckHealthPlusAsync calls at the exact same instant (via
-        // Barrier) while the check is due, and expects the underlying IHealthCheck to run once.
+        // Regression test for a scheduling race: reading "due" and marking Running as two separate
+        // steps would let concurrent callers deciding the same check is due at the same time (e.g.
+        // an HTTP request racing a background cycle) both schedule and run it. This drives many
+        // concurrent CheckHealthPlusAsync calls at the exact same instant (via Barrier) while the
+        // check is due, and expects the underlying IHealthCheck to run once.
         [Fact]
         public async Task CheckHealthPlusAsync_ShouldRunTheCheckOnlyOnce_WhenCalledConcurrentlyWhileDue()
         {

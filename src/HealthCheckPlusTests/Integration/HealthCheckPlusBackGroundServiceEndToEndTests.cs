@@ -11,10 +11,7 @@ using Microsoft.Extensions.Hosting;
 
 namespace HealthCheckPlusTests.Integration
 {
-    // End-to-end coverage for the action plan (doc/plano-acao-healthcheckplus.md), step P3.3 —
-    // the background service and its publishing filters (PublishingOptions), which previously had
-    // zero test coverage (see the audit's "Motor de orquestração sem nenhum teste automatizado"
-    // finding, doc/healthcheckplus-audit.html).
+    // End-to-end coverage for the background service and its publishing filters (PublishingOptions).
     public class HealthCheckPlusBackGroundServiceEndToEndTests
     {
         private sealed class CountingCheck : IHealthCheck
@@ -80,10 +77,9 @@ namespace HealthCheckPlusTests.Integration
         }
 
         // Direct, timing-independent regression test for the native HealthCheckPublisherHostedService
-        // removal in AddBackgroundPolicy (residual risk noted in doc/progresso-plano-acao.md, Fase 2
-        // follow-up) — the test above infers this indirectly from publish counts within a timing
-        // window, which a fast/slow CI run could make inconclusive; this asserts the DI wiring
-        // directly instead.
+        // removal in AddBackgroundPolicy — the test above infers this indirectly from publish
+        // counts within a timing window, which a fast/slow CI run could make inconclusive; this
+        // asserts the DI wiring directly instead.
         [Fact]
         public async Task AddBackgroundPolicy_ShouldRemoveNativeHealthCheckPublisherHostedService()
         {
@@ -105,10 +101,9 @@ namespace HealthCheckPlusTests.Integration
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
 
-        // Gap found while auditing metric coverage after P4.6: healthcheckplus.check.executions/
-        // duration had only ever been exercised by calling CacheHealthCheckPlus.Update directly
-        // with HealthCheckTrigger.UrlRequest — never through a real background-triggered run, so
-        // the "check.origin=Background" tag had never actually been observed end-to-end.
+        // healthcheckplus.check.executions/duration must carry check.origin=Background when the
+        // execution is actually triggered by the background service, not just by a direct call to
+        // CacheHealthCheckPlus.Update with HealthCheckTrigger.UrlRequest.
         [Fact]
         public async Task BackgroundService_ShouldRecordCheckExecutionMetrics_WithBackgroundOrigin()
         {

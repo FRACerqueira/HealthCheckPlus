@@ -10,14 +10,14 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlus.Internal
 {
-    // Instrument design decided with the user (doc/progresso-plano-acao.md, Fase 4, step P4.1)
-    // before implementation, since these names/tags become a public contract once shipped.
-    // Uses System.Diagnostics.Metrics directly (no OpenTelemetry SDK dependency) so any exporter
-    // (OTel, Prometheus, App Insights, ...) can consume it via Meter name "HealthCheckPlus",
-    // matching the project's zero-external-dependency rule for the main package (CONTRIBUTING.md).
-    // Closed set of "healthcheckplus.publisher.result" tag values (doc/progresso-plano-acao.md,
-    // Fase 4, P4.1) — an enum here, mapped to its wire-format string only inside
-    // RecordPublisherInvocation, keeps call sites from ever emitting an undocumented value.
+    // Instrument names/tags are a public contract once shipped, so treat any change here as a
+    // breaking change. Uses System.Diagnostics.Metrics directly (no OpenTelemetry SDK dependency)
+    // so any exporter (OTel, Prometheus, App Insights, ...) can consume it via Meter name
+    // "HealthCheckPlus", matching the project's zero-external-dependency rule for the main package
+    // (CONTRIBUTING.md).
+    // Closed set of "healthcheckplus.publisher.result" tag values — an enum here, mapped to its
+    // wire-format string only inside RecordPublisherInvocation, keeps call sites from ever emitting
+    // an undocumented value.
     internal enum PublisherInvocationResult
     {
         Published,
@@ -26,11 +26,10 @@ namespace HealthCheckPlus.Internal
         Error
     }
 
-    // Closed set of "healthcheckplus.anomalies" tag values. These are the internal defensive
-    // paths added while hardening the code against silent failures (doc/progresso-plano-acao.md,
-    // advisor re-validation pass) — logged as Warning at the point they happen (with the specific
-    // exception/check name) *and* counted here, so an operator can alert on rate/trend instead of
-    // only discovering them by reading logs after the fact.
+    // Closed set of "healthcheckplus.anomalies" tag values. These are internal defensive paths
+    // that were handled without failing the caller — logged as Warning at the point they happen
+    // (with the specific exception/check name) *and* counted here, so an operator can alert on
+    // rate/trend instead of only discovering them by reading logs after the fact.
     internal enum AnomalyReason
     {
         AdoptedCheckDisposeFailed,

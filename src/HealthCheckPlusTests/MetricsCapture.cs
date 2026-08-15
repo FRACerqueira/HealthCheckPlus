@@ -7,9 +7,9 @@ using System.Diagnostics.Metrics;
 
 namespace HealthCheckPlusTests
 {
-    // Shared test helper for the action plan (doc/plano-acao-healthcheckplus.md), step P4.5 —
-    // captures measurements emitted on the "HealthCheckPlus" Meter via MeterListener, the standard
-    // way to test System.Diagnostics.Metrics instrumentation without a real exporter.
+    // Shared test helper: captures measurements emitted on the "HealthCheckPlus" Meter via
+    // MeterListener, the standard way to test System.Diagnostics.Metrics instrumentation without a
+    // real exporter.
     internal sealed record CapturedMeasurement(string InstrumentName, double Value, IReadOnlyDictionary<string, object?> Tags);
 
     internal sealed class MetricsCapture : IDisposable

@@ -59,8 +59,8 @@ namespace HealthCheckPlus.Internal
             // therefore this same wrapped instance) across every polling cycle, so disposing it
             // after the first execution would leave every later call running against an already
             // disposed object. Disposal is this class's own IDisposable responsibility (see
-            // Dispose(bool) above), owned by whoever holds the cached wrapper — tracked as the
-            // next step in doc/progresso-plano-acao.md (P1.1).
+            // Dispose(bool) above), driven by whoever holds the cached wrapper
+            // (DefaultHealthCheckServicePlus.Dispose()).
             return await _externalCheckinstance.CheckHealthAsync(context, cancellationToken);
         }
     }

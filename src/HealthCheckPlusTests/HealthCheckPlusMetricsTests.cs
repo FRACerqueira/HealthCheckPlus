@@ -11,9 +11,8 @@ using Microsoft.Extensions.Logging;
 
 namespace HealthCheckPlusTests
 {
-    // Tests for the action plan (doc/plano-acao-healthcheckplus.md), Fase 4, steps P4.3/P4.5 —
-    // the check-related metrics recorded in CacheHealthCheckPlus.Update, the single point every
-    // execution path (and the manual SwitchTo override) converges on.
+    // Tests for the check-related metrics recorded in CacheHealthCheckPlus.Update, the single
+    // point every execution path (and the manual SwitchTo override) converges on.
     //
     // The "HealthCheckPlus" Meter is process-wide, and xUnit runs tests concurrently by default,
     // so every test here uses its own uniquely-named check and filters captured measurements by
@@ -91,10 +90,9 @@ namespace HealthCheckPlusTests
             Assert.Equal("Unhealthy", transition.Tags["healthcheckplus.check.status"]);
         }
 
-        // Gap found during the advisor re-validation after the publisher-cycle-error fix
-        // (doc/progresso-plano-acao.md, Fase 4 session log): a MeterListener measurement callback
-        // (e.g. a third-party OTel exporter) runs synchronously/inline on the recording thread, so
-        // a bug in it can throw straight out of Counter.Add/Histogram.Record. On the HTTP path
+        // A MeterListener measurement callback (e.g. a third-party OTel exporter) runs
+        // synchronously/inline on the recording thread, so a bug in it can throw straight out of
+        // Counter.Add/Histogram.Record. On the HTTP path
         // (DefaultHealthCheckServicePlus.CheckHealthPlusAsync has no try/catch around Update),
         // an unhandled throw here would turn an instrumentation bug into a 500 on /health.
         // Metrics must never be able to break health evaluation.
@@ -144,11 +142,10 @@ namespace HealthCheckPlusTests
             }
         }
 
-        // Gap found during the advisor re-validation pass: Update()'s guard clause
-        // (`_statusDeps.TryGetValue(key, out var item) && item.Running`) silently dropped the
-        // result — no log, no metric — whenever it failed, including the reachable case of two
-        // overlapping executions of the same check (a known, separately-tracked scheduling race in
-        // ScheduleIfDue) where the second one to finish finds Running already cleared by the first.
+        // Update()'s guard clause (`_statusDeps.TryGetValue(key, out var item) && item.Running`)
+        // must not silently drop the result — no log, no metric — whenever it fails, including the
+        // reachable case of two overlapping executions of the same check (a known scheduling race
+        // in ScheduleIfDue) where the second one to finish finds Running already cleared by the first.
         [Fact]
         public void Update_ShouldLogWarning_AndNotThrow_WhenNoExecutionWasMarkedRunning()
         {

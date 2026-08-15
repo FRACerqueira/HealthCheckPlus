@@ -14,10 +14,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlusTests.Integration
 {
-    // End-to-end coverage for the action plan (doc/plano-acao-healthcheckplus.md), step P3.4 —
-    // the middleware (HealthCheckMiddlewarePlus): status code mapping and the ready-made response
-    // writers, through a real HTTP request. Previously zero coverage (audit's "Motor de
-    // orquestração sem nenhum teste automatizado" finding, doc/healthcheckplus-audit.html).
+    // End-to-end coverage for the middleware (HealthCheckMiddlewarePlus): status code mapping and
+    // the ready-made response writers, through a real HTTP request.
     public class HealthCheckMiddlewarePlusEndToEndTests
     {
         private sealed class AlwaysUnhealthyCheck : IHealthCheck
@@ -115,8 +113,7 @@ namespace HealthCheckPlusTests.Integration
             Assert.Equal("simulated failure", entry.GetProperty("description").GetString());
         }
 
-        // Closes the coverage gap noted in doc/progresso-plano-acao.md (Fase 3 follow-up): the
-        // UseHealthChecksPlus(path, port) overload had never been exercised by any test.
+        // Coverage for the UseHealthChecksPlus(path, port) overload.
         [Fact]
         public async Task UseHealthChecksPlus_WithPortOverload_ShouldOnlyMatchConfiguredPort()
         {
@@ -150,8 +147,7 @@ namespace HealthCheckPlusTests.Integration
             Assert.Equal("not-health", await mismatchingResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
 
-        // Closes the coverage gap noted in doc/progresso-plano-acao.md (Fase 3 follow-up): the
-        // UseHealthChecksPlus(path, port, options) overload had never been exercised by any test.
+        // Coverage for the UseHealthChecksPlus(path, port, options) overload.
         [Fact]
         public async Task UseHealthChecksPlus_WithPortAndOptionsOverload_ShouldApplyOptionsOnlyWhenPortMatches()
         {

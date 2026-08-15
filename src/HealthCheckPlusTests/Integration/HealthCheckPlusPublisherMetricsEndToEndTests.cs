@@ -11,9 +11,8 @@ using Microsoft.Extensions.Logging;
 
 namespace HealthCheckPlusTests.Integration
 {
-    // End-to-end coverage for the action plan (doc/plano-acao-healthcheckplus.md), Fase 4, steps
-    // P4.4/P4.5 — the publisher metrics, exercised through a real background service run rather
-    // than by calling internal methods directly.
+    // End-to-end coverage for the publisher metrics, exercised through a real background service
+    // run rather than by calling internal methods directly.
     public class HealthCheckPlusPublisherMetricsEndToEndTests
     {
         private sealed class AlwaysHealthyCheck : IHealthCheck
@@ -107,10 +106,9 @@ namespace HealthCheckPlusTests.Integration
             Assert.Equal(nameof(NoopPublisher), publishedDuration.Tags["healthcheckplus.publisher.type"]);
         }
 
-        // Gap found during the advisor re-validation pass: the WhenReportChange skip branch's
-        // `foreach (var publisher in _publishers)` loop (HealthCheckPlusBackGroundService.cs) had
-        // only ever been exercised with a single registered publisher — never proven that each of
-        // N publishers gets its own skipped_no_change measurement, not just the first/last one.
+        // The WhenReportChange skip branch's `foreach (var publisher in _publishers)` loop
+        // (HealthCheckPlusBackGroundService.cs) must record its own skipped_no_change measurement
+        // for each of N registered publishers, not just the first/last one.
         [Fact]
         public async Task BackgroundService_ShouldRecordSkippedNoChange_ForEveryRegisteredPublisher_WhenMultiplePublishersAreRegistered()
         {
@@ -189,9 +187,8 @@ namespace HealthCheckPlusTests.Integration
             Assert.DoesNotContain(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "published");
         }
 
-        // Gap found while auditing metric coverage after P4.6: "error" was designed as one of the
-        // four possible results (doc/progresso-plano-acao.md, P4.1) but no test had ever exercised
-        // a publisher that actually throws.
+        // "error" is one of the four possible healthcheckplus.publisher.invocations results — this
+        // exercises a publisher that actually throws to prove it's recorded.
         [Fact]
         public async Task BackgroundService_ShouldRecordError_WhenPublisherThrows()
         {
@@ -227,14 +224,11 @@ namespace HealthCheckPlusTests.Integration
 
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "error");
 
-            // Regression test for a bug this test surfaced (fixed alongside this same change,
-            // outside the original metrics scope): RunPublisherAsync rethrows after recording, and
-            // the call site (await Task.WhenAll(tasks) in CheckHealthAsync) used to have no
-            // try/catch around it — unlike the check-execution call above it, which already did.
-            // An uncaught exception there faulted the background loop's Task permanently, silently
-            // ending all future checks AND publishes for the rest of the process lifetime. A
-            // failing publisher (this one throws on every cycle) must not stop the check from
-            // continuing to run.
+            // RunPublisherAsync rethrows after recording, and the call site
+            // (await Task.WhenAll(tasks) in CheckHealthAsync) must catch it — an uncaught exception
+            // there would fault the background loop's Task permanently, silently ending all future
+            // checks AND publishes for the rest of the process lifetime. A failing publisher (this
+            // one throws on every cycle) must not stop the check from continuing to run.
             Assert.True(check.CallCount > 1, $"Expected the background loop to keep running checks after a publisher failure, got {check.CallCount}.");
 
             var errorCount = invocations.Count(m => (string?)m.Tags["healthcheckplus.publisher.result"] == "error");
@@ -245,8 +239,8 @@ namespace HealthCheckPlusTests.Integration
             // the failure, not just a record that a publisher failed once.
             Assert.Contains(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPublisherCycleError" && e.Level == LogLevel.Warning);
 
-            // Same anomaly, also as a counted metric (doc/progresso-plano-acao.md, advisor
-            // re-validation follow-up) so an operator can alert on rate/trend, not just grep logs.
+            // Same anomaly, also as a counted metric, so an operator can alert on rate/trend, not
+            // just grep logs.
             Assert.Contains(capture.Measurements, m =>
                 m.InstrumentName == "healthcheckplus.anomalies" && (string?)m.Tags["healthcheckplus.anomaly.reason"] == "publisher_cycle_failed_but_continued");
         }
