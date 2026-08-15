@@ -116,6 +116,29 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        // Atomically checks "is this check due" (per the caller-supplied predicate, evaluated
+        // against the live cache item) and, if so, marks it Running - closing a race in the
+        // scheduling logic (DefaultHealthCheckServicePlus.ScheduleIfDue, doc/plano-acao-healthcheckplus.md,
+        // P4.7): two concurrent callers (e.g. an HTTP request and a background cycle) could
+        // previously both read "not running, due" before either one marked Running, both schedule
+        // the same check, and run it twice concurrently - with whichever finished second having its
+        // result silently dropped by Update() (see UpdateResultDropped/update_result_dropped).
+        // Guarded by the same lock SwithState already uses, so the two atomic scheduling decisions
+        // in this class (manual override vs. periodic due-check) can't race with each other either.
+        public bool TryBeginRun(string key, Func<ItemCacheHealth, bool> isDue)
+        {
+            lock (_lock)
+            {
+                if (!_statusDeps.TryGetValue(key, out var item) || item.Running || !isDue(item))
+                {
+                    return false;
+                }
+
+                item.Running = true;
+                return true;
+            }
+        }
+
         public void Update(string key, HealthCheckTrigger healthCheckFrom, HealthCheckResult result, DateTime lastexecute, TimeSpan duration)
         {
             if (!_statusDeps.TryGetValue(key, out var item))

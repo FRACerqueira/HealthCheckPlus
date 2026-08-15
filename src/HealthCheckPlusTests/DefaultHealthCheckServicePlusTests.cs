@@ -28,6 +28,18 @@ namespace HealthCheckPlusTests
             }
         }
 
+        private sealed class SlowCountingCheck : IHealthCheck
+        {
+            public int CallCount;
+
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                Interlocked.Increment(ref CallCount);
+                Thread.Sleep(50); // widen the race window so overlapping callers actually overlap
+                return Task.FromResult(HealthCheckResult.Healthy());
+            }
+        }
+
         private static DefaultHealthCheckServicePlus BuildService(
             CacheHealthCheckPlus cache,
             HealthCheckServiceOptions hcOptions,
@@ -161,6 +173,41 @@ namespace HealthCheckPlusTests
 
             var status = cache.FullStatus("Test2");
             Assert.Equal(HealthStatus.Healthy, status.LastResult.Status);
+        }
+
+        // Regression test for the scheduling race the advisor re-validation pass surfaced
+        // (doc/progresso-plano-acao.md, P4.7): ScheduleIfDue used to read "due" and mark Running
+        // as two separate steps, so concurrent callers deciding the same check is due at the same
+        // time (e.g. an HTTP request racing a background cycle) could both schedule and run it.
+        // This drives many concurrent CheckHealthPlusAsync calls at the exact same instant (via
+        // Barrier) while the check is due, and expects the underlying IHealthCheck to run once.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldRunTheCheckOnlyOnce_WhenCalledConcurrentlyWhileDue()
+        {
+            var check = new SlowCountingCheck();
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+            cache.Running("Test1", true);
+            cache.Update("Test1", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Healthy), DateTime.UtcNow.AddSeconds(-10), TimeSpan.Zero);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => check, null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1), "Test1");
+
+            var service = BuildService(cache, hcOptions, healthyPolicy);
+
+            const int concurrency = 20;
+            using var barrier = new Barrier(concurrency);
+            var tasks = Enumerable.Range(0, concurrency).Select(_ => Task.Run(async () =>
+            {
+                barrier.SignalAndWait();
+                await service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, CancellationToken.None);
+            })).ToArray();
+
+            await Task.WhenAll(tasks);
+
+            Assert.Equal(1, check.CallCount);
         }
     }
 }

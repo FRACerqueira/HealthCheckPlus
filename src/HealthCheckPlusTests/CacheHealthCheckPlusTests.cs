@@ -229,5 +229,65 @@ namespace HealthCheckPlusTests
 
             Assert.Single(result);
         }
+
+        [Fact]
+        public void TryBeginRun_ShouldReturnFalse_WhenPredicateSaysNotDue()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            var began = _cacheHealthCheckPlus.TryBeginRun("Test1", _ => false);
+
+            Assert.False(began);
+            Assert.False(_cacheHealthCheckPlus.FullStatus("Test1").Running);
+        }
+
+        [Fact]
+        public void TryBeginRun_ShouldMarkRunning_AndReturnTrue_WhenDue()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            var began = _cacheHealthCheckPlus.TryBeginRun("Test1", _ => true);
+
+            Assert.True(began);
+            Assert.True(_cacheHealthCheckPlus.FullStatus("Test1").Running);
+        }
+
+        [Fact]
+        public void TryBeginRun_ShouldReturnFalse_WhenAlreadyRunning()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+            _cacheHealthCheckPlus.Running("Test1", true);
+
+            var began = _cacheHealthCheckPlus.TryBeginRun("Test1", _ => true);
+
+            Assert.False(began);
+        }
+
+        // Regression test for the scheduling race the advisor re-validation pass surfaced
+        // (doc/plano-acao-healthcheckplus.md, P4.7): the check-then-mark used to be two separate
+        // steps in DefaultHealthCheckServicePlus.ScheduleIfDue, so two concurrent callers could
+        // both observe "not running, due" and both proceed. TryBeginRun makes the two one atomic
+        // operation; this drives many concurrent calls at the same instant (via Barrier) to prove
+        // only one of them can ever win for the same key.
+        [Fact]
+        public void TryBeginRun_ShouldAllowOnlyOneCaller_WhenCalledConcurrently()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            const int concurrency = 50;
+            using var barrier = new Barrier(concurrency);
+            var winners = 0;
+
+            Parallel.For(0, concurrency, _ =>
+            {
+                barrier.SignalAndWait();
+                if (_cacheHealthCheckPlus.TryBeginRun("Test1", _ => true))
+                {
+                    Interlocked.Increment(ref winners);
+                }
+            });
+
+            Assert.Equal(1, winners);
+        }
     }
 }

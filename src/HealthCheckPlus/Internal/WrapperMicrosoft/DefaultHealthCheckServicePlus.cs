@@ -172,10 +172,19 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         }
 
         // Builds the registration to run (with the resolved policy's Delay/Period applied) and
-        // marks it as running in the cache, but only if its schedule is actually due. Shared by
-        // both execution paths. `fallbackWhenNull` covers the case where a registered policy left
-        // Delay/Period unset (e.g. AddCheckPlus without explicit values, foreground-only usage).
-        private HealthCheckRegistration? ScheduleIfDue(HealthCheckRegistration item, ItemCacheHealth sta, IHealthCheckPlusPolicyStatus policy, TimeSpan fallbackWhenNull)
+        // atomically checks-and-marks it running in the cache, but only if its schedule is
+        // actually due. Shared by both execution paths. `fallbackWhenNull` covers the case where a
+        // registered policy left Delay/Period unset (e.g. AddCheckPlus without explicit values,
+        // foreground-only usage).
+        //
+        // The due-check and the Running flag used to be two separate steps here (read sta.DateRef,
+        // then call _cacheStatus.Running(name, true) if due) - two concurrent callers for the same
+        // check (e.g. an HTTP request and a background cycle) could both read "not running, due"
+        // before either marked it, both schedule the same check, and run it twice concurrently,
+        // with whichever finished second having its result silently dropped by Update() (see
+        // AnomalyReason.UpdateResultDropped). CacheHealthCheckPlus.TryBeginRun makes the check and
+        // the mark one atomic operation instead (doc/plano-acao-healthcheckplus.md, P4.7).
+        private HealthCheckRegistration? ScheduleIfDue(HealthCheckRegistration item, IHealthCheckPlusPolicyStatus policy, TimeSpan fallbackWhenNull)
         {
             var itemToRun = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)
             {
@@ -183,17 +192,12 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 Period = policy.PolicyPeriod ?? fallbackWhenNull
             };
 
-            var due = sta.DateRef == _cacheStatus.DateRegister
-                ? _cacheStatus.DateRegister.Add(itemToRun.Delay!.Value) < DateTime.UtcNow
-                : sta.DateRef.Add(itemToRun.Period!.Value) < DateTime.UtcNow;
+            var began = _cacheStatus.TryBeginRun(itemToRun.Name, current =>
+                current.DateRef == _cacheStatus.DateRegister
+                    ? _cacheStatus.DateRegister.Add(itemToRun.Delay!.Value) < DateTime.UtcNow
+                    : current.DateRef.Add(itemToRun.Period!.Value) < DateTime.UtcNow);
 
-            if (!due)
-            {
-                return null;
-            }
-
-            _cacheStatus.Running(itemToRun.Name, true);
-            return itemToRun;
+            return began ? itemToRun : null;
         }
 
         public override Task<HealthReport> CheckHealthAsync(
@@ -222,7 +226,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 var sta = _cacheStatus.FullStatus(item.Name);
                 var policy = ResolveForegroundPolicy(item.Name, sta.LastResult.Status);
 
-                var itemToRun = ScheduleIfDue(item, sta, policy, TimeSpan.Zero);
+                var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
                 if (itemToRun != null)
                 {
                     registrationstorun.Add(itemToRun);
@@ -308,7 +312,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 var sta = _cacheStatus.FullStatus(item.Name);
                 var policy = ResolveBackgroundPolicy(item.Name, sta, backgroudoptions);
 
-                var itemToRun = ScheduleIfDue(item, sta, policy, TimeSpan.Zero);
+                var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
                 if (itemToRun != null)
                 {
                     registrationstorun.Add(itemToRun);
