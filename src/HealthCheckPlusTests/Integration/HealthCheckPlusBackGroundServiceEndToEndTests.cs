@@ -173,7 +173,10 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            // A generous wait relative to the ~1.1s minimum cycle time: a CI runner slower than
+            // this machine (observed in practice on windows-latest) can otherwise miss even the
+            // single execution this test needs.
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             var executions = capture.Measurements
@@ -270,7 +273,10 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            // A generous wait relative to the ~1s minimum cycle time: a CI runner slower than this
+            // machine (observed in practice on windows-latest) can otherwise miss even the single
+            // publish cycle this test needs.
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             Assert.NotEmpty(publisher.Reports);

@@ -180,7 +180,10 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
+            // A generous wait relative to the ~1.1s minimum cycle time (Delay + Idle): a CI runner
+            // slower than this machine (observed in practice on windows-latest) can otherwise miss
+            // even the single cycle this test needs.
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             // See the comment in the test above about why filtering by this test's own publisher
@@ -301,7 +304,10 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            // A generous wait relative to the ~1.1s minimum cycle time: this needs more than one
+            // cycle to observe, and a CI runner slower than this machine (observed in practice on
+            // windows-latest) can otherwise leave only one cycle within a tighter window.
+            await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             Assert.True(check.CallCount > 1,
@@ -355,7 +361,10 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
+            // A generous wait relative to the ~1.1s minimum cycle time: a CI runner slower than
+            // this machine (observed in practice on windows-latest) can otherwise miss even the
+            // single cycle this test needs.
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             var publisherTypeTags = capture.Measurements
