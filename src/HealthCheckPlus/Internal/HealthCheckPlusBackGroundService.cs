@@ -137,9 +137,19 @@ namespace HealthCheckPlus.Internal
                         {
                             _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
                             _countIdletopublish = 0;
-                            var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, _stopping.Token)).ToArray();
+
+                            CancellationTokenSource? publishCancellation = null;
                             try
                             {
+                                // Bound publisher dispatch by the same per-cycle Timeout that
+                                // already bounds check execution above. Without this, a publisher
+                                // with no timeout of its own (e.g. an HTTP call to an endpoint that
+                                // never responds) blocked Task.WhenAll below indefinitely, freezing
+                                // the entire background loop - checks included, not just
+                                // publishing - since nothing else here ever cancelled it.
+                                publishCancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+                                publishCancellation.CancelAfter(_optionsBackGround.Value.Timeout);
+                                var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, publishCancellation.Token)).ToArray();
                                 await Task.WhenAll(tasks).ConfigureAwait(false);
                             }
                             catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
@@ -152,13 +162,16 @@ namespace HealthCheckPlus.Internal
                             {
                                 // Each failing publisher already logged its own error/timeout and
                                 // recorded the "error" metric inside RunPublisherAsync (with which
-                                // publisher, duration, and exception). This log adds the signal
-                                // that was otherwise missing: that the background loop is
-                                // continuing despite the failure above, instead of leaving no
-                                // operational trace of whether it's still alive or has silently died -
-                                // without this try/catch (unlike the check-execution block above it,
-                                // which already has one), Task.WhenAll's rethrown exception would
-                                // fault the loop's fire-and-forget Task silently.
+                                // publisher, duration, and exception) - this also covers a publisher
+                                // that didn't finish within Timeout, since RunPublisherAsync's own
+                                // timeout catch (observing this same linked token) logs/metrics it
+                                // and rethrows. This log adds the signal that was otherwise missing:
+                                // that the background loop is continuing despite the failure above,
+                                // instead of leaving no operational trace of whether it's still
+                                // alive or has silently died - without this try/catch (unlike the
+                                // check-execution block above it, which already has one),
+                                // Task.WhenAll's rethrown exception would fault the loop's
+                                // fire-and-forget Task silently.
                                 Log.HealthCheckPublisherCycleError(_logger, ex);
 
                                 try
@@ -174,6 +187,10 @@ namespace HealthCheckPlus.Internal
                                     // metrics-recording failure.
                                     Log.HealthCheckPublisherMetricsRecordingError(_logger, metricsEx);
                                 }
+                            }
+                            finally
+                            {
+                                publishCancellation?.Dispose();
                             }
                         }
                     }

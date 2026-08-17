@@ -103,5 +103,62 @@ namespace HealthCheckPlusTests
             Assert.Equal(1, constructionCount);
             Assert.All(results, r => Assert.Same(results[0], r));
         }
+
+        private sealed class ScopedDependency : IDisposable
+        {
+            public bool Disposed { get; private set; }
+            public void Dispose() => Disposed = true;
+        }
+
+        private sealed class ScopedDependencyCheck(ScopedDependency dependency) : IHealthCheck
+        {
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(dependency.Disposed
+                    ? HealthCheckResult.Unhealthy("The scoped dependency was already disposed.")
+                    : HealthCheckResult.Healthy());
+            }
+        }
+
+        // Regression test: the adopted check's factory used to be built with whichever
+        // IServiceProvider the very first caller happened to pass in - in production, that's the
+        // per-execution scope DefaultHealthCheckServicePlus.RunCheckAsync creates and disposes
+        // around each single call. Since the constructed check is then cached and reused forever
+        // (by design - see WrapperBaseHealthCheckPlus), any check whose construction resolves a
+        // scoped dependency (the canonical case being the native AddDbContextCheck<T>) worked once
+        // and then ran against an already-disposed dependency on every later execution. This
+        // simulates that real lifecycle - a fresh scope created and disposed around each call to
+        // registration.Factory, exactly like RunCheckAsync does - instead of calling the factory
+        // with a scope that outlives the test.
+        [Fact]
+        public async Task AddCheckLinkTo_ShouldKeepAdoptedCheckWorking_AfterItsFirstExecutionScopeIsDisposed()
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddScoped<ScopedDependency>();
+            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            ihb.Add(new HealthCheckRegistration("Original", sp => new ScopedDependencyCheck(sp.GetRequiredService<ScopedDependency>()), null, null));
+            ihb.AddCheckLinkTo("Adopted", "Original");
+
+            using var provider = services.BuildServiceProvider();
+            var registration = provider.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations
+                .Single(r => r.Name == "Adopted");
+
+            IHealthCheck adoptedCheck;
+            using (var firstExecutionScope = provider.CreateScope())
+            {
+                adoptedCheck = (IHealthCheck)registration.Factory(firstExecutionScope.ServiceProvider);
+            }
+            // firstExecutionScope is now disposed - if the adopted check's dependency came from it,
+            // it's disposed too.
+
+            using var secondExecutionScope = provider.CreateScope();
+            var sameCheck = (IHealthCheck)registration.Factory(secondExecutionScope.ServiceProvider);
+            Assert.Same(adoptedCheck, sameCheck);
+
+            var result = await sameCheck.CheckHealthAsync(new HealthCheckContext { Registration = registration }, TestContext.Current.CancellationToken);
+
+            Assert.Equal(HealthStatus.Healthy, result.Status);
+        }
     }
 }

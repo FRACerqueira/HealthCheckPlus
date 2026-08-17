@@ -3,13 +3,21 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlus.Internal
 {
-    internal class WrapperBaseHealthCheckPlus(IHealthCheck healthCheckisnt) : IHealthCheck, IDisposable
+    // ownedScope: the DI scope the adopted check's dependency (if any) was resolved from. Since
+    // this wrapper - and the wrapped check instance - is cached and reused for the process's
+    // entire lifetime (see AddCheckLinkTo), that scope must live exactly as long as this wrapper
+    // does, not just for the single execution that first constructed the check. Passing it in here
+    // ties its disposal to this wrapper's own, which DefaultHealthCheckServicePlus.Dispose()
+    // already drives at host shutdown.
+    internal class WrapperBaseHealthCheckPlus(IHealthCheck healthCheckisnt, IServiceScope? ownedScope = null) : IHealthCheck, IDisposable
     {
         private readonly IHealthCheck _externalCheckinstance = healthCheckisnt;
+        private readonly IServiceScope? _ownedScope = ownedScope;
         private bool disposed = false;
 
         // Implement IDisposable.
@@ -47,6 +55,7 @@ namespace HealthCheckPlus.Internal
                     {
                         disposable.Dispose();
                     }
+                    _ownedScope?.Dispose();
                 }
                 // Note disposing has been done.
                 disposed = true;

@@ -218,6 +218,12 @@ namespace HealthCheckPlus.Internal
             return _statusDeps[keydep];
         }
 
+        // Used by DefaultHealthCheckServicePlus's constructor-time validation to fail fast when a
+        // registration's name was left out of the `names` list passed to AddHealthChecksPlus,
+        // instead of throwing KeyNotFoundException from FullStatus's raw indexer above on every
+        // later request/background cycle.
+        public bool IsRegistered(string name) => _statusDeps.ContainsKey(name);
+
         #region IStateHealthChecksPlus
 
         public HealthCheckResult StatusResult(string keydep)

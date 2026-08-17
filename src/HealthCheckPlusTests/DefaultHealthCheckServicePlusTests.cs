@@ -38,6 +38,21 @@ namespace HealthCheckPlusTests
             }
         }
 
+        // Blocks on the ambient cancellationToken passed in by RunCheckAsync (not a per-check
+        // timeout token) until externally cancelled, so a test can control exactly when the
+        // ambient token fires mid-execution.
+        private sealed class CancelableCheck : IHealthCheck
+        {
+            public readonly ManualResetEventSlim Started = new(false);
+
+            public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                Started.Set();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+                return HealthCheckResult.Healthy();
+            }
+        }
+
         private static DefaultHealthCheckServicePlus BuildService(
             CacheHealthCheckPlus cache,
             HealthCheckServiceOptions hcOptions,
@@ -104,6 +119,31 @@ namespace HealthCheckPlusTests
 
             var ex = Assert.Throws<InvalidOperationException>(() => BuildService(cache, hcOptions));
             Assert.Contains("NativeCheck", ex.Message, StringComparison.Ordinal);
+        }
+
+        // A health check registered with a Healthy policy (as AddCheckPlus/AddCheckLinkTo always
+        // do) but whose name was left out of the `names` list passed to AddHealthChecksPlus has no
+        // entry in the cache - ValidateHealthyPolicies alone doesn't catch this, since it only
+        // checks the opposite direction (a name without a matching policy). Left unchecked, this
+        // reaches CacheHealthCheckPlus.FullStatus's raw dictionary indexer on every later
+        // request/cycle and crashes with an unhandled KeyNotFoundException - exactly the kind of
+        // failure the constructor-time fail-fast for the original NRE finding was meant to
+        // eliminate, just reachable from the other direction. Setup: "Kafka" has a Healthy policy
+        // but only "OtherCheck" was passed to AddHealthChecksPlus's names list (simulated here via
+        // cache.InitCache).
+        [Fact]
+        public void Constructor_ShouldThrowClearException_WhenRegistrationNameIsMissingFromCache()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["OtherCheck"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Kafka", _ => new AlwaysHealthyCheck(), null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "Kafka");
+
+            var ex = Assert.Throws<InvalidOperationException>(() => BuildService(cache, hcOptions, healthyPolicy));
+            Assert.Contains("Kafka", ex.Message, StringComparison.Ordinal);
         }
 
         // Characterization test confirming the Unhealthy branch of the foreground/HTTP path behaves
@@ -196,6 +236,44 @@ namespace HealthCheckPlusTests
             await Task.WhenAll(tasks);
 
             Assert.Equal(1, check.CallCount);
+        }
+
+        // Regression test: TryBeginRun marks a check Running before its task runs, and only
+        // Update() ever clears that flag. If the ambient cancellationToken (not a per-check
+        // timeout) fires while the check is in flight - e.g. an HTTP client disconnecting, which
+        // surfaces here as httpContext.RequestAborted - RunCheckAsync deliberately lets that
+        // OperationCanceledException propagate uncaught, which used to make Task.WhenAll skip the
+        // loop that calls Update entirely, wedging the check as Running forever. It must still be
+        // released even though the exception itself is still expected to propagate to the caller.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldReleaseRunning_WhenAmbientTokenIsCancelledMidFlight()
+        {
+            var check = new CancelableCheck();
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+            cache.Running("Test1", true);
+            cache.Update("Test1", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Healthy), DateTime.UtcNow.AddSeconds(-10), TimeSpan.Zero);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => check, null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1), "Test1");
+
+            var service = BuildService(cache, hcOptions, healthyPolicy);
+
+            using var cts = new CancellationTokenSource();
+            var callTask = service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, cts.Token);
+
+            // Generous timeout: the 3 target frameworks' test processes run concurrently in CI/local
+            // full-suite runs, and under that contention the background Task.Run here can take a
+            // few seconds to get scheduled even though nothing is actually stuck.
+            Assert.True(check.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The check never started.");
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callTask);
+
+            var status = cache.FullStatus("Test1");
+            Assert.False(status.Running, "The check was left permanently marked Running after the ambient token was cancelled.");
         }
     }
 }

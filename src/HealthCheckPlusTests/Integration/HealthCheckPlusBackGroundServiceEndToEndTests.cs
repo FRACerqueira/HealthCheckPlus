@@ -36,6 +36,20 @@ namespace HealthCheckPlusTests.Integration
             }
         }
 
+        // Never completes on its own - it only stops when its cancellationToken is cancelled,
+        // simulating a publisher with no timeout of its own (e.g. an HTTP call to an endpoint that
+        // never responds).
+        private sealed class HangingPublisher : IHealthCheckPublisher
+        {
+            public int InvocationCount;
+
+            public async Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
+            {
+                Interlocked.Increment(ref InvocationCount);
+                await Task.Delay(System.Threading.Timeout.Infinite, cancellationToken);
+            }
+        }
+
         [Fact]
         public async Task BackgroundService_ShouldRerunPeriodically_AndPublishOnlyWhenReportChanges()
         {
@@ -137,6 +151,56 @@ namespace HealthCheckPlusTests.Integration
 
             Assert.Contains(capture.Measurements, m =>
                 m.InstrumentName == "healthcheckplus.check.duration" && (string?)m.Tags["healthcheckplus.check.name"] == checkName);
+        }
+
+        // Regression test: HealthCheckPlusBackGroundOptions.Timeout used to only bound the
+        // check-execution phase of each cycle, not publisher dispatch - so a publisher with no
+        // timeout of its own that never completes froze the entire background loop (checks
+        // included, not just publishing) forever, since nothing else ever cancelled it. This drives
+        // a real host with a publisher that only stops when cancelled, and expects both checks and
+        // publish attempts to keep happening across several cycles despite every single one hanging
+        // until the per-cycle Timeout cuts it off.
+        [Fact]
+        public async Task BackgroundService_ShouldKeepRunning_WhenAPublisherHangsPastTheCycleTimeout()
+        {
+            var check = new CountingCheck();
+            var publisher = new HangingPublisher();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    services.AddSingleton(check);
+                    services.AddSingleton<IHealthCheckPublisher>(publisher);
+
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<CountingCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        // Idle, Timeout and *Period all reject values under 1 second, so this is as
+                        // fast as the cycle can be driven - each cycle is roughly Timeout (the
+                        // hanging publisher is only ever cut off once it elapses) plus Idle.
+                        opt.Delay = TimeSpan.FromMilliseconds(50);
+                        opt.Timeout = TimeSpan.FromSeconds(1);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Publishing = new PublishingOptions
+                        {
+                            AfterIdleCount = 1,
+                            WhenReportChange = false
+                        };
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(9), TestContext.Current.CancellationToken);
+
+            Assert.True(publisher.InvocationCount >= 3,
+                $"Expected the hanging publisher to have been invoked at least 3 times as the loop recovered from each timeout, got {publisher.InvocationCount}.");
+            Assert.True(check.CallCount >= 3,
+                $"Expected the background service to keep rerunning checks across multiple cycles despite the hanging publisher, got {check.CallCount}.");
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
         }
     }
 }

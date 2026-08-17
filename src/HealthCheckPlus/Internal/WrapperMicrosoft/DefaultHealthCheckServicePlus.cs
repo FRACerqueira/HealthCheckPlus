@@ -52,6 +52,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             _cacheStatus = (CacheHealthCheckPlus)_services.GetRequiredService<IStateHealthChecksPlus>();
 
             ValidateHealthyPolicies(_options.Value.Registrations, _policies);
+            ValidateCacheRegistrations(_options.Value.Registrations, _cacheStatus);
         }
 
         // DefaultHealthCheckServicePlus is a container-constructed singleton (registered via
@@ -118,6 +119,29 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     "The following health checks have no HealthCheckPlus policy registered: " +
                     string.Join(", ", missing) +
                     ". Register them with AddCheckPlus or AddCheckLinkTo before building the service provider.");
+            }
+        }
+
+        // The opposite direction of the same misconfiguration ValidateHealthyPolicies guards
+        // against: a registration with a Healthy policy (as AddCheckPlus/AddCheckLinkTo always
+        // produce) but whose name was left out of the `names` list passed to AddHealthChecksPlus -
+        // that list is what seeds the cache (CacheHealthCheckPlus.InitCache), so a name missing
+        // from it has no cache entry. Left unchecked, every later request/cycle would hit
+        // CacheHealthCheckPlus.FullStatus's raw dictionary indexer for that name and crash with an
+        // unhandled KeyNotFoundException.
+        private static void ValidateCacheRegistrations(IEnumerable<HealthCheckRegistration> registrations, CacheHealthCheckPlus cacheStatus)
+        {
+            var missing = registrations
+                .Where(r => !cacheStatus.IsRegistered(r.Name))
+                .Select(r => r.Name)
+                .ToArray();
+
+            if (missing.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "The following health checks are registered but missing from the names list passed to AddHealthChecksPlus: " +
+                    string.Join(", ", missing) +
+                    ". Add them to that list before building the service provider.");
             }
         }
 
@@ -247,23 +271,40 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     tasks[index++] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);
                 }
 
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-                totalTime.Stop();
-
-                index = 0;
-                foreach (var registration in registrationstorun)
+                try
                 {
-                    var item = new HealthCheckResult(tasks[index].Result.Status,
-                        tasks[index].Result.Description,
-                        tasks[index].Result.Exception,
-                        tasks[index].Result.Data);
-                    _cacheStatus.Update(
-                        registration.Name,
-                        resultHealthCheckFrom,
-                        item,
-                        dtref.Add(tasks[index].Result.Duration),
-                        tasks[index].Result.Duration);
-                    index++;
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
+                }
+                finally
+                {
+                    // ScheduleIfDue/TryBeginRun already marked every one of these checks Running
+                    // before the tasks above were started, and Update() is the only thing that
+                    // clears it. That must still happen here even when Task.WhenAll faults - the
+                    // ambient cancellationToken firing mid-flight (e.g. httpContext.RequestAborted)
+                    // is deliberately not swallowed by RunCheckAsync - otherwise every check in
+                    // this batch would stay marked Running forever and never be scheduled again.
+                    // The exception, if any, still propagates normally once this finally block
+                    // completes, so callers see the same behavior as before.
+                    totalTime.Stop();
+
+                    index = 0;
+                    foreach (var registration in registrationstorun)
+                    {
+                        var task = tasks[index++];
+                        HealthCheckResult result;
+                        TimeSpan duration;
+                        if (task.IsCompletedSuccessfully)
+                        {
+                            result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
+                            duration = task.Result.Duration;
+                        }
+                        else
+                        {
+                            result = new HealthCheckResult(registration.FailureStatus, "The health check did not complete because the operation was cancelled.");
+                            duration = TimeSpan.Zero;
+                        }
+                        _cacheStatus.Update(registration.Name, resultHealthCheckFrom, result, dtref.Add(duration), duration);
+                    }
                 }
             }
 
@@ -326,24 +367,39 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     tasks[index++] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);
                 }
 
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-
-                index = 0;
-                foreach (var registration in registrationstorun)
+                try
                 {
-                    var item = new HealthCheckResult(tasks[index].Result.Status,
-                        tasks[index].Result.Description,
-                        tasks[index].Result.Exception,
-                        tasks[index].Result.Data);
-                    _cacheStatus.Update(
-                        registration.Name,
-                        HealthCheckTrigger.Background,
-                        item,
-                        dtref.Add(tasks[index].Result.Duration),
-                        tasks[index].Result.Duration);
-                    index++;
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                _cacheStatus.UpdateStatusName();
+                finally
+                {
+                    // See the matching comment in CheckHealthPlusAsync: Update() must run for
+                    // every check in this batch (releasing TryBeginRun's Running flag) even when
+                    // Task.WhenAll faults - here, typically the per-cycle Timeout cancelling this
+                    // call's linked token while a check is still in flight - otherwise it would
+                    // stay marked Running forever and never run again on any later cycle. The
+                    // exception still propagates afterward so HealthCheckPlusBackGroundService's
+                    // own timeout/shutdown handling around this call is unaffected.
+                    index = 0;
+                    foreach (var registration in registrationstorun)
+                    {
+                        var task = tasks[index++];
+                        HealthCheckResult result;
+                        TimeSpan duration;
+                        if (task.IsCompletedSuccessfully)
+                        {
+                            result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
+                            duration = task.Result.Duration;
+                        }
+                        else
+                        {
+                            result = new HealthCheckResult(registration.FailureStatus, "The health check did not complete because the operation was cancelled.");
+                            duration = TimeSpan.Zero;
+                        }
+                        _cacheStatus.Update(registration.Name, HealthCheckTrigger.Background, result, dtref.Add(duration), duration);
+                    }
+                    _cacheStatus.UpdateStatusName();
+                }
             }
         }
 

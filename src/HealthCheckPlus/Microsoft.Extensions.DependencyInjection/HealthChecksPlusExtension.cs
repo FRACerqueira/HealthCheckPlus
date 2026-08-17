@@ -308,7 +308,20 @@ namespace Microsoft.Extensions.DependencyInjection
 
                 HealthCheckRegistration reg = new(
                         namedep,
-                        (sp) => state.ExternalCheck.GetOrAdd(namedep, _ => new Lazy<WrapperBaseHealthCheckPlus>(() => new WrapperBaseHealthCheckPlus(original.Factory(sp)))).Value,
+                        (sp) => state.ExternalCheck.GetOrAdd(namedep, _ => new Lazy<WrapperBaseHealthCheckPlus>(() =>
+                        {
+                            // Build the adopted check from a scope created and owned here, not the
+                            // caller's own per-execution scope (DefaultHealthCheckServicePlus.
+                            // RunCheckAsync disposes that one right after this factory returns).
+                            // The adopted check instance is cached and reused for the process's
+                            // entire lifetime (see ExternalCheck above), so any scoped dependency it
+                            // resolves during construction (e.g. the native AddDbContextCheck<T>'s
+                            // DbContext) must stay alive that whole time too - not just for its
+                            // first execution. This owned scope is disposed together with the
+                            // wrapper in DefaultHealthCheckServicePlus.Dispose().
+                            var ownedScope = sp.GetRequiredService<IServiceScopeFactory>().CreateScope();
+                            return new WrapperBaseHealthCheckPlus(original.Factory(ownedScope.ServiceProvider), ownedScope);
+                        })).Value,
                         original.FailureStatus,
                         original.Tags,
                         original.Timeout)

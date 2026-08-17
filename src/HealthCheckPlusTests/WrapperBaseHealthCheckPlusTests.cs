@@ -4,6 +4,7 @@
 // ********************************************************************************************
 
 using HealthCheckPlus.Internal;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlusTests
@@ -46,6 +47,23 @@ namespace HealthCheckPlusTests
 
             Assert.Equal(2, inner.CallCount);
             Assert.False(inner.Disposed);
+        }
+
+        // Regression test: the wrapper can own the DI scope its wrapped check's dependencies were
+        // resolved from (see AddCheckLinkTo), for exactly as long as the wrapper itself is alive.
+        // That scope must be disposed together with this wrapper, not leaked.
+        [Fact]
+        public void Dispose_ShouldDisposeTheOwnedScope()
+        {
+            var services = new ServiceCollection();
+            var provider = services.BuildServiceProvider();
+            var scope = provider.CreateScope();
+
+            var wrapper = new WrapperBaseHealthCheckPlus(new DisposableTrackingCheck(), scope);
+
+            wrapper.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => scope.ServiceProvider.GetService(typeof(object)));
         }
     }
 }

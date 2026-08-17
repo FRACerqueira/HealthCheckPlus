@@ -165,7 +165,10 @@ namespace HealthCheckPlus.options
         }
 
         /// <summary>
-        /// Gets or sets the timeout for executing the health checks an all HealthCheckPlus background service.
+        /// Gets or sets the timeout for a single background cycle - it bounds both running the due
+        /// health checks and, separately, dispatching that cycle's publishers, so neither a slow
+        /// check nor a publisher with no timeout of its own can block the background service
+        /// indefinitely.
         /// Use <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> to execute with no timeout.
         /// The default value is 30 seconds.
         /// </summary>
