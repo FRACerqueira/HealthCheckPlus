@@ -3,6 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using System.Diagnostics.Metrics;
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +61,11 @@ namespace HealthCheckPlusTests.Integration
                 Interlocked.Increment(ref CallCount);
                 return Task.FromResult(HealthCheckResult.Healthy());
             }
+        }
+
+        private sealed class MetricsThrowingTestPublisher : IHealthCheckPublisher
+        {
+            public Task PublishAsync(HealthReport report, CancellationToken cancellationToken) => Task.CompletedTask;
         }
 
         [Fact]
@@ -215,7 +221,11 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            // A generous wait relative to the 1s cycle: this test's own full-suite runs (3 target
+            // frameworks plus xUnit's own parallelization, all driving several TestHost instances
+            // at once) showed this flake intermittently at 3s under heavy contention, with only 1
+            // cycle observed instead of the several expected.
+            await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             var invocations = capture.Measurements
@@ -243,6 +253,89 @@ namespace HealthCheckPlusTests.Integration
             // just grep logs.
             Assert.Contains(capture.Measurements, m =>
                 m.InstrumentName == "healthcheckplus.anomalies" && (string?)m.Tags["healthcheckplus.anomaly.reason"] == "publisher_cycle_failed_but_continued");
+        }
+
+        // Regression test: RecordPublisherInvocation's "published" call in RunPublisherAsync used
+        // to be the last statement inside its own try block, with no guard of its own - a throwing
+        // MeterListener there was caught by the *publisher-failure* catch below it, misattributing
+        // an instrumentation bug as the publisher itself having thrown (wrong HealthCheckPublisherError
+        // log, wrong "error" metric) instead of surfacing it as what it actually is.
+        [Fact]
+        public async Task BackgroundService_ShouldNotMisattributeFailure_WhenAMetricsListenerThrowsRecordingAPublishedInvocation()
+        {
+            var check = new CountingCheck();
+            var loggerProvider = new CapturingLoggerProvider();
+
+            // Only throws for this test's own publisher type recording a "published" result, so a
+            // concurrently-running test's measurements for the process-wide "HealthCheckPlus" Meter
+            // pass through unaffected.
+            using var listener = new MeterListener
+            {
+                InstrumentPublished = (instrument, l) =>
+                {
+                    if (instrument.Meter.Name == "HealthCheckPlus")
+                    {
+                        l.EnableMeasurementEvents(instrument);
+                    }
+                }
+            };
+            listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) => ThrowIfPublishedInvocationForThisTest(instrument.Name, tags));
+            listener.Start();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging(builder => builder.AddProvider(loggerProvider));
+                    services.AddSingleton(check);
+                    services.AddSingleton<IHealthCheckPublisher, MetricsThrowingTestPublisher>();
+
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<CountingCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(100);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = false };
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            Assert.True(check.CallCount > 1,
+                $"Expected the background loop to keep running checks despite the throwing metrics listener, got {check.CallCount}.");
+
+            Assert.DoesNotContain(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPublisherError");
+            Assert.Contains(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPlusPublisherMetricsRecordingError" && e.Level == LogLevel.Warning);
+        }
+
+        private static void ThrowIfPublishedInvocationForThisTest(string instrumentName, ReadOnlySpan<KeyValuePair<string, object?>> tags)
+        {
+            if (instrumentName != "healthcheckplus.publisher.invocations")
+            {
+                return;
+            }
+
+            string? publisherType = null;
+            string? result = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "healthcheckplus.publisher.type")
+                {
+                    publisherType = (string?)tag.Value;
+                }
+                if (tag.Key == "healthcheckplus.publisher.result")
+                {
+                    result = (string?)tag.Value;
+                }
+            }
+
+            if (publisherType == nameof(MetricsThrowingTestPublisher) && result == "published")
+            {
+                throw new InvalidOperationException("simulated metrics exporter failure");
+            }
         }
     }
 }

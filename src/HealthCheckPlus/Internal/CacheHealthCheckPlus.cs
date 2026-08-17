@@ -67,6 +67,16 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        // See the comment on ItemCacheHealth.Tags for why this is populated separately from
+        // InitCache instead of as part of it.
+        public void SetTags(string name, IEnumerable<string> tags)
+        {
+            if (_statusDeps.TryGetValue(name, out var item))
+            {
+                item.Tags = tags;
+            }
+        }
+
         public void UpdateStatusName()
         {
             var report = CreateReport();
@@ -85,7 +95,13 @@ namespace HealthCheckPlus.Internal
         {
             var entries = _statusDeps.ToDictionary(
                 kvp => kvp.Key,
-                kvp => new HealthReportEntry(kvp.Value.LastResult.Status, null, TimeSpan.Zero, null, null)
+                kvp => new HealthReportEntry(
+                    kvp.Value.LastResult.Status,
+                    kvp.Value.LastResult.Description,
+                    kvp.Value.Duration,
+                    kvp.Value.LastResult.Exception,
+                    kvp.Value.LastResult.Data,
+                    kvp.Value.Tags)
             );
             return new HealthReport(entries, TimeSpan.Zero);
         }

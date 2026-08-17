@@ -146,6 +146,26 @@ namespace HealthCheckPlusTests
             Assert.Contains("Kafka", ex.Message, StringComparison.Ordinal);
         }
 
+        // Regression test: the cache's per-check Tags (used by CacheHealthCheckPlus.CreateReport,
+        // which a callback registered via AddStatusName consumes through IStateHealthChecksPlus.
+        // Status) must be populated from the real registrations at construction time - InitCache
+        // alone has no access to them (only the plain `names` list passed to AddHealthChecksPlus).
+        [Fact]
+        public void Constructor_ShouldPopulateCacheTags_FromRegistrations()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, ["tag-a", "tag-b"]));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "Test1");
+
+            BuildService(cache, hcOptions, healthyPolicy);
+
+            Assert.Equal(["tag-a", "tag-b"], cache.CreateReport().Entries["Test1"].Tags);
+        }
+
         // Characterization test confirming the Unhealthy branch of the foreground/HTTP path behaves
         // correctly through ResolveForegroundPolicy.
         [Fact]

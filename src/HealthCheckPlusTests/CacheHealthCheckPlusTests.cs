@@ -82,6 +82,34 @@ namespace HealthCheckPlusTests
             Assert.NotNull(report);
         }
 
+        // Regression test: CreateReport() (consumed by publishers and by Status()/UpdateStatusName)
+        // used to hardcode null description, zero duration, no exception, no data and no tags for
+        // every entry - even though CacheHealthCheckPlus already tracks all of that per check. This
+        // meant a StatusHealthReport callback registered via AddStatusName (read back through
+        // IStateHealthChecksPlus.Status) silently computed a different answer than the functionally
+        // identical callback wired to the HTTP endpoint's own report, which is built with the real
+        // values instead.
+        [Fact]
+        public void CreateReport_ShouldCarryTheSameDataAsTheLastResult()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+            _cacheHealthCheckPlus.Running("Test1", true);
+            _cacheHealthCheckPlus.SetTags("Test1", ["tag-a", "tag-b"]);
+
+            var data = new Dictionary<string, object> { ["key"] = "value" };
+            var result = new HealthCheckResult(HealthStatus.Degraded, "custom description", new InvalidOperationException("boom"), data);
+            _cacheHealthCheckPlus.Update("Test1", HealthCheckTrigger.UrlRequest, result, DateTime.UtcNow, TimeSpan.FromMilliseconds(250));
+
+            var entry = _cacheHealthCheckPlus.CreateReport().Entries["Test1"];
+
+            Assert.Equal(HealthStatus.Degraded, entry.Status);
+            Assert.Equal("custom description", entry.Description);
+            Assert.Equal(TimeSpan.FromMilliseconds(250), entry.Duration);
+            Assert.IsType<InvalidOperationException>(entry.Exception);
+            Assert.Equal("value", entry.Data["key"]);
+            Assert.Equal(["tag-a", "tag-b"], entry.Tags);
+        }
+
         [Fact]
         public void Status_ShouldReturnHealthStatus()
         {

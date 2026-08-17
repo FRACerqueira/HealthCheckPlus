@@ -8,6 +8,7 @@ using HealthCheckPlus.options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace HealthCheckPlusTests.Integration
 {
@@ -32,6 +33,39 @@ namespace HealthCheckPlusTests.Integration
             public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
             {
                 Interlocked.Increment(ref PublishCount);
+                return Task.CompletedTask;
+            }
+        }
+
+        // Registers a callback on its own cancellationToken that throws, and never completes on
+        // its own - so it's still in flight, with that callback registered, whenever the host
+        // shuts down. That mirrors how CancellationTokenSource.Cancel() can throw in production if
+        // any consumer code registered a throwing callback anywhere on the cancellation chain a
+        // background cycle's linked token is part of - not something this library's own code does,
+        // but reachable from outside it.
+        private sealed class ThrowingOnCancelCheck : IHealthCheck
+        {
+            public readonly ManualResetEventSlim Started = new(false);
+
+            public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.Register(() => throw new InvalidOperationException("simulated cancellation callback failure"));
+                Started.Set();
+                await Task.Delay(System.Threading.Timeout.Infinite, cancellationToken);
+                return HealthCheckResult.Healthy();
+            }
+        }
+
+        private sealed class CapturingPublisher : IHealthCheckPublisher
+        {
+            public readonly List<HealthReport> Reports = [];
+
+            public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
+            {
+                lock (Reports)
+                {
+                    Reports.Add(report);
+                }
                 return Task.CompletedTask;
             }
         }
@@ -201,6 +235,88 @@ namespace HealthCheckPlusTests.Integration
                 $"Expected the background service to keep rerunning checks across multiple cycles despite the hanging publisher, got {check.CallCount}.");
 
             await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Regression test: HealthCheckPlusBackGroundOptions.Predicate is used to decide which
+        // checks the background service *runs* (see BackGroudCheckHealthPlusAsync), but the report
+        // it hashes (for WhenReportChange) and hands to publishers used to come straight from
+        // CacheHealthCheckPlus.CreateReport(), which has no notion of that predicate and always
+        // includes every check tracked in the cache - including one the predicate excludes from
+        // ever running, which therefore never leaves its InitCache seed status (Healthy). A
+        // predicate-excluded check should never appear in what the background service publishes at
+        // all, correct or not, since it's explicitly outside what this background service manages.
+        [Fact]
+        public async Task BackgroundService_ShouldExcludePredicateFilteredChecks_FromThePublishedReport()
+        {
+            var publisher = new CapturingPublisher();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    services.AddSingleton<IHealthCheckPublisher>(publisher);
+
+                    var ihb = services.AddHealthChecksPlus(["Included", "Excluded"]);
+                    ihb.AddCheckPlus<CountingCheck>("Included");
+                    ihb.AddCheckPlus<CountingCheck>("Excluded");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(50);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Predicate = r => r.Name == "Included";
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = false };
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            Assert.NotEmpty(publisher.Reports);
+            Assert.All(publisher.Reports, report =>
+            {
+                Assert.Contains("Included", report.Entries.Keys);
+                Assert.DoesNotContain("Excluded", report.Entries.Keys);
+            });
+        }
+
+        // Regression test: StopAsync used to swallow an exception from _stopping.Cancel() with a
+        // fully empty catch block - no log, no metric, nothing - which is exactly the pattern this
+        // project's own rule forbids (see docs/ARCHITECTURE.md's logging-and-anomalies section).
+        // CancellationTokenSource.Cancel() can throw if any callback registered anywhere on the
+        // cancellation chain a background cycle's linked token belongs to itself throws; this
+        // drives a real shutdown while a check with such a callback is in flight to reproduce it.
+        [Fact]
+        public async Task StopAsync_ShouldLogWarning_WhenCancellingTheStoppingTokenThrows()
+        {
+            var check = new ThrowingOnCancelCheck();
+            var loggerProvider = new CapturingLoggerProvider();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging(builder => builder.AddProvider(loggerProvider));
+                    services.AddSingleton(check);
+
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<ThrowingOnCancelCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.Zero;
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                    });
+                },
+                _ => { });
+
+            Assert.True(check.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The check never started.");
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            Assert.Contains(loggerProvider.Entries, e => e.Level == LogLevel.Warning
+                && e.EventId.Name == "HealthCheckPlusBackGroundStopCancellationError"
+                && e.Exception != null);
         }
     }
 }

@@ -51,6 +51,14 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             _cacheStatus = (CacheHealthCheckPlus)_services.GetRequiredService<IStateHealthChecksPlus>();
 
+            // Registrations (and their Tags) aren't known yet when InitCache runs, so the cache's
+            // per-check Tags are populated here instead, once the real registrations exist - see
+            // ItemCacheHealth.Tags and CacheHealthCheckPlus.CreateReport().
+            foreach (var registration in _options.Value.Registrations)
+            {
+                _cacheStatus.SetTags(registration.Name, registration.Tags);
+            }
+
             ValidateHealthyPolicies(_options.Value.Registrations, _policies);
             ValidateCacheRegistrations(_options.Value.Registrations, _cacheStatus);
         }

@@ -121,7 +121,7 @@ namespace HealthCheckPlus.Internal
                     }
                     if (runpublish)
                     {
-                        var report = _healthCheckService.CreateReport();
+                        var report = FilterReportByPredicate(_healthCheckService.CreateReport());
                         if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
                         {
                             runpublish = false;
@@ -130,7 +130,7 @@ namespace HealthCheckPlus.Internal
                             // each registered publisher rather than leaving it invisible.
                             foreach (var publisher in _publishers)
                             {
-                                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedNoChange);
+                                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedNoChange));
                             }
                         }
                         if (runpublish)
@@ -174,19 +174,7 @@ namespace HealthCheckPlus.Internal
                                 // fire-and-forget Task silently.
                                 Log.HealthCheckPublisherCycleError(_logger, ex);
 
-                                try
-                                {
-                                    HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublisherCycleFailedButContinued);
-                                }
-                                catch (Exception metricsEx)
-                                {
-                                    // Metrics must never be able to break this loop either (same
-                                    // MeterListener risk as everywhere else metrics are recorded).
-                                    // Logged explicitly rather than swallowed, since the log above is
-                                    // about the publisher cycle failure, not this separate
-                                    // metrics-recording failure.
-                                    Log.HealthCheckPublisherMetricsRecordingError(_logger, metricsEx);
-                                }
+                                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublisherCycleFailedButContinued));
                             }
                             finally
                             {
@@ -205,9 +193,17 @@ namespace HealthCheckPlus.Internal
             {
                 _stopping.Cancel();
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore exceptions thrown as a result of a cancellation.
+                // _stopping.Cancel() can throw if any callback registered anywhere on the
+                // cancellation chain a background cycle's linked token belongs to (see
+                // CheckHealthAsync's `cancellation = CreateLinkedTokenSource(_stopping.Token)`)
+                // itself throws - not a scenario this class's own code creates, but reachable from
+                // outside it (e.g. a health check's own CancellationToken.Register callback).
+                // Shutdown must proceed regardless of what happens here (the rest of this method
+                // still needs to run), so this is deliberately swallowed rather than rethrown - but
+                // it must not vanish with zero signal.
+                Log.StopCancellationError(_logger, ex);
             }
 
             if (_healthcheckserviceOptions.Value.Registrations.Count == 0)
@@ -227,7 +223,7 @@ namespace HealthCheckPlus.Internal
             {
                 if (publisherPlus.PublisherCondition != null && !publisherPlus.PublisherCondition(report))
                 {
-                    HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedCondition);
+                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedCondition));
                     return;
                 }
             }
@@ -239,7 +235,7 @@ namespace HealthCheckPlus.Internal
                 Log.HealthCheckPublisherBegin(_logger, publisher);
                 await publisher.PublishAsync(report, cancellationToken).ConfigureAwait(false);
                 Log.HealthCheckPublisherEnd(_logger, publisher, duration.ElapsedMilliseconds);
-                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Published, duration.Elapsed);
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Published, duration.Elapsed));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -254,15 +250,66 @@ namespace HealthCheckPlus.Internal
             catch (OperationCanceledException)
             {
                 Log.HealthCheckPublisherTimeout(_logger, publisher, duration.ElapsedMilliseconds);
-                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed);
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed));
                 throw;
             }
             catch (Exception ex)
             {
                 Log.HealthCheckPublisherError(_logger, publisher, duration.ElapsedMilliseconds, ex);
-                HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed);
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed));
                 throw;
             }
+        }
+
+        // A MeterListener callback (e.g. a third-party OTel exporter) runs synchronously on this
+        // thread, so a bug in it must never be allowed to break publisher dispatch or be
+        // misattributed as the publisher itself having failed (a throwing metrics call used to sit
+        // as the last statement inside the "success" try block above, so it was caught by the
+        // publisher-failure catch below it, logging a false HealthCheckPublisherError and
+        // recording a false "error" metric instead of surfacing the real problem). Every
+        // RecordPublisherInvocation/RecordAnomaly call in this class goes through here instead.
+        private void SafeRecordMetric(Action recordMetric)
+        {
+            try
+            {
+                recordMetric();
+            }
+            catch (Exception ex)
+            {
+                Log.HealthCheckPublisherMetricsRecordingError(_logger, ex);
+            }
+        }
+
+        // HealthCheckPlusBackGroundOptions.Predicate decides which checks this background service
+        // runs (see BackGroudCheckHealthPlusAsync), but CacheHealthCheckPlus.CreateReport() has no
+        // notion of it and always reports on every check tracked in the cache - including one the
+        // predicate excludes from ever running here, which would otherwise never leave its
+        // InitCache seed status (Healthy) and be published as such forever. A predicate-excluded
+        // check is explicitly outside what this background service manages, so it must not appear
+        // in the report this service hashes (for WhenReportChange) or hands to its publishers at
+        // all - not reported incorrectly, not reported.
+        private HealthReport FilterReportByPredicate(HealthReport report)
+        {
+            var predicate = _optionsBackGround.Value.Predicate;
+            if (predicate == null)
+            {
+                return report;
+            }
+
+            var includedNames = new HashSet<string>(
+                _healthcheckserviceOptions.Value.Registrations.Where(predicate).Select(r => r.Name),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (includedNames.Count == report.Entries.Count)
+            {
+                return report;
+            }
+
+            var filteredEntries = report.Entries
+                .Where(e => includedNames.Contains(e.Key))
+                .ToDictionary(e => e.Key, e => e.Value, StringComparer.OrdinalIgnoreCase);
+
+            return new HealthReport(filteredEntries, report.TotalDuration);
         }
 
         private bool SameReport(HealthReport report)
@@ -303,12 +350,14 @@ namespace HealthCheckPlus.Internal
             public const int HealthCheckPlusBackGroundProcessingEndId = 101;
             public const int HealthCheckPlusBackGroundErrorId = 104;
             public const int HealthCheckPlusBackGroundWarningId = 105;
+            public const int HealthCheckPlusBackGroundStopCancellationErrorId = 106;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
             public const string HealthCheckProcessingBeginName = "HealthCheckPlusBackGroundProcessingBegin";
             public const string HealthCheckProcessingEndName = "HealthCheckPlusBackGroundProcessingEnd";
             public const string HealthCheckErrorName = "HealthCheckPlusBackGroundError";
             public const string HealthCheckTimeoutName = "HealthCheckPlusBackGroundTimeout";
+            public const string HealthCheckStopCancellationErrorName = "HealthCheckPlusBackGroundStopCancellationError";
 
         }
 
@@ -352,6 +401,11 @@ namespace HealthCheckPlus.Internal
 
             [LoggerMessage(EventIds.HealthCheckPlusBackGroundWarningId, LogLevel.Warning, "HealthCheckPlus Background-Service threw an timeout after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckTimeoutName)]
             public static partial void ProcessingTimeout(ILogger logger, double ElapsedMilliseconds);
+
+            [LoggerMessage(EventIds.HealthCheckPlusBackGroundStopCancellationErrorId, LogLevel.Warning,
+                "Cancelling the HealthCheckPlus Background-Service's stopping token threw; shutdown continues regardless.",
+                EventName = EventIds.HealthCheckStopCancellationErrorName)]
+            public static partial void StopCancellationError(ILogger logger, Exception exception);
         }
 #pragma warning restore IDE0079
 
