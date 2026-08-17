@@ -184,5 +184,32 @@ namespace HealthCheckPlusTests.Integration
             var mismatchingResponse = await client.SendAsync(HealthRequest(expectedPort + 1), TestContext.Current.CancellationToken);
             Assert.Equal("not-health", await mismatchingResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
+
+        // The original audit asked for this exact scenario - a health check registered the native
+        // ASP.NET Core way, without AddCheckPlus/AddCheckLinkTo - to be covered as a permanent
+        // regression test through a real HTTP pipeline (WebApplicationFactory/TestServer), not just
+        // by constructing DefaultHealthCheckServicePlus directly at the unit level (which
+        // DefaultHealthCheckServicePlusTests.Constructor_ShouldThrowClearException_WhenRegistrationHasNoHealthyPolicy
+        // already covers). HealthCheckMiddlewarePlus's constructor takes HealthCheckService as a
+        // regular constructor dependency, so building the middleware pipeline resolves (and
+        // therefore constructs) it during host startup - this must fail there, not silently, and
+        // not later as an unhandled NullReferenceException on the first real request.
+        [Fact]
+        public async Task CreateAsync_ShouldThrowClearException_WhenACheckIsRegisteredWithoutAddCheckPlusOrAddCheckLinkTo()
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus(["Native"]);
+                    // The native IHealthChecksBuilder.Add - as any developer would reach for by
+                    // habit, without knowing AddCheckPlus/AddCheckLinkTo exist - deliberately
+                    // skipped here instead of ihb.AddCheckPlus<AlwaysHealthyCheck>("Native").
+                    ihb.Add(new HealthCheckRegistration("Native", _ => new AlwaysHealthyCheck(), null, null));
+                },
+                app => app.UseHealthChecksPlus("/health")));
+
+            Assert.Contains("Native", ex.Message, StringComparison.Ordinal);
+        }
     }
 }

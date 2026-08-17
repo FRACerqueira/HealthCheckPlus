@@ -166,6 +166,28 @@ namespace HealthCheckPlusTests
             Assert.Equal(["tag-a", "tag-b"], cache.CreateReport().Entries["Test1"].Tags);
         }
 
+        // Regression test: two policies registered for the same check and the same status (e.g.
+        // AddUnhealthyPolicy called twice for "Test1") used to collide silently - FindPolicy's
+        // FirstOrDefault always picks whichever was registered first, so the second call's period
+        // was ignored with no warning at all. This must fail fast at construction, the same way a
+        // missing Healthy policy does.
+        [Fact]
+        public void Constructor_ShouldThrowClearException_WhenTheSameCheckHasTwoPoliciesForTheSameStatus()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "Test1");
+            var firstUnhealthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, TimeSpan.Zero, TimeSpan.FromSeconds(10), "Test1");
+            var secondUnhealthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, TimeSpan.Zero, TimeSpan.FromSeconds(20), "Test1");
+
+            var ex = Assert.Throws<InvalidOperationException>(() => BuildService(cache, hcOptions, healthyPolicy, firstUnhealthyPolicy, secondUnhealthyPolicy));
+            Assert.Contains("Test1", ex.Message, StringComparison.Ordinal);
+        }
+
         // Characterization test confirming the Unhealthy branch of the foreground/HTTP path behaves
         // correctly through ResolveForegroundPolicy.
         [Fact]

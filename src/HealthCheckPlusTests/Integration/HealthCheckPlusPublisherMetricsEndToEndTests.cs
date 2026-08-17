@@ -101,15 +101,15 @@ namespace HealthCheckPlusTests.Integration
             // one is capturing. Filter by this test's own publisher type (a distinct concrete type
             // per test in this file) rather than asserting over every captured measurement.
             var invocations = capture.Measurements
-                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == nameof(NoopPublisher))
+                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(NoopPublisher).FullName)
                 .ToArray();
 
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "published");
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "skipped_no_change");
 
             var publishedDuration = capture.Measurements.Single(m =>
-                m.InstrumentName == "healthcheckplus.publisher.duration" && (string?)m.Tags["healthcheckplus.publisher.type"] == nameof(NoopPublisher));
-            Assert.Equal(nameof(NoopPublisher), publishedDuration.Tags["healthcheckplus.publisher.type"]);
+                m.InstrumentName == "healthcheckplus.publisher.duration" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(NoopPublisher).FullName);
+            Assert.Equal(typeof(NoopPublisher).FullName, publishedDuration.Tags["healthcheckplus.publisher.type"]);
         }
 
         // The WhenReportChange skip branch's `foreach (var publisher in _publishers)` loop
@@ -146,7 +146,7 @@ namespace HealthCheckPlusTests.Integration
                 .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations")
                 .ToArray();
 
-            foreach (var publisherType in new[] { nameof(NoopPublisherA), nameof(NoopPublisherB) })
+            foreach (var publisherType in new[] { typeof(NoopPublisherA).FullName, typeof(NoopPublisherB).FullName })
             {
                 var thisPublisherInvocations = invocations
                     .Where(m => (string?)m.Tags["healthcheckplus.publisher.type"] == publisherType)
@@ -186,7 +186,7 @@ namespace HealthCheckPlusTests.Integration
             // See the comment in the test above about why filtering by this test's own publisher
             // type is necessary — the Meter is process-wide and tests run concurrently.
             var invocations = capture.Measurements
-                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == nameof(ConditionalPublisher))
+                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(ConditionalPublisher).FullName)
                 .ToArray();
 
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "skipped_condition");
@@ -229,7 +229,7 @@ namespace HealthCheckPlusTests.Integration
             await host.StopAsync(TestContext.Current.CancellationToken);
 
             var invocations = capture.Measurements
-                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == nameof(ThrowingPublisher))
+                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(ThrowingPublisher).FullName)
                 .ToArray();
 
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "error");
@@ -311,6 +311,63 @@ namespace HealthCheckPlusTests.Integration
             Assert.Contains(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPlusPublisherMetricsRecordingError" && e.Level == LogLevel.Warning);
         }
 
+        private sealed class NamespaceOne
+        {
+            public sealed class SameNamePublisher : IHealthCheckPublisher
+            {
+                public Task PublishAsync(HealthReport report, CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+        }
+
+        private sealed class NamespaceTwo
+        {
+            public sealed class SameNamePublisher : IHealthCheckPublisher
+            {
+                public Task PublishAsync(HealthReport report, CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+        }
+
+        // Regression test: publisher metrics were keyed by GetType().Name (the short class name),
+        // so two publishers with the same class name in different namespaces collapsed into the
+        // same "healthcheckplus.publisher.type" tag value, silently merging their measurements into
+        // one series.
+        [Fact]
+        public async Task BackgroundService_ShouldNotCollidePublisherMetrics_ForSameShortTypeNameInDifferentNamespaces()
+        {
+            using var capture = new MetricsCapture();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    services.AddSingleton<IHealthCheckPublisher, NamespaceOne.SameNamePublisher>();
+                    services.AddSingleton<IHealthCheckPublisher, NamespaceTwo.SameNamePublisher>();
+
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(100);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = false };
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            var publisherTypeTags = capture.Measurements
+                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations"
+                    && ((string?)m.Tags["healthcheckplus.publisher.type"])?.Contains("SameNamePublisher", StringComparison.Ordinal) == true)
+                .Select(m => (string?)m.Tags["healthcheckplus.publisher.type"])
+                .Distinct()
+                .ToArray();
+
+            Assert.Equal(2, publisherTypeTags.Length);
+        }
+
         private static void ThrowIfPublishedInvocationForThisTest(string instrumentName, ReadOnlySpan<KeyValuePair<string, object?>> tags)
         {
             if (instrumentName != "healthcheckplus.publisher.invocations")
@@ -332,7 +389,7 @@ namespace HealthCheckPlusTests.Integration
                 }
             }
 
-            if (publisherType == nameof(MetricsThrowingTestPublisher) && result == "published")
+            if (publisherType == typeof(MetricsThrowingTestPublisher).FullName && result == "published")
             {
                 throw new InvalidOperationException("simulated metrics exporter failure");
             }

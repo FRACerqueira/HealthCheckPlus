@@ -61,6 +61,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             ValidateHealthyPolicies(_options.Value.Registrations, _policies);
             ValidateCacheRegistrations(_options.Value.Registrations, _cacheStatus);
+            ValidatePolicyUniqueness(_policies);
         }
 
         // DefaultHealthCheckServicePlus is a container-constructed singleton (registered via
@@ -150,6 +151,28 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     "The following health checks are registered but missing from the names list passed to AddHealthChecksPlus: " +
                     string.Join(", ", missing) +
                     ". Add them to that list before building the service provider.");
+            }
+        }
+
+        // AddUnhealthyPolicy/AddDegradedPolicy/AddCheckPlus/AddCheckLinkTo all register a policy via
+        // IServiceCollection.AddSingleton, which accumulates rather than replaces - calling one of
+        // them twice for the same check and status used to collide silently: FindPolicy's
+        // FirstOrDefault always picks whichever was registered first, so the second call's
+        // Delay/Period was ignored with no warning at all.
+        private static void ValidatePolicyUniqueness(List<IHealthCheckPlusPolicyStatus> policies)
+        {
+            var duplicates = policies
+                .GroupBy(p => (p.PolicyNameDep, p.PolicyForStatus))
+                .Where(g => g.Count() > 1)
+                .Select(g => $"{g.Key.PolicyNameDep} ({g.Key.PolicyForStatus})")
+                .ToArray();
+
+            if (duplicates.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "The following health checks have more than one policy registered for the same status: " +
+                    string.Join(", ", duplicates) +
+                    ". Call AddUnhealthyPolicy/AddDegradedPolicy/AddCheckPlus/AddCheckLinkTo for a given check and status only once.");
             }
         }
 

@@ -110,6 +110,43 @@ namespace HealthCheckPlusTests
             Assert.Equal(["tag-a", "tag-b"], entry.Tags);
         }
 
+        // Regression test: FullStatus/StatusResult/SwithState/ConvertToPlus used to hit
+        // ConcurrentDictionary's raw indexer for an unknown check name, throwing an unhelpful
+        // KeyNotFoundException instead of a clear error naming what went wrong.
+        [Fact]
+        public void FullStatus_ShouldThrowClearException_WhenNameIsNotRegistered()
+        {
+            var ex = Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.FullStatus("DoesNotExist"));
+            Assert.Contains("DoesNotExist", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StatusResult_ShouldThrowClearException_WhenNameIsNotRegistered()
+        {
+            var ex = Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.StatusResult("DoesNotExist"));
+            Assert.Contains("DoesNotExist", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SwithState_ShouldThrowClearException_WhenNameIsNotRegistered()
+        {
+            var ex = Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.SwithState("DoesNotExist", HealthStatus.Unhealthy));
+            Assert.Contains("DoesNotExist", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ConvertToPlus_ShouldThrowClearException_WhenReportNameIsNotRegistered()
+        {
+            var entries = new Dictionary<string, HealthReportEntry>
+            {
+                ["DoesNotExist"] = new HealthReportEntry(HealthStatus.Healthy, null, TimeSpan.Zero, null, null)
+            };
+            var report = new HealthReport(entries, TimeSpan.Zero);
+
+            var ex = Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.ConvertToPlus(report).ToArray());
+            Assert.Contains("DoesNotExist", ex.Message, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void Status_ShouldReturnHealthStatus()
         {

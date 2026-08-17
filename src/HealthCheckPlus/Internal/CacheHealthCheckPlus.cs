@@ -217,21 +217,22 @@ namespace HealthCheckPlus.Internal
 
         public void SwithState(string key, HealthStatus status)
         {
+            var item = GetItemOrThrow(key);
             lock (_lock)
             {
-                if (_statusDeps.TryGetValue(key, out var item) && (item.Running || item.LastResult.Status == status))
+                if (item.Running || item.LastResult.Status == status)
                 {
                     return;
                 }
-                Running(key, true);
+                item.Running = true;
             }
-            var itemres = new HealthCheckResult(status, _statusDeps[key].LastResult.Description);
+            var itemres = new HealthCheckResult(status, item.LastResult.Description);
             Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.UtcNow, TimeSpan.Zero);
         }
 
         public ItemCacheHealth FullStatus(string keydep)
         {
-            return _statusDeps[keydep];
+            return GetItemOrThrow(keydep);
         }
 
         // Used by DefaultHealthCheckServicePlus's constructor-time validation to fail fast when a
@@ -240,11 +241,23 @@ namespace HealthCheckPlus.Internal
         // later request/background cycle.
         public bool IsRegistered(string name) => _statusDeps.ContainsKey(name);
 
+        // FullStatus/StatusResult/SwithState/ConvertToPlus used to hit ConcurrentDictionary's raw
+        // indexer for an unknown check name, throwing an unhelpful KeyNotFoundException instead of
+        // a clear error naming what went wrong.
+        private ItemCacheHealth GetItemOrThrow(string name)
+        {
+            if (!_statusDeps.TryGetValue(name, out var item))
+            {
+                throw new ArgumentException($"No health check named '{name}' is registered.", nameof(name));
+            }
+            return item;
+        }
+
         #region IStateHealthChecksPlus
 
         public HealthCheckResult StatusResult(string keydep)
         {
-            return _statusDeps[keydep].LastResult;
+            return GetItemOrThrow(keydep).LastResult;
         }
 
         public void SwitchToUnhealthy(string keydep)
@@ -296,7 +309,7 @@ namespace HealthCheckPlus.Internal
 
         public IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
         {
-            return report.Entries.Select(x => _statusDeps[x.Key]);
+            return report.Entries.Select(x => GetItemOrThrow(x.Key));
         }
 
         #endregion

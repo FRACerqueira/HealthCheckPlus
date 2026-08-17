@@ -130,7 +130,7 @@ namespace HealthCheckPlus.Internal
                             // each registered publisher rather than leaving it invisible.
                             foreach (var publisher in _publishers)
                             {
-                                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedNoChange));
+                                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.SkippedNoChange));
                             }
                         }
                         if (runpublish)
@@ -223,7 +223,7 @@ namespace HealthCheckPlus.Internal
             {
                 if (publisherPlus.PublisherCondition != null && !publisherPlus.PublisherCondition(report))
                 {
-                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.SkippedCondition));
+                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.SkippedCondition));
                     return;
                 }
             }
@@ -235,7 +235,7 @@ namespace HealthCheckPlus.Internal
                 Log.HealthCheckPublisherBegin(_logger, publisher);
                 await publisher.PublishAsync(report, cancellationToken).ConfigureAwait(false);
                 Log.HealthCheckPublisherEnd(_logger, publisher, duration.ElapsedMilliseconds);
-                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Published, duration.Elapsed));
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.Published, duration.Elapsed));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -250,13 +250,13 @@ namespace HealthCheckPlus.Internal
             catch (OperationCanceledException)
             {
                 Log.HealthCheckPublisherTimeout(_logger, publisher, duration.ElapsedMilliseconds);
-                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed));
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.Error, duration.Elapsed));
                 throw;
             }
             catch (Exception ex)
             {
                 Log.HealthCheckPublisherError(_logger, publisher, duration.ElapsedMilliseconds, ex);
-                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(publisher.GetType().Name, PublisherInvocationResult.Error, duration.Elapsed));
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.Error, duration.Elapsed));
                 throw;
             }
         }
@@ -268,6 +268,17 @@ namespace HealthCheckPlus.Internal
         // publisher-failure catch below it, logging a false HealthCheckPublisherError and
         // recording a false "error" metric instead of surfacing the real problem). Every
         // RecordPublisherInvocation/RecordAnomaly call in this class goes through here instead.
+        // GetType().Name (the short class name) collapses two publishers of the same class name in
+        // different namespaces into one "healthcheckplus.publisher.type" tag value, silently
+        // merging their measurements into a single series. FullName is unique per type; Name is a
+        // defensive fallback for the (practically unreachable, for a concrete publisher instance)
+        // case where FullName is null, e.g. a generic type parameter.
+        private static string PublisherTypeName(IHealthCheckPublisher publisher)
+        {
+            var type = publisher.GetType();
+            return type.FullName ?? type.Name;
+        }
+
         private void SafeRecordMetric(Action recordMetric)
         {
             try
