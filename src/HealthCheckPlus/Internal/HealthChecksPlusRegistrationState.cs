@@ -15,6 +15,8 @@ namespace HealthCheckPlus.Internal
     {
         public bool AddedHealthChecksPlus { get; set; }
 
+        public bool AddedBackgroundPolicy { get; set; }
+
         // Lazy<T>, not the wrapper type directly: ConcurrentDictionary.GetOrAdd's valueFactory has
         // no once-only guarantee under contention (two threads racing to add the same key can both
         // run it), so caching a bare WrapperBaseHealthCheckPlus would let two concurrent callers

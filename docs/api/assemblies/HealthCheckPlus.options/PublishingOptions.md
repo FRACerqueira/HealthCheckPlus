@@ -16,7 +16,7 @@ public class PublishingOptions
 | --- | --- |
 | [PublishingOptions](PublishingOptions/PublishingOptions.md)() | Create Default instance |
 | [AfterIdleCount](PublishingOptions/AfterIdleCount.md) { get; set; } | Gets or sets the Number of counts idle to publish.The default value is 1. |
-| [Enabled](PublishingOptions/Enabled.md) { get; } | Gets or sets the usage is enabled. Default value is true |
+| [Enabled](PublishingOptions/Enabled.md) { get; } | Gets whether publishing is enabled. There is no setter - the only way to change this is to construct a whole new instance (the parameterless constructor defaults to `true`). Whatever this evaluates to, it is also forced to `false` whenever [`AfterIdleCount`](./PublishingOptions/AfterIdleCount.md) is less than 1. |
 | [WhenReportChange](PublishingOptions/WhenReportChange.md) { get; set; } | Gets or sets publish only when the report has a status change in one of its entries The default value is True. |
 
 ### See Also

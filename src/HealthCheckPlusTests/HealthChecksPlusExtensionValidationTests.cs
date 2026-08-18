@@ -73,6 +73,51 @@ namespace HealthCheckPlusTests
             Assert.Throws<ArgumentException>(() => ihb.AddCheckLinkTo("Test1", "Original", period: TimeSpan.FromMilliseconds(500)));
         }
 
+        // Regression tests: a null/empty namedep (or, for AddCheckLinkTo, name) used to be accepted
+        // here with no validation at all - AddUnhealthyPolicy/AddDegradedPolicy stored it as-is and
+        // only failed later, with a confusing NullReferenceException from
+        // DefaultHealthCheckServicePlus's constructor (ValidatePolicyUniqueness/the policy index both
+        // call .ToUpperInvariant() on it) far away from the actual mistake; AddCheckLinkTo failed
+        // immediately with a NullReferenceException from namedep.Equals(name, ...) instead of a
+        // clear ArgumentException naming the actual bad argument.
+        [Fact]
+        public void AddUnhealthyPolicy_ShouldRejectNullOrEmptyNamedep()
+        {
+            var ihb = BuildBuilder();
+
+            Assert.ThrowsAny<ArgumentException>(() => ihb.AddUnhealthyPolicy(null!, TimeSpan.FromSeconds(1)));
+            Assert.Throws<ArgumentException>(() => ihb.AddUnhealthyPolicy("", TimeSpan.FromSeconds(1)));
+        }
+
+        [Fact]
+        public void AddDegradedPolicy_ShouldRejectNullOrEmptyNamedep()
+        {
+            var ihb = BuildBuilder();
+
+            Assert.ThrowsAny<ArgumentException>(() => ihb.AddDegradedPolicy(null!, TimeSpan.FromSeconds(1)));
+            Assert.Throws<ArgumentException>(() => ihb.AddDegradedPolicy("", TimeSpan.FromSeconds(1)));
+        }
+
+        [Fact]
+        public void AddCheckPlus_ShouldRejectNullOrEmptyNamedep()
+        {
+            var ihb = BuildBuilder();
+
+            Assert.ThrowsAny<ArgumentException>(() => ihb.AddCheckPlus<AlwaysHealthyCheck>(null!));
+            Assert.Throws<ArgumentException>(() => ihb.AddCheckPlus<AlwaysHealthyCheck>(""));
+        }
+
+        [Fact]
+        public void AddCheckLinkTo_ShouldRejectNullOrEmptyNamedepOrName()
+        {
+            var ihb = BuildBuilder();
+
+            Assert.ThrowsAny<ArgumentException>(() => ihb.AddCheckLinkTo(null!, "Original"));
+            Assert.Throws<ArgumentException>(() => ihb.AddCheckLinkTo("", "Original"));
+            Assert.ThrowsAny<ArgumentException>(() => ihb.AddCheckLinkTo("Adopted", null!));
+            Assert.Throws<ArgumentException>(() => ihb.AddCheckLinkTo("Adopted", ""));
+        }
+
         // Regression test for the breaking change that removed AddHealthChecksPlus's `names`
         // parameter: the cache must now be seeded purely from whatever ends up registered via
         // AddCheckPlus/AddCheckLinkTo/native AddCheck, with no separate list to keep in sync. This
@@ -93,6 +138,19 @@ namespace HealthCheckPlusTests
 
             Assert.Equal(HealthStatus.Healthy, state.FullStatus("Test1").LastResult.Status);
             Assert.Equal(HealthStatus.Healthy, state.FullStatus("Test2").LastResult.Status);
+        }
+
+        // Regression test: AddHostedService accumulates rather than replaces, so a second
+        // AddBackgroundPolicy call used to silently register a second HealthCheckPlusBackGroundService
+        // instance - two independent background loops running concurrently, each executing checks and
+        // dispatching publishers on its own schedule, with nothing indicating the mistake.
+        [Fact]
+        public void AddBackgroundPolicy_ShouldRejectASecondCall()
+        {
+            var ihb = BuildBuilder();
+            ihb.AddBackgroundPolicy();
+
+            Assert.Throws<InvalidOperationException>(() => ihb.AddBackgroundPolicy());
         }
 
         [Fact]

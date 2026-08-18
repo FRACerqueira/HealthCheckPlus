@@ -4,7 +4,7 @@ This is a reference for operators and on-call engineers running a service that u
 
 ## Reading a health check response
 
-A `UseHealthChecksPlus` endpoint returns one of the standard ASP.NET Core status codes by default: **200** for `Healthy`/`Degraded`, **503** for `Unhealthy`. If nothing else is configured, the response body is empty — the status code alone is the signal. A `ResponseWriter` (set via `HealthCheckPlusOptions`) adds a JSON body; all of the built-in templates share the same top-level shape:
+A `UseHealthChecksPlus` endpoint returns one of the standard ASP.NET Core status codes by default: **200** for `Healthy`/`Degraded`, **503** for `Unhealthy`. If nothing else is configured, the response body is the aggregate status as plain text (e.g. `Healthy`) — the native `HealthCheckOptions.ResponseWriter` default (`WriteMinimalPlaintext`), not an empty body. A `ResponseWriter` (set via `HealthCheckPlusOptions`) adds a JSON body instead; all of the built-in templates share the same top-level shape:
 
 ```json
 {
@@ -26,7 +26,7 @@ A `UseHealthChecksPlus` endpoint returns one of the standard ASP.NET Core status
 
 ## The `origin` field
 
-Every cached result records what triggered it — surfaced as `origin` in the `...Plus` response templates, and as the `check.origin` tag on the `healthcheckplus.check.executions`/`healthcheckplus.check.duration` metrics:
+Every cached result records what triggered it — surfaced as `origin` in the `...Plus` response templates, and as the `healthcheckplus.check.origin` tag on the `healthcheckplus.check.executions`/`healthcheckplus.check.duration` metrics:
 
 | Origin | Meaning |
 |---|---|
@@ -57,12 +57,12 @@ Check whether its policy's period for the *current* status is what you expect �
 Look for a `HealthCheckPublisherCycleError` (Warning) or `HealthCheckPlusBackGroundPublishReportBuildError` (Error) in the logs — both mean the loop hit a failure during a cycle (a publisher throwing, or the configured `Predicate` throwing while building the report to publish, respectively) and *continued* regardless, so their presence alone isn't the problem. If checks have genuinely stopped (no new `healthcheckplus.check.executions` measurements, and no periodic `HealthCheckPlus Background-Service` debug/processing logs, and no error logs from this service either), that indicates the background hosted service itself isn't running — check that `AddBackgroundPolicy()` was actually called and that the host started successfully.
 
 **A publisher isn't firing when you expect it to.**
-Check `healthcheckplus.publisher.invocations` filtered by that publisher's type name and look at the `result` tag: `skipped_no_change` means the aggregate report hasn't changed since the last publish (`WhenReportChange`); `skipped_condition` means the publisher's own `IHealthCheckPlusPublisher.PublisherCondition` returned false; `error` means it threw (see the paired `HealthCheckPublisherError`/`HealthCheckPublisherTimeout` log for which publisher and why).
+Check `healthcheckplus.publisher.invocations` filtered by that publisher's type name and look at the `healthcheckplus.publisher.result` tag: `skipped_no_change` means the aggregate report hasn't changed since the last publish (`WhenReportChange`); `skipped_condition` means the publisher's own `IHealthCheckPlusPublisher.PublisherCondition` returned false; `error` means it threw (see the paired `HealthCheckPublisherError`/`HealthCheckPublisherTimeout` log for which publisher and why).
 
 **You're seeing `healthcheckplus.anomalies` measurements or their paired Warning logs.**
 These are defensive paths that were handled without failing a request or crashing a loop — see the reason:
 
-| `anomaly.reason` | Paired log | What it means | What to do |
+| `healthcheckplus.anomaly.reason` | Paired log | What it means | What to do |
 |---|---|---|---|
 | `update_result_dropped` | `HealthCheckPlusUpdateDropped` | A check's result arrived but was discarded — either the check name isn't registered (a configuration bug), or two overlapping executions of the same check both finished and the second one's result was dropped. | If frequent for a specific check, its period may be shorter than the check's own typical execution time, causing overlap; consider lengthening the period or shortening the check's own work. |
 | `adopted_check_dispose_failed` | `HealthCheckDisposeError` | An adopted external check's own `IDisposable.Dispose()` threw during host shutdown. | Investigate the underlying dependency's disposal behavior (e.g. a connection multiplexer failing because its socket was already force-closed) — shutdown still completed correctly, but that resource's cleanup didn't. |
@@ -76,5 +76,5 @@ A `HealthCheckPlusMetricsRecordingError` log with no matching `healthcheckplus.a
 
 See `ARCHITECTURE.md`'s [Metrics](./ARCHITECTURE.md#metrics) section for the full instrument list and tags. For alerting, the two worth watching by default are:
 
-- `healthcheckplus.check.status_transitions{status=Unhealthy}` — rate of checks becoming unhealthy.
+- `healthcheckplus.check.status_transitions{healthcheckplus.check.status=Unhealthy}` — rate of checks becoming unhealthy.
 - `healthcheckplus.anomalies` — any nonzero rate here means a defensive path fired; read the paired log for detail (table above).

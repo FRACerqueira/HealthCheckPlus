@@ -532,16 +532,17 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         {
             return _cacheStatus.CreateReport();
         }
+
+        // Used by HealthCheckPlusBackGroundService to build the report it publishes - see
+        // CacheHealthCheckPlus.CreateReport(Func<string, bool>).
+        internal HealthReport CreateReport(Func<string, bool> includeName)
+        {
+            return _cacheStatus.CreateReport(includeName);
+        }
+
         public DateTime? LastReport()
         {
             return _cacheStatus.LastReport();
-        }
-
-        // Used by HealthCheckPlusBackGroundService to exclude a not-yet-run check from what it
-        // publishes - see CacheHealthCheckPlus.HasEverRun.
-        internal bool HasEverRun(string name)
-        {
-            return _cacheStatus.HasEverRun(name);
         }
 
         private async Task<HealthReportEntry> RunCheckAsync(HealthCheckRegistration registration, CancellationToken cancellationToken)

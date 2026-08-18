@@ -16,7 +16,13 @@ public IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
 
 ### Return Value
 
-An enumerable of [`IDataHealthPlus`](../IDataHealthPlus.md).
+An enumerable of [`IDataHealthPlus`](../IDataHealthPlus.md). Fully evaluated eagerly, not lazily, so any exception below surfaces immediately rather than mid-enumeration.
+
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentException | *report* contains an entry for a name that isn't (or is no longer) a registered health check. |
 
 ### See Also
 

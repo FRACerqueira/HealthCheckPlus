@@ -12,7 +12,7 @@ public bool Enabled { get; }
 
 ### Remarks
 
-The instance actually assigned to [`HealthCheckPlusBackGroundOptions.Publishing`](../HealthCheckPlusBackGroundOptions/Publishing.md) by default is constructed via the internal constructor with publishing disabled, not via this class's own public parameterless constructor - so `true` is only this class's own standalone default, not what a consumer sees from `AddBackgroundPolicy` unless they explicitly replace the whole [`HealthCheckPlusBackGroundOptions.Publishing`](../HealthCheckPlusBackGroundOptions/Publishing.md) instance with `new PublishingOptions()` (or one built via its object-initializer form).
+The instance actually assigned to [`Publishing`](../HealthCheckPlusBackGroundOptions/Publishing.md) by default is constructed via the internal constructor with publishing disabled, not via this class's own public parameterless constructor - so `true` is only this class's own standalone default, not what a consumer sees from `AddBackgroundPolicy` unless they explicitly replace the whole [`Publishing`](../HealthCheckPlusBackGroundOptions/Publishing.md) instance with `new PublishingOptions()` (or one built via its object-initializer form).
 
 ### See Also
 

@@ -46,12 +46,18 @@ namespace HealthCheckPlus.options
         /// HealthCheckPlus background service. The delay is applied once at startup, and does
         /// not apply to subsequent iterations. The default value is 5 seconds.
         /// </summary>
+        /// <remarks>
+        /// The <see cref="Delay"/> cannot be set to a negative value. Unlike the period
+        /// properties, sub-second and zero values are valid here - this is a one-shot startup
+        /// delay, not a recurring poll interval.
+        /// </remarks>
         public TimeSpan Delay
         {
             get => _delay;
             set
             {
                 PeriodValidation.EnsureNotInfinite(value, nameof(Delay), nameof(value));
+                PeriodValidation.EnsureNonNegative(value, nameof(Delay), nameof(value));
                 _delay = value;
             }
         }

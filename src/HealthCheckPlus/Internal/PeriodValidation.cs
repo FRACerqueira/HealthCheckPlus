@@ -31,5 +31,13 @@ namespace HealthCheckPlus.Internal
                 throw new ArgumentException($"The {propertyName} must not be infinite.", paramName);
             }
         }
+
+        public static void EnsureNonNegative(TimeSpan value, string propertyName, string paramName)
+        {
+            if (value < TimeSpan.Zero)
+            {
+                throw new ArgumentException($"The {propertyName} must not be negative.", paramName);
+            }
+        }
     }
 }

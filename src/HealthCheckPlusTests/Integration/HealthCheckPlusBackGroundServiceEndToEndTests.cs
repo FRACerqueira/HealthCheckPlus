@@ -240,7 +240,7 @@ namespace HealthCheckPlusTests.Integration
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
 
-        // Regression test: FilterReportForPublishing (invoked only when building the report to hand
+        // Regression test: BuildReportForPublishing (invoked only when building the report to hand
         // to publishers) calls the same consumer-supplied Predicate used to decide which checks
         // run - but that specific invocation used to sit completely outside any try/catch in the
         // background loop, unlike every other step here. A Predicate that throws while the report

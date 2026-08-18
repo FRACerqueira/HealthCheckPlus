@@ -10,6 +10,10 @@
 public TimeSpan Delay { get; set; }
 ```
 
+### Remarks
+
+The `Delay` cannot be set to a negative value. Unlike the period properties, sub-second and zero values are valid here - this is a one-shot startup delay, not a recurring poll interval.
+
 ### See Also
 
 * class [HealthCheckPlusBackGroundOptions](../HealthCheckPlusBackGroundOptions.md)

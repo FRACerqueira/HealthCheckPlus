@@ -44,26 +44,41 @@ namespace HealthCheckPlusTests
             Assert.Equal("Test2", _cacheHealthCheckPlus.FullStatus("Test2").Name);
         }
 
-        // Regression test: HasEverRun distinguishes InitCache's seed (Healthy, Origin=None) from a
-        // genuine result - used by HealthCheckPlusBackGroundService to keep a not-yet-run check out
-        // of what it publishes/hashes instead of reporting the seed as a real Healthy observation.
+        // Regression test: CreateReport(includeName) excludes a check that hasn't actually run yet
+        // (InitCache's seed - Healthy, Origin=None) even when includeName accepts its name - used by
+        // HealthCheckPlusBackGroundService to keep a not-yet-run check out of what it
+        // publishes/hashes instead of reporting the seed as a real Healthy observation. Deciding
+        // this from the same Snapshot read used to build the entry (rather than a separate
+        // HasEverRun-style call made after a plain CreateReport() already snapshotted the report)
+        // is what closes the phantom-seed window described on CreateReport(includeName) itself.
         [Fact]
-        public void HasEverRun_ShouldReturnFalse_UntilTheCheckActuallyRunsOnce()
+        public void CreateReportWithIncludeName_ShouldExcludeACheckThatHasNeverRun()
         {
             _cacheHealthCheckPlus.InitCache(["Test1"]);
 
-            Assert.False(_cacheHealthCheckPlus.HasEverRun("Test1"));
+            var report = _cacheHealthCheckPlus.CreateReport(_ => true);
+            Assert.False(report.Entries.ContainsKey("Test1"));
 
             _cacheHealthCheckPlus.Running("Test1", true);
             _cacheHealthCheckPlus.Update("Test1", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Healthy), DateTime.UtcNow, TimeSpan.Zero);
 
-            Assert.True(_cacheHealthCheckPlus.HasEverRun("Test1"));
+            report = _cacheHealthCheckPlus.CreateReport(_ => true);
+            Assert.True(report.Entries.ContainsKey("Test1"));
         }
 
         [Fact]
-        public void HasEverRun_ShouldReturnFalse_ForAnUnregisteredName()
+        public void CreateReportWithIncludeName_ShouldExcludeANameIncludeNameRejects()
         {
-            Assert.False(_cacheHealthCheckPlus.HasEverRun("DoesNotExist"));
+            _cacheHealthCheckPlus.InitCache(["Test1", "Test2"]);
+            _cacheHealthCheckPlus.Running("Test1", true);
+            _cacheHealthCheckPlus.Update("Test1", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Healthy), DateTime.UtcNow, TimeSpan.Zero);
+            _cacheHealthCheckPlus.Running("Test2", true);
+            _cacheHealthCheckPlus.Update("Test2", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Healthy), DateTime.UtcNow, TimeSpan.Zero);
+
+            var report = _cacheHealthCheckPlus.CreateReport(name => name == "Test1");
+
+            Assert.True(report.Entries.ContainsKey("Test1"));
+            Assert.False(report.Entries.ContainsKey("Test2"));
         }
 
         [Fact]
@@ -117,6 +132,26 @@ namespace HealthCheckPlusTests
             _cacheHealthCheckPlus.InitCache(names);
 
             Assert.NotNull(_cacheHealthCheckPlus.LastReport());
+        }
+
+        // Regression test: with zero registrations (AddHealthChecksPlus() called but no
+        // AddCheckPlus/AddCheckLinkTo ever registered), _statusDeps is legitimately empty - LastReport
+        // used to call .Max() on it directly, throwing InvalidOperationException ("Sequence contains
+        // no elements") instead of reporting "no report yet" via the already-nullable return type.
+        [Fact]
+        public void LastReport_ShouldReturnNull_WhenNoChecksAreRegistered()
+        {
+            Assert.Null(_cacheHealthCheckPlus.LastReport());
+        }
+
+        // Regression test: same empty-sequence problem as LastReport, but for AggregateStatus (via
+        // Status()) - .Min() on an empty _statusDeps.Values used to throw instead of returning a
+        // sensible vacuous aggregate. Healthy matches native HealthReport.Status's own default for
+        // zero entries.
+        [Fact]
+        public void Status_ShouldReturnHealthy_WhenNoChecksAreRegistered()
+        {
+            Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status());
         }
 
         [Fact]
@@ -481,6 +516,92 @@ namespace HealthCheckPlusTests
             await writer;
 
             Assert.Equal(0, tornReads);
+        }
+
+        // Invariant check for ReleaseRunning/TryBeginRun/Update under real contention: the
+        // Running flag and the cached result must never both be true (wedged Running) and
+        // regressed (a lower sequence number than the highest one actually applied) at the end
+        // of a burst of concurrent TryBeginRun-gated attempts. This does not (and, given how
+        // narrow the fixed race actually was, could not reliably within test-suite time) force
+        // the specific interleaving the pre-fix code was vulnerable to - reading Running=false
+        // and then rewriting the snapshot were two adjacent statements with no safepoint between
+        // them, so reproducing the exact clobber needs an OS preemption landing in that
+        // sub-instruction gap, not something a stress loop can dependably trigger without adding
+        // an artificial delay to production code. The fix itself is justified independently:
+        // Running is a plain, non-volatile bool, so writing it with no synchronization while
+        // TryBeginRun reads-and-writes it under a lock is a data race under the CLR memory model
+        // regardless of how rarely it manifests. This test stays as a cheap sanity net that the
+        // documented invariants (no wedged Running, no regressed result) still hold under load.
+        [Fact]
+        public void ReleaseRunning_ShouldNeverWedgeRunning_OrLoseTheHighestAppliedResult_UnderConcurrentTryBeginRun()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            var workerThreadCount = Environment.ProcessorCount * 2;
+            var releaserThreadCount = Environment.ProcessorCount * 2;
+            var duration = TimeSpan.FromSeconds(1);
+            var seqCounter = 0;
+            var maxSeqApplied = 0;
+            using var stop = new CancellationTokenSource(duration);
+
+            void WorkerLoop()
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    if (_cacheHealthCheckPlus.TryBeginRun("Test1", _ => true))
+                    {
+                        var seq = Interlocked.Increment(ref seqCounter);
+                        _cacheHealthCheckPlus.Update("Test1", HealthCheckTrigger.Background,
+                            new HealthCheckResult(HealthStatus.Healthy, $"seq:{seq}"), DateTime.UtcNow, TimeSpan.Zero);
+                        InterlockedMax(ref maxSeqApplied, seq);
+                    }
+                }
+            }
+
+            void ReleaserLoop()
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    if (_cacheHealthCheckPlus.TryBeginRun("Test1", _ => true))
+                    {
+                        _cacheHealthCheckPlus.ReleaseRunning("Test1", DateTime.UtcNow);
+                    }
+                }
+            }
+
+            var threads = new List<Thread>();
+            for (var i = 0; i < workerThreadCount; i++)
+            {
+                threads.Add(new Thread(WorkerLoop));
+            }
+            for (var i = 0; i < releaserThreadCount; i++)
+            {
+                threads.Add(new Thread(ReleaserLoop));
+            }
+            threads.ForEach(t => t.Start());
+            threads.ForEach(t => t.Join());
+
+            var finalItem = _cacheHealthCheckPlus.FullStatus("Test1");
+            var finalDescription = finalItem.LastResult.Description;
+            var finalSeq = finalDescription is not null && finalDescription.StartsWith("seq:", StringComparison.Ordinal)
+                ? int.Parse(finalDescription["seq:".Length..])
+                : 0;
+
+            Assert.False(finalItem.Running);
+            Assert.Equal(maxSeqApplied, finalSeq);
+        }
+
+        private static void InterlockedMax(ref int target, int value)
+        {
+            int current;
+            do
+            {
+                current = target;
+                if (value <= current)
+                {
+                    return;
+                }
+            } while (Interlocked.CompareExchange(ref target, value, current) != current);
         }
     }
 }

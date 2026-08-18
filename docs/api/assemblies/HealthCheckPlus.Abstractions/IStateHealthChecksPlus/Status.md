@@ -18,6 +18,12 @@ public HealthStatus Status(string? name = null)
 
 The aggregate HealthStatus.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentException | *name* is a non-empty string that was never registered via `AddStatusName`. A `null` or empty *name* never throws - both return the same aggregate as the parameterless call. |
+
 ### See Also
 
 * interface [IStateHealthChecksPlus](../IStateHealthChecksPlus.md)

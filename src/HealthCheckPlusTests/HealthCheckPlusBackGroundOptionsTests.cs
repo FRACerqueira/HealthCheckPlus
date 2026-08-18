@@ -88,14 +88,30 @@ namespace HealthCheckPlusTests
             Assert.Equal(TimeSpan.FromSeconds(42), options.UnhealthyPeriod);
         }
 
-        // Delay's contract is deliberately different from the properties above: no minimum, only
-        // "not infinite" - unlike them, it is not scheduling a recurring period.
+        // Delay's contract is deliberately different from the properties above: no one-second
+        // minimum, and sub-second/zero values stay valid - unlike them, it is a one-shot startup
+        // delay, not a recurring period. It still rejects Infinite and negative values.
         [Fact]
         public void Delay_ShouldRejectInfiniteTimeSpan()
         {
             var options = new HealthCheckPlusBackGroundOptions();
 
-            Assert.Throws<ArgumentException>(() => options.Delay = System.Threading.Timeout.InfiniteTimeSpan);
+            var ex = Assert.Throws<ArgumentException>(() => options.Delay = System.Threading.Timeout.InfiniteTimeSpan);
+            Assert.Contains("must not be infinite", ex.Message);
+        }
+
+        // Regression test: Delay only validated "not infinite", so a negative-but-finite value
+        // (e.g. TimeSpan.FromSeconds(-2)) was silently accepted and later reached
+        // Task.Delay(_optionsBackGround.Value.Delay, ...) in the background service, which throws
+        // ArgumentOutOfRangeException and faults the background loop permanently and silently -
+        // the same failure class as the already-fixed H1 bug, via a different validation gap.
+        [Fact]
+        public void Delay_ShouldRejectNegativeTimeSpan()
+        {
+            var options = new HealthCheckPlusBackGroundOptions();
+
+            var ex = Assert.Throws<ArgumentException>(() => options.Delay = TimeSpan.FromSeconds(-2));
+            Assert.Contains("must not be negative", ex.Message);
         }
 
         [Fact]
@@ -107,6 +123,17 @@ namespace HealthCheckPlusTests
             };
 
             Assert.Equal(TimeSpan.FromMilliseconds(1), options.Delay);
+        }
+
+        [Fact]
+        public void Delay_ShouldAllowZero()
+        {
+            var options = new HealthCheckPlusBackGroundOptions
+            {
+                Delay = TimeSpan.Zero
+            };
+
+            Assert.Equal(TimeSpan.Zero, options.Delay);
         }
     }
 }

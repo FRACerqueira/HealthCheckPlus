@@ -122,19 +122,19 @@ namespace HealthCheckPlus.Internal
                     }
                     if (runpublish)
                     {
-                        // CreateReport()/FilterReportForPublishing (which invokes the consumer-
-                        // supplied Predicate) used to sit completely outside any try/catch in this
-                        // loop - unlike every other step here, which already has one (the dispatch
-                        // try/catch just below, and the check-execution try/catch above). A throw
-                        // here (e.g. a Predicate that itself throws) propagated out of this method
-                        // entirely, faulting the fire-and-forget Task this loop runs on with no log
-                        // and no metric: checks stopped running and publishers stopped firing
-                        // forever, with nothing showing the service was dead. The dispatch
-                        // try/catch below never rethrows, so this outer catch only ever triggers
-                        // for a failure in building/filtering the report itself.
+                        // BuildReportForPublishing (which invokes the consumer-supplied Predicate)
+                        // used to sit completely outside any try/catch in this loop - unlike every
+                        // other step here, which already has one (the dispatch try/catch just
+                        // below, and the check-execution try/catch above). A throw here (e.g. a
+                        // Predicate that itself throws) propagated out of this method entirely,
+                        // faulting the fire-and-forget Task this loop runs on with no log and no
+                        // metric: checks stopped running and publishers stopped firing forever,
+                        // with nothing showing the service was dead. The dispatch try/catch below
+                        // never rethrows, so this outer catch only ever triggers for a failure in
+                        // building/filtering the report itself.
                         try
                         {
-                            var report = FilterReportForPublishing(_healthCheckService.CreateReport());
+                            var report = BuildReportForPublishing();
                             if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
                             {
                                 runpublish = false;
@@ -238,9 +238,31 @@ namespace HealthCheckPlus.Internal
             }
             if (_runningHealthCheckPlus != null)
             {
-                return _runningHealthCheckPlus.ContinueWith(task => _runningHealthCheckPlus.Dispose(), TaskScheduler.Current);
+                // ContinueWith with no options runs regardless of the antecedent's outcome, but
+                // never inspects or rethrows it - a fault here (e.g. an exception escaping every
+                // try/catch inside CheckHealthAsync's loop, which shouldn't normally happen but
+                // isn't structurally impossible) used to vanish completely: no log, no exception
+                // anywhere, the loop simply stops with nothing distinguishing it from a graceful
+                // shutdown. Observing task.Exception here (even just to log it) also prevents an
+                // UnobservedTaskException at finalization time. ObserveLoopCompletion is its own
+                // method (rather than inline in the continuation) so it can be unit-tested
+                // directly against synthetic Task states, the same pattern
+                // DefaultHealthCheckServicePlus.ClassifyBatchTask already uses.
+                return _runningHealthCheckPlus.ContinueWith(task =>
+                {
+                    ObserveLoopCompletion(task, _logger);
+                    _runningHealthCheckPlus.Dispose();
+                }, TaskScheduler.Current);
             }
             return Task.CompletedTask;
+        }
+
+        internal static void ObserveLoopCompletion(Task loopTask, ILogger logger)
+        {
+            if (loopTask.IsFaulted)
+            {
+                Log.BackgroundLoopFaulted(logger, loopTask.Exception!);
+            }
         }
 
         private async Task RunPublisherAsync(IHealthCheckPublisher publisher, HealthReport report, CancellationToken cancellationToken)
@@ -321,44 +343,38 @@ namespace HealthCheckPlus.Internal
         }
 
         // Two independent reasons a cache entry must not reach publishers or the WhenReportChange
-        // hash, combined here so both are excluded together in one pass:
+        // hash, both enforced by DefaultHealthCheckServicePlus.CreateReport(includeName)'s single
+        // per-entry snapshot read:
         //
         // 1. HealthCheckPlusBackGroundOptions.Predicate decides which checks this background
-        //    service runs (see BackGroudCheckHealthPlusAsync), but CacheHealthCheckPlus.CreateReport()
-        //    has no notion of it and always reports on every check tracked in the cache - including
-        //    one the predicate excludes from ever running here, which would otherwise never leave
-        //    its InitCache seed status (Healthy) and be published as such forever.
+        //    service runs (see BackGroudCheckHealthPlusAsync), but a plain CreateReport() has no
+        //    notion of it and always reports on every check tracked in the cache - including one
+        //    the predicate excludes from ever running here, which would otherwise never leave its
+        //    InitCache seed status (Healthy) and be published as such forever.
         // 2. A check the predicate *does* include can still not have run even once yet - e.g. its
         //    own Delay (AddCheckPlus/AddCheckLinkTo) is longer than this cycle's Delay+Idle, which
         //    the README's own example values (30s check delay vs. 5s background delay) trigger on
-        //    the very first cycle. CreateReport() reports InitCache's seed (Healthy, Origin=None)
-        //    for it exactly the same as a real result, with nothing distinguishing "never checked"
-        //    from "checked and found Healthy" - see CacheHealthCheckPlus.HasEverRun.
+        //    the very first cycle. A plain CreateReport() reports InitCache's seed (Healthy,
+        //    Origin=None) for it exactly the same as a real result, with nothing distinguishing
+        //    "never checked" from "checked and found Healthy".
         //
-        // Either way, the check is explicitly not yet part of what this background service
-        // publishes, so it must not appear in the report at all - not reported incorrectly, not
-        // reported.
-        private HealthReport FilterReportForPublishing(HealthReport report)
+        // Both checks must be decided from the exact same Snapshot read used to build each
+        // entry's data, not a separate CreateReport() followed later by a per-name "has it run"
+        // check: that used to let a check that completed its first real run in the gap between
+        // the two calls be included while still carrying the InitCache seed data the first call
+        // had already snapshotted - a phantom Healthy result published for a check that, at
+        // publish time, had barely just started reporting real data. CreateReport(includeName)
+        // closes that gap by deciding both in the same per-entry read.
+        private HealthReport BuildReportForPublishing()
         {
             var predicate = _optionsBackGround.Value.Predicate;
-            var eligibleNames = predicate == null
-                ? _healthcheckserviceOptions.Value.Registrations.Select(r => r.Name)
-                : _healthcheckserviceOptions.Value.Registrations.Where(predicate).Select(r => r.Name);
-
-            var includedNames = new HashSet<string>(
-                eligibleNames.Where(_healthCheckService.HasEverRun),
+            var eligibleNames = new HashSet<string>(
+                predicate == null
+                    ? _healthcheckserviceOptions.Value.Registrations.Select(r => r.Name)
+                    : _healthcheckserviceOptions.Value.Registrations.Where(predicate).Select(r => r.Name),
                 StringComparer.OrdinalIgnoreCase);
 
-            if (includedNames.Count == report.Entries.Count)
-            {
-                return report;
-            }
-
-            var filteredEntries = report.Entries
-                .Where(e => includedNames.Contains(e.Key))
-                .ToDictionary(e => e.Key, e => e.Value, StringComparer.OrdinalIgnoreCase);
-
-            return new HealthReport(filteredEntries, report.TotalDuration);
+            return _healthCheckService.CreateReport(eligibleNames.Contains);
         }
 
         private bool SameReport(HealthReport report)
@@ -373,18 +389,14 @@ namespace HealthCheckPlus.Internal
 
         private static class EventIdsPublisher
         {
-            public const int HealthCheckPublisherProcessingBeginId = 100;
-            public const int HealthCheckPublisherProcessingEndId = 101;
             public const int HealthCheckPublisherBeginId = 102;
             public const int HealthCheckPublisherEndId = 103;
             public const int HealthCheckPublisherErrorId = 104;
-            public const int HealthCheckPublisherTimeoutId = 104;
+            public const int HealthCheckPublisherTimeoutId = 105;
             public const int HealthCheckPublisherCycleErrorId = 106;
             public const int HealthCheckPublisherMetricsRecordingErrorId = 107;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
-            public const string HealthCheckPublisherProcessingBeginName = "HealthCheckPublisherProcessingBegin";
-            public const string HealthCheckPublisherProcessingEndName = "HealthCheckPublisherProcessingEnd";
             public const string HealthCheckPublisherBeginName = "HealthCheckPublisherBegin";
             public const string HealthCheckPublisherEndName = "HealthCheckPublisherEnd";
             public const string HealthCheckPublisherErrorName = "HealthCheckPublisherError";
@@ -397,10 +409,15 @@ namespace HealthCheckPlus.Internal
         {
             public const int HealthCheckPlusBackGroundProcessingBeginId = 100;
             public const int HealthCheckPlusBackGroundProcessingEndId = 101;
-            public const int HealthCheckPlusBackGroundErrorId = 104;
+            // 108, not 104 - 104 is EventIdsPublisher.HealthCheckPublisherErrorId, used by
+            // HealthCheckPublisherError within the same generated Log class below; reusing it
+            // here would conflate "a publisher threw" with "the background cycle's own
+            // unhandled exception" under one EventId.
+            public const int HealthCheckPlusBackGroundErrorId = 108;
             public const int HealthCheckPlusBackGroundWarningId = 105;
             public const int HealthCheckPlusBackGroundStopCancellationErrorId = 106;
             public const int HealthCheckPlusBackGroundPublishReportBuildErrorId = 107;
+            public const int HealthCheckPlusBackGroundLoopFaultedId = 109;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
             public const string HealthCheckProcessingBeginName = "HealthCheckPlusBackGroundProcessingBegin";
@@ -409,6 +426,7 @@ namespace HealthCheckPlus.Internal
             public const string HealthCheckTimeoutName = "HealthCheckPlusBackGroundTimeout";
             public const string HealthCheckStopCancellationErrorName = "HealthCheckPlusBackGroundStopCancellationError";
             public const string HealthCheckPublishReportBuildErrorName = "HealthCheckPlusBackGroundPublishReportBuildError";
+            public const string HealthCheckPlusBackGroundLoopFaultedName = "HealthCheckPlusBackGroundLoopFaulted";
 
         }
 
@@ -424,9 +442,7 @@ namespace HealthCheckPlus.Internal
             [LoggerMessage(EventIdsPublisher.HealthCheckPublisherErrorId, LogLevel.Error, "Health check {HealthCheckPublisher} threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = EventIdsPublisher.HealthCheckPublisherErrorName)]
             public static partial void HealthCheckPublisherError(ILogger logger, IHealthCheckPublisher HealthCheckPublisher, double ElapsedMilliseconds, Exception exception);
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             [LoggerMessage(EventIdsPublisher.HealthCheckPublisherTimeoutId, LogLevel.Error, "Health check {HealthCheckPublisher} was canceled after {ElapsedMilliseconds}ms", EventName = EventIdsPublisher.HealthCheckPublisherTimeoutName)]
-#pragma warning restore SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             public static partial void HealthCheckPublisherTimeout(ILogger logger, IHealthCheckPublisher HealthCheckPublisher, double ElapsedMilliseconds);
 
             [LoggerMessage(EventIdsPublisher.HealthCheckPublisherCycleErrorId, LogLevel.Warning,
@@ -445,9 +461,7 @@ namespace HealthCheckPlus.Internal
             [LoggerMessage(EventIds.HealthCheckPlusBackGroundProcessingEndId, LogLevel.Debug, "HealthCheckPlus Background-Service completed after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckProcessingEndName)]
             public static partial void ProcessingEnd(ILogger logger, double ElapsedMilliseconds);
 
-#pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             [LoggerMessage(EventIds.HealthCheckPlusBackGroundErrorId, LogLevel.Error, "HealthCheckPlus Background-Service threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckErrorName)]
-#pragma warning restore SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             public static partial void ProcessingError(ILogger logger, double ElapsedMilliseconds, Exception exception);
 
             [LoggerMessage(EventIds.HealthCheckPlusBackGroundWarningId, LogLevel.Warning, "HealthCheckPlus Background-Service threw an timeout after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckTimeoutName)]
@@ -462,6 +476,11 @@ namespace HealthCheckPlus.Internal
                 "Building the report to publish this cycle failed (e.g. the configured Predicate threw); no publishers were invoked this cycle. HealthCheckPlus Background-Service will continue running.",
                 EventName = EventIds.HealthCheckPublishReportBuildErrorName)]
             public static partial void PublishReportBuildError(ILogger logger, Exception exception);
+
+            [LoggerMessage(EventIds.HealthCheckPlusBackGroundLoopFaultedId, LogLevel.Critical,
+                "The HealthCheckPlus Background-Service's loop terminated with an unhandled exception; it will not run again until the host restarts.",
+                EventName = EventIds.HealthCheckPlusBackGroundLoopFaultedName)]
+            public static partial void BackgroundLoopFaulted(ILogger logger, Exception exception);
         }
 #pragma warning restore IDE0079
 

@@ -55,10 +55,22 @@ namespace Microsoft.Extensions.DependencyInjection
         {
             ArgumentNullException.ThrowIfNull(ihb);
 
-            if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
+            var state = GetOrCreateState(ihb.Services);
+            if (!state.AddedHealthChecksPlus)
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
+
+            // AddHostedService below accumulates rather than replaces - a second AddBackgroundPolicy
+            // call used to silently register a second HealthCheckPlusBackGroundService instance, so
+            // two independent background loops would run concurrently: checks executed twice per
+            // cycle, publishers dispatched twice, metrics double-counted, with nothing indicating
+            // the mistake.
+            if (state.AddedBackgroundPolicy)
+            {
+                throw new InvalidOperationException($"Invalid command. {nameof(AddBackgroundPolicy)} was already called - call it only once.");
+            }
+            state.AddedBackgroundPolicy = true;
 
             // Remove the native HealthCheckPublisherHostedService so publishers aren't driven both
             // by it and by HealthCheckPlusBackGroundService. Unlike the HealthCheckService removal
@@ -105,6 +117,7 @@ namespace Microsoft.Extensions.DependencyInjection
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
             ArgumentNullException.ThrowIfNull(ihb);
+            ArgumentException.ThrowIfNullOrEmpty(namedep);
 
             if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
@@ -122,7 +135,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </summary>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="namedep">The name health check to run.</param>
-        /// <param name="period">Requeried <see cref="TimeSpan"/>. The period of execution when status is Unhealthy.</param>
+        /// <param name="period">Requeried <see cref="TimeSpan"/>. The period of execution when status is Degraded.</param>
         /// <remarks>
         /// The <see cref="AddDegradedPolicy"/> cannot be set to a value lower than 1 second.
         /// </remarks>
@@ -131,6 +144,7 @@ namespace Microsoft.Extensions.DependencyInjection
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
             ArgumentNullException.ThrowIfNull(ihb);
+            ArgumentException.ThrowIfNullOrEmpty(namedep);
 
             if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
@@ -199,10 +213,13 @@ namespace Microsoft.Extensions.DependencyInjection
         /// the check is first eligible to run, not a delay of any <see cref="IHealthCheckPublisher"/>. When omitted, the check has no
         /// delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back
         /// to <see cref="HealthCheckPlusBackGroundOptions.Delay"/> for that check's very first run only.</param>
-        /// <param name="period">An optional <see cref="TimeSpan"/> for this check's own <c>Healthy</c> policy - how often it reruns
-        /// while it stays <c>Healthy</c>, not a period of any <see cref="IHealthCheckPublisher"/>. When omitted, the check reruns on
+        /// <param name="period">An optional <see cref="TimeSpan"/> for this check's own <c>Healthy</c> policy - how often it reruns,
+        /// not a period of any <see cref="IHealthCheckPublisher"/>. On the HTTP path this also applies whenever the check's current
+        /// status (Degraded/Unhealthy) has no explicit policy of its own registered via <see cref="AddDegradedPolicy"/>/
+        /// <see cref="AddUnhealthyPolicy"/> - not only while the check is genuinely <c>Healthy</c>. When omitted, the check reruns on
         /// every request on the HTTP path; on the background path, an omitted period falls back to
-        /// <see cref="HealthCheckPlusBackGroundOptions.HealthyPeriod"/>.</param>
+        /// <see cref="HealthCheckPlusBackGroundOptions.HealthyPeriod"/> (again, only as a fallback for a status with no explicit
+        /// policy of its own).</param>
         /// <param name="tags">A list of tags that can be used for filtering health checks.</param>
         /// <param name="failureStatus">
         /// The <see cref="HealthStatus"/> that should be reported when the health check reports a failure. If the provided value
@@ -217,6 +234,7 @@ namespace Microsoft.Extensions.DependencyInjection
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
             ArgumentNullException.ThrowIfNull(ihb);
+            ArgumentException.ThrowIfNullOrEmpty(namedep);
 
             if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {
@@ -260,9 +278,12 @@ namespace Microsoft.Extensions.DependencyInjection
         /// delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back
         /// to <see cref="HealthCheckPlusBackGroundOptions.Delay"/> for that check's very first run only.</param>
         /// <param name="period">An optional <see cref="TimeSpan"/> for the adopted check's own <c>Healthy</c> policy - how often it
-        /// reruns while it stays <c>Healthy</c>, not a period of any <see cref="IHealthCheckPublisher"/>. When omitted, the check
-        /// reruns on every request on the HTTP path; on the background path, an omitted period falls back to
-        /// <see cref="HealthCheckPlusBackGroundOptions.HealthyPeriod"/>.</param>
+        /// reruns, not a period of any <see cref="IHealthCheckPublisher"/>. On the HTTP path this also applies whenever the check's
+        /// current status (Degraded/Unhealthy) has no explicit policy of its own registered via <see cref="AddDegradedPolicy"/>/
+        /// <see cref="AddUnhealthyPolicy"/> - not only while the check is genuinely <c>Healthy</c>. When omitted, the check reruns on
+        /// every request on the HTTP path; on the background path, an omitted period falls back to
+        /// <see cref="HealthCheckPlusBackGroundOptions.HealthyPeriod"/> (again, only as a fallback for a status with no explicit
+        /// policy of its own).</param>
         /// <remarks>
         /// The <see cref="AddCheckLinkTo"/> cannot be set to a period value lower than 1 second.
         /// </remarks>
@@ -271,6 +292,8 @@ namespace Microsoft.Extensions.DependencyInjection
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
             ArgumentNullException.ThrowIfNull(ihb);
+            ArgumentException.ThrowIfNullOrEmpty(namedep);
+            ArgumentException.ThrowIfNullOrEmpty(name);
 
             if (!GetOrCreateState(ihb.Services).AddedHealthChecksPlus)
             {

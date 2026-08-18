@@ -88,9 +88,31 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        // _statusDeps is only ever empty for a valid (if unusual) configuration - AddHealthChecksPlus()
+        // called with zero AddCheckPlus/AddCheckLinkTo registrations - so this must return a sensible
+        // value rather than letting Max() throw InvalidOperationException on an empty sequence: there
+        // is no "last report" yet, so null.
         public DateTime? LastReport()
         {
-            return _statusDeps.Values.Max(x => x.DateRef);
+            return _statusDeps.IsEmpty ? null : _statusDeps.Values.Max(x => x.DateRef);
+        }
+
+        // Each entry reads item.Snapshot exactly once and pulls every field (plus, for the
+        // filtered overload below, the Origin check) from that same local value - reading
+        // .LastResult/.Duration as separate property accesses (as this used to) could each land
+        // on a different generation if a concurrent Update() lands in between, handing back e.g.
+        // a new Status paired with an old Description.
+        private static HealthReportEntry BuildReportEntry(ItemCacheHealth item, out HealthCheckTrigger origin)
+        {
+            var snapshot = item.Snapshot;
+            origin = snapshot.Origin;
+            return new HealthReportEntry(
+                snapshot.LastResult.Status,
+                snapshot.LastResult.Description,
+                snapshot.Duration,
+                snapshot.LastResult.Exception,
+                snapshot.LastResult.Data,
+                item.Tags);
         }
 
         public HealthReport CreateReport()
@@ -98,27 +120,42 @@ namespace HealthCheckPlus.Internal
             // OrdinalIgnoreCase to match the equivalent dictionary DefaultHealthCheckServicePlus.
             // CheckHealthPlusAsync builds for its own HealthReport - a HealthReport.Entries lookup
             // should behave the same regardless of which code path produced the report.
-            //
-            // Each entry reads kvp.Value.Snapshot exactly once and pulls every field from that
-            // same local value - reading .LastResult/.Duration as separate property accesses
-            // here (as this used to) could each land on a different generation if a concurrent
-            // Update() lands in between, handing back e.g. a new Status paired with an old
-            // Description.
             var entries = _statusDeps.ToDictionary(
                 kvp => kvp.Key,
-                kvp =>
-                {
-                    var snapshot = kvp.Value.Snapshot;
-                    return new HealthReportEntry(
-                        snapshot.LastResult.Status,
-                        snapshot.LastResult.Description,
-                        snapshot.Duration,
-                        snapshot.LastResult.Exception,
-                        snapshot.LastResult.Data,
-                        kvp.Value.Tags);
-                },
+                kvp => BuildReportEntry(kvp.Value, out _),
                 StringComparer.OrdinalIgnoreCase
             );
+            return new HealthReport(entries, TimeSpan.Zero);
+        }
+
+        // Used by HealthCheckPlusBackGroundService to build the report it publishes: only names
+        // satisfying includeName (the configured Predicate) AND that have actually run at least
+        // once (Origin != None - InitCache seeds every check as Healthy/Origin=None before it has
+        // ever actually run, a deliberate seed documented in the `origin` table in RUNBOOK.md)
+        // belong in it. Both checks - "is this eligible" and "has it run" - must be decided from
+        // the SAME Snapshot read used to build the entry's data, not two separate calls at two
+        // different times: a plain CreateReport() followed later by a separate per-name "has it
+        // run" check used to let a check that completed its first real run in between the two
+        // calls be *included* (now true) while still carrying the InitCache seed data that the
+        // first call had already snapshotted before that first run finished - a phantom Healthy
+        // result published for a check that, at publish time, had barely just started reporting
+        // real data.
+        public HealthReport CreateReport(Func<string, bool> includeName)
+        {
+            var entries = new Dictionary<string, HealthReportEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in _statusDeps)
+            {
+                if (!includeName(kvp.Key))
+                {
+                    continue;
+                }
+                var entry = BuildReportEntry(kvp.Value, out var origin);
+                if (origin == HealthCheckTrigger.None)
+                {
+                    continue;
+                }
+                entries[kvp.Key] = entry;
+            }
             return new HealthReport(entries, TimeSpan.Zero);
         }
 
@@ -145,9 +182,16 @@ namespace HealthCheckPlus.Internal
         // Previously expressed independently in three places, one of which (a seed entry keyed by
         // string.Empty, recomputed every UpdateStatusName() cycle) was never actually read by
         // anything.
+        //
+        // _statusDeps can legitimately be empty (AddHealthChecksPlus() with zero AddCheckPlus/
+        // AddCheckLinkTo registrations) - Min() throws InvalidOperationException on an empty
+        // sequence, so this must short-circuit rather than let that surface as an unrelated crash
+        // from a Status()/AddStatusName call. Healthy matches the native HealthReport.Status's own
+        // default for zero entries (confirmed empirically), keeping this aggregate consistent with
+        // it for the same vacuous case.
         private HealthStatus AggregateStatus()
         {
-            return _statusDeps.Values.Min(x => x.LastResult.Status);
+            return _statusDeps.IsEmpty ? HealthStatus.Healthy : _statusDeps.Values.Min(x => x.LastResult.Status);
         }
 
         public void Running(string key, bool value)
@@ -156,18 +200,6 @@ namespace HealthCheckPlus.Internal
             {
                 item.Running = value;
             }
-        }
-
-        // InitCache seeds every check as Healthy/Origin=None before it has ever actually run - a
-        // deliberate, documented seed (see the `origin` table in RUNBOOK.md), but a report built
-        // straight from the cache before a check's own Delay has elapsed would report that seed as
-        // a genuine Healthy result rather than "not checked yet". Used by
-        // HealthCheckPlusBackGroundService to exclude a not-yet-run check from what it publishes
-        // and hashes for WhenReportChange, the same way it already excludes a Predicate-excluded
-        // one.
-        public bool HasEverRun(string key)
-        {
-            return _statusDeps.TryGetValue(key, out var item) && item.Snapshot.Origin != HealthCheckTrigger.None;
         }
 
         // Atomically checks "is this check due" (per the caller-supplied predicate, evaluated
@@ -204,16 +236,27 @@ namespace HealthCheckPlus.Internal
         // getting cancelled (e.g. one that's chronically slower than the background cycle Timeout)
         // would pile up a fresh concurrent execution attempt every cycle with no backoff at all,
         // instead of respecting its own policy period like every other outcome does.
+        //
+        // Guarded by the same lock as TryBeginRun. This used to clear Running first and only then
+        // read-and-rewrite the snapshot, with neither step under any lock: Running is a plain,
+        // non-volatile bool with no happens-before edge to TryBeginRun's own read of it, so a
+        // concurrent TryBeginRun could legally observe Running already false in the gap between
+        // those two statements, run a fresh execution to completion via Update(), and have that
+        // fresh result clobbered if this method's own read-then-write straddled it - a genuine
+        // data race under the CLR memory model regardless of how narrow the window is in
+        // practice. Reading the snapshot, rewriting it, and clearing Running now all happen
+        // inside one lock section, so no TryBeginRun can begin a new execution until this entire
+        // release has completed - the same publish-before-clear ordering Update() already uses.
         public void ReleaseRunning(string key, DateTime dateRef)
         {
-            if (_statusDeps.TryGetValue(key, out var item))
+            lock (_lock)
             {
-                item.Running = false;
-                // Advance DateRef alone, preserving the rest of the last real result - read the
-                // other three fields from a single Snapshot rather than three separate property
-                // reads, then write them all back through SetResult as one atomic swap.
-                var current = item.Snapshot;
-                item.SetResult(current.LastResult, dateRef, current.Duration, current.Origin);
+                if (_statusDeps.TryGetValue(key, out var item))
+                {
+                    var current = item.Snapshot;
+                    item.SetResult(current.LastResult, dateRef, current.Duration, current.Origin);
+                    item.Running = false;
+                }
             }
         }
 
@@ -241,6 +284,14 @@ namespace HealthCheckPlus.Internal
                 return;
             }
 
+            // Deliberately not under _lock, unlike TryBeginRun/SwithState/ReleaseRunning:
+            // SafeRecordMetric below runs a third-party MeterListener callback synchronously, and
+            // holding _lock across an exporter's own code would let a slow or blocking listener
+            // stall every other check's TryBeginRun/ReleaseRunning scheduling decision, not just
+            // this one's metrics. This is safe without the lock because SetResult happens before
+            // Running is cleared, so any later TryBeginRun only ever observes Running=false once
+            // this fresh result is already published - the exact ordering ReleaseRunning was
+            // missing.
             var previousStatus = item.LastResult.Status;
 
             item.SetResult(result, lastexecute, duration, healthCheckFrom);

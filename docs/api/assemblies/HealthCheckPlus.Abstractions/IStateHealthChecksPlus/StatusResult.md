@@ -18,6 +18,12 @@ public HealthCheckResult StatusResult(string keydep)
 
 The last HealthCheckResult.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentException | *keydep* is not a registered health check name. |
+
 ### See Also
 
 * interface [IStateHealthChecksPlus](../IStateHealthChecksPlus.md)

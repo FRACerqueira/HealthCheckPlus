@@ -23,9 +23,18 @@ namespace HealthCheckPlus.Internal
                 return typed;
             }
 
+            // `value is T typed` is false for a null value too (a pattern match never matches
+            // null), so this branch must not assume value is non-null just because the cast
+            // failed - value.GetType() below would otherwise throw an unrelated
+            // NullReferenceException instead of the clear message this method exists to give.
+            // Currently unreachable from any of this class's own call sites (all five pass a
+            // GetRequiredService<T>() result, which throws its own exception rather than
+            // returning null), but a defensive check like this one should never depend on every
+            // future caller upholding that.
+            var actualTypeDescription = value?.GetType().FullName ?? "null";
             throw new InvalidOperationException(
                 $"Expected {expectedRegistrationDescription} to be an instance of {typeof(T).Name}, but it was " +
-                $"{value.GetType().FullName}. This usually means something replaced or decorated that registration " +
+                $"{actualTypeDescription}. This usually means something replaced or decorated that registration " +
                 "after AddHealthChecksPlus() ran, or it was resolved from a service provider where " +
                 "AddHealthChecksPlus() was never called.");
         }
