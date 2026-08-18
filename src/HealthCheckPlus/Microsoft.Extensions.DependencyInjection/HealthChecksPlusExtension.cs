@@ -110,11 +110,8 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
-            if (period < TimeSpan.FromSeconds(1))
-            {
-                throw new ArgumentException($"The {nameof(period)} must be greater than or equal to one second.", nameof(period));
-            }
-            ihb.Services.AddSingleton<IHealthCheckPlusPolicyStatus>(new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, TimeSpan.Zero, period, namedep));
+            PeriodValidation.EnsureAtLeastOneSecond(period, nameof(period), nameof(period));
+            ihb.Services.AddSingleton<HealthCheckPlusPolicyStatus>(new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, TimeSpan.Zero, period, namedep));
             return ihb;
         }
 
@@ -139,12 +136,9 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
-            if (period < TimeSpan.FromSeconds(1))
-            {
-                throw new ArgumentException($"The {nameof(period)} must be greater than or equal to one second.", nameof(period));
-            }
+            PeriodValidation.EnsureAtLeastOneSecond(period, nameof(period), nameof(period));
 
-            ihb.Services.AddSingleton<IHealthCheckPlusPolicyStatus>(new HealthCheckPlusPolicyStatus(HealthStatus.Degraded, TimeSpan.Zero, period, namedep));
+            ihb.Services.AddSingleton<HealthCheckPlusPolicyStatus>(new HealthCheckPlusPolicyStatus(HealthStatus.Degraded, TimeSpan.Zero, period, namedep));
             return ihb;
         }
 
@@ -216,9 +210,9 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
-            if (period.HasValue && period < TimeSpan.FromSeconds(1))
+            if (period.HasValue)
             {
-                throw new ArgumentException($"The {nameof(period)} must be greater than or equal to one second.", nameof(period));
+                PeriodValidation.EnsureAtLeastOneSecond(period.Value, nameof(period), nameof(period));
             }
 
             HealthCheckRegistration reg = new(
@@ -236,7 +230,7 @@ namespace Microsoft.Extensions.DependencyInjection
             ihb.Add(reg);
 
             //add policy for Healthy
-            ihb.Services.AddSingleton<IHealthCheckPlusPolicyStatus>(
+            ihb.Services.AddSingleton<HealthCheckPlusPolicyStatus>(
                 new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, reg.Delay, reg.Period, namedep));
 
             return ihb;
@@ -266,9 +260,9 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 throw new InvalidOperationException("Invalid command. The HealthChecks must first be declared by the AddHealthChecksPlus command");
             }
-            if (period.HasValue && period < TimeSpan.FromSeconds(1))
+            if (period.HasValue)
             {
-                throw new ArgumentException($"The {nameof(period)} must be greater than or equal to one second.", nameof(period));
+                PeriodValidation.EnsureAtLeastOneSecond(period.Value, nameof(period), nameof(period));
             }
 
             if (namedep.Equals(name, StringComparison.CurrentCultureIgnoreCase))
@@ -349,7 +343,7 @@ namespace Microsoft.Extensions.DependencyInjection
             });
 
             //add policy for Healthy
-            ihb.Services.AddSingleton<IHealthCheckPlusPolicyStatus>(
+            ihb.Services.AddSingleton<HealthCheckPlusPolicyStatus>(
                 new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, namedep));
 
             return ihb;

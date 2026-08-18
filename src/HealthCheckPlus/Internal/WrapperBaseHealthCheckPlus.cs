@@ -20,46 +20,22 @@ namespace HealthCheckPlus.Internal
         private readonly IServiceScope? _ownedScope = ownedScope;
         private bool disposed = false;
 
-        // Implement IDisposable.
-        // Do not make this method virtual.
-        // A derived class should not be able to override this method.
+        // No finalizer and no subclasses exist for this internal, purely-managed-resources
+        // wrapper, so the full Dispose(bool disposing)/GC.SuppressFinalize pattern doesn't apply
+        // here - a single guarded Dispose() is enough.
         public void Dispose()
         {
-            Dispose(disposing: true);
-            // This object will be cleaned up by the Dispose method.
-            // Therefore, you should call GC.SuppressFinalize to
-            // take this object off the finalization queue
-            // and prevent finalization code for this object
-            // from executing a second time.
-            GC.SuppressFinalize(this);
-        }
-
-        // Dispose(bool disposing) executes in two distinct scenarios.
-        // If disposing equals true, the method has been called directly
-        // or indirectly by a user's code. Managed and unmanaged resources
-        // can be disposed.
-        // If disposing equals false, the method has been called by the
-        // runtime from inside the finalizer and you should not reference
-        // other objects. Only unmanaged resources can be disposed.
-        protected virtual void Dispose(bool disposing)
-        {
-            // Check to see if Dispose has already been called.
-            if (!disposed)
+            if (disposed)
             {
-                // If disposing equals true, dispose all managed
-                // and unmanaged resources.
-                if (disposing)
-                {
-                    //Dispose managed resources.
-                    if (_externalCheckinstance is IDisposable disposable)
-                    {
-                        disposable.Dispose();
-                    }
-                    _ownedScope?.Dispose();
-                }
-                // Note disposing has been done.
-                disposed = true;
+                return;
             }
+            disposed = true;
+
+            if (_externalCheckinstance is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            _ownedScope?.Dispose();
         }
 
         public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)

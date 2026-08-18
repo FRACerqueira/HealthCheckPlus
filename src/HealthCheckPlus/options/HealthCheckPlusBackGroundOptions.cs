@@ -3,6 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using HealthCheckPlus.Internal;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace HealthCheckPlus.options
@@ -50,11 +51,7 @@ namespace HealthCheckPlus.options
             get => _delay;
             set
             {
-                if (value == System.Threading.Timeout.InfiniteTimeSpan)
-                {
-                    throw new ArgumentException($"The {nameof(Delay)} must not be infinite.", nameof(value));
-                }
-
+                PeriodValidation.EnsureNotInfinite(value, nameof(Delay), nameof(value));
                 _delay = value;
             }
         }
@@ -71,16 +68,8 @@ namespace HealthCheckPlus.options
             get => _healthyperiod;
             set
             {
-                if (value < TimeSpan.FromSeconds(1))
-                {
-                    throw new ArgumentException($"The {nameof(HealthyPeriod)} must be greater than or equal to one second.", nameof(value));
-                }
-
-                if (value == System.Threading.Timeout.InfiniteTimeSpan)
-                {
-                    throw new ArgumentException($"The {nameof(HealthyPeriod)} must not be infinite.", nameof(value));
-                }
-
+                PeriodValidation.EnsureAtLeastOneSecond(value, nameof(HealthyPeriod), nameof(value));
+                PeriodValidation.EnsureNotInfinite(value, nameof(HealthyPeriod), nameof(value));
                 _healthyperiod = value;
             }
         }
@@ -98,16 +87,8 @@ namespace HealthCheckPlus.options
             get => _degradedperiod;
             set
             {
-                if (value < TimeSpan.FromSeconds(1))
-                {
-                    throw new ArgumentException($"The {nameof(DegradedPeriod)} must be greater than or equal to one second.", nameof(value));
-                }
-
-                if (value == System.Threading.Timeout.InfiniteTimeSpan)
-                {
-                    throw new ArgumentException($"The {nameof(DegradedPeriod)} must not be infinite.", nameof(value));
-                }
-
+                PeriodValidation.EnsureAtLeastOneSecond(value, nameof(DegradedPeriod), nameof(value));
+                PeriodValidation.EnsureNotInfinite(value, nameof(DegradedPeriod), nameof(value));
                 _degradedperiod = value;
             }
         }
@@ -124,16 +105,8 @@ namespace HealthCheckPlus.options
             get => _unhealthyperiod;
             set
             {
-                if (value < TimeSpan.FromSeconds(1))
-                {
-                    throw new ArgumentException($"The {nameof(UnhealthyPeriod)} must be greater than or equal to one second.", nameof(value));
-                }
-
-                if (value == System.Threading.Timeout.InfiniteTimeSpan)
-                {
-                    throw new ArgumentException($"The {nameof(UnhealthyPeriod)} must not be infinite.", nameof(value));
-                }
-
+                PeriodValidation.EnsureAtLeastOneSecond(value, nameof(UnhealthyPeriod), nameof(value));
+                PeriodValidation.EnsureNotInfinite(value, nameof(UnhealthyPeriod), nameof(value));
                 _unhealthyperiod = value;
             }
         }
@@ -150,16 +123,8 @@ namespace HealthCheckPlus.options
             get => _idle;
             set
             {
-                if (value < TimeSpan.FromSeconds(1))
-                {
-                    throw new ArgumentException($"The {nameof(Idle)} must be greater than or equal to one second.", nameof(value));
-                }
-
-                if (value == System.Threading.Timeout.InfiniteTimeSpan)
-                {
-                    throw new ArgumentException($"The {nameof(Idle)} must not be infinite.", nameof(value));
-                }
-
+                PeriodValidation.EnsureAtLeastOneSecond(value, nameof(Idle), nameof(value));
+                PeriodValidation.EnsureNotInfinite(value, nameof(Idle), nameof(value));
                 _idle = value;
             }
         }
@@ -199,15 +164,8 @@ namespace HealthCheckPlus.options
         /// </remarks>
         public void AllStatusPeriod(TimeSpan value)
         {
-            if (value < TimeSpan.FromSeconds(1))
-            {
-                throw new ArgumentException($"The {nameof(AllStatusPeriod)} must be greater than or equal to one second.", nameof(value));
-            }
-
-            if (value == System.Threading.Timeout.InfiniteTimeSpan)
-            {
-                throw new ArgumentException($"The {nameof(AllStatusPeriod)} must not be infinite.", nameof(value));
-            }
+            PeriodValidation.EnsureAtLeastOneSecond(value, nameof(AllStatusPeriod), nameof(value));
+            PeriodValidation.EnsureNotInfinite(value, nameof(AllStatusPeriod), nameof(value));
             _healthyperiod = value;
             _degradedperiod = value;
             _unhealthyperiod = value;

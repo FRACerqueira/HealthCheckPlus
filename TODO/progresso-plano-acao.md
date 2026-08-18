@@ -269,3 +269,40 @@ Suíte: 96/96 verdes, estável em 3 execuções seguidas, build limpo (Debug e R
 Commit criado a pedido do usuário: `79e0b51` "Fix cross-check cancellation misclassification found by a deeper adversarial pass" (13 arquivos, 753 inserções/63 deleções). Working tree limpa. Não enviado (push) — não solicitado.
 
 **Não há mais nenhuma pendência conhecida em todo o trabalho desta sessão** (Fase 0-4 + reauditoria N1-N10 + baixa severidade + hardening de timing de CI + duas rodadas de revisão estreita F1-F9). As únicas exceções conscientes e documentadas continuam sendo F2 (limitação inerente do cancelamento cooperativo, mesma do publisher nativo do ASP.NET Core) e F5 (risco teórico de memory model em ARM64, não reproduzido, registrado para investigação futura caso surja evidência real). O padrão observado nas três rodadas de revisão estreita — cada uma achando algo real dentro do fix da rodada anterior — reforça a recomendação já registrada: qualquer lote de mudanças, por menor que seja, deve passar por pelo menos uma revisão adversarial escopada ao próprio diff antes de ser considerado fechado.
+
+## Refactor de consolidação pós-terceira revisão estreita (2026-08-18)
+
+Usuário questionou se o padrão "toda rodada de revisão estreita acha algo real dentro do fix da rodada anterior" indicava um erro estrutural sério na arquitetura. Análise do código (`DefaultHealthCheckServicePlus.cs`) mostrou que não: os três achados das rodadas estreitas eram a mesma confusão conceitual (`Task.IsCanceled`/`cancellationToken.IsCancellationRequested` não provam que *esta* `OperationCanceledException` foi causada por *aquele* token específico) reaparecendo em três pontos diferentes — o `finally` de `CheckHealthPlusAsync`, o `finally` de `BackGroudCheckHealthPlusAsync` (lógica quase idêntica, colada) e o guard de `catch` dentro de `RunCheckAsync`. O resto do código (validações, cache, políticas, scheduling) nunca mostrou esse padrão de regressão repetida.
+
+Extraídos os dois `finally` duplicados (não o guard de `RunCheckAsync`, que responde a uma pergunta diferente em outro ponto do fluxo de controle e foi deliberadamente deixado como está) para um único método compartilhado `ApplyBatchResults`, apoiado num classificador puro e testável isoladamente, `internal static BatchTaskOutcome ClassifyBatchTask(Task, CancellationToken)`. Verificado via `git diff` que os quatro pontos de dados de cada ramo (sucesso: `dtref.Add(duration)`/`duration`; cancelamento: `releasedAt`; falha: `releasedAt`/`TimeSpan.Zero`; `trigger`: `resultHealthCheckFrom` vs. `HealthCheckTrigger.Background`) foram preservados byte a byte em relação ao código original — refactor comportamentalmente neutro, não uma nova rodada de bugfix.
+
+Adicionados 5 testes novos: 4 testes unitários diretos e síncronos de `ClassifyBatchTask` (usando `Task.FromResult`/`FromCanceled`/`FromException`, sem depender de timing assíncrono real) e 1 teste de regressão de integração (`CheckHealthPlusAsync_ShouldSetDateRefToBatchStartPlusOwnDuration_OnSuccess...`) cobrindo uma lacuna real que só apareceu ao revisar com um consultor mais forte: nenhum teste existente fixava o `DateRef` do ramo de sucesso (`dtref.Add(duration)`) quando um check rápido compartilha o lote com um check bem mais lento — um deslize silencioso ali passaria pelos 96 testes anteriores sem ser notado.
+
+**Nota de atenção consciente**: os 4 testes unitários de `ClassifyBatchTask` chamam um método `internal` diretamente, o que tensiona com a diretriz do `CONTRIBUTING.md` ("prefira teste de integração via API pública a um teste unitário que chama internals diretamente, sempre que o comportamento for alcançável pela API pública"). Mantidos porque complementam — não substituem — a cobertura de integração já existente (os testes `Broken`/`Slow` de lotes mistos continuam cobrindo os mesmos casos pela API pública); mas é uma bandeira aberta para o usuário decidir se quer removê-los depois.
+
+Suíte: 101/101 verdes, estável em 3 execuções seguidas, build limpo (Debug e Release) nos 3 TFMs, 0 warnings. Cobertura (net10.0 isolado via `coverlet`, não comparável 1:1 com os números anteriores por TFM único): 78,34% linhas / 66,39% branches. Nada commitado ainda.
+
+## Rodada de duplicação e complexidade acidental (2026-08-18)
+
+Usuário pediu uma rodada dedicada a achar duplicação de código por call site e complexidade acidental em todo o código de produção (não só no diff da sessão). Disparados dois agentes independentes em paralelo, cada um cobrindo os mesmos 20 arquivos de produção com um ângulo diferente: um caçando lógica duplicada entre call sites, outro caçando complexidade que não serve a nenhum requisito real. Os dois convergiram de forma independente em três achados (sinal de confiança maior), e cada um achou coisas que o outro não viu. Todos os achados relatados abaixo foram verificados manualmente (lendo o código real) antes de aceitar.
+
+**Duplicação corrigida:**
+
+| # | Achado | Correção |
+|---|---|---|
+| 1 | Regra "período ≥ 1s" (+ "nunca infinito" onde aplicável) reimplementada em ~10 call sites: 5 setters + `AllStatusPeriod` em `HealthCheckPlusBackGroundOptions.cs`, 4 métodos em `HealthChecksPlusExtension.cs` | Extraído `PeriodValidation` (novo arquivo, `Internal/PeriodValidation.cs`) com `EnsureAtLeastOneSecond`/`EnsureNotInfinite`; todos os 10 call sites (+ `Delay`, que só tinha o segundo check) passaram a usá-lo |
+| 2 | Seis métodos `WriteXxx` em `HealthCheckPlusOptions.cs` repetindo o mesmo esqueleto (null-check, `ContentType`, serializar, escrever) — com **bug de drift real confirmado**: `WriteShortDetails` setava `"application/json"` sem charset enquanto os outros cinco setavam `"application/json; charset=utf-8"` | Extraído `WriteReport` privado compartilhado; bug de `ContentType` corrigido como efeito colateral direto da extração |
+| 3 | `CacheHealthCheckPlus.TryGetNotHealthy/Healthy/Degraded/Unhealthy` reimplementavam inline o padrão que `HealthReportExtensions` já tinha extraído como `TryGetByStatus` | Espelhado o mesmo padrão: `TryGetByStatus` privado em `CacheHealthCheckPlus` |
+| 4 | Loop de fan-out (montar `registrationstorun` + disparar `Task.Run`) duplicado entre `CheckHealthPlusAsync` e `BackGroudCheckHealthPlusAsync` | Extraídos `BuildDueRegistrations` (resolve política + `ScheduleIfDue`) e `StartBatch` (dispara as tasks), parametrizados pelo delegate de resolução de política que já era o único ponto de diferença real entre os dois caminhos |
+| 5 | Fórmula de agregação de status (`_statusDeps.Values.Min(...)`) triplicada em `CacheHealthCheckPlus`, uma das três cópias (seed `_statusFunction[""]`, recalculada a cada ciclo por `UpdateStatusName()`) **nunca lida por ninguém** | Seed removido (código morto); extraído `AggregateStatus()` privado, usado pelas 2 cópias restantes (`AddStatusName` fallback e `Status(null)`) |
+
+**Complexidade acidental corrigida:**
+
+| # | Achado | Correção |
+|---|---|---|
+| 6 | `IHealthCheckPlusPolicyStatus` — interface com exatamente uma implementação (`HealthCheckPlusPolicyStatus`) em todo o repositório, sem necessidade de mock/extensão | Interface removida (arquivo deletado); todo consumidor (`DefaultHealthCheckServicePlus`, `HealthChecksPlusExtension`, testes) passou a depender do record concreto diretamente; `docs/ARCHITECTURE.md` atualizado |
+| 7 | `WrapperBaseHealthCheckPlus` implementava o padrão `Dispose(bool disposing)` + finalizer completo (boilerplate do MSDN), mas a classe não tem finalizer e não tem nenhuma subclasse em todo o repo | Colapsado para um `Dispose()` único, não-virtual, com guarda `disposed` |
+
+Testes novos: 32 (cobertura de regressão para os 10 call sites de `PeriodValidation`, para o bug de `ContentType` corrigido, e para a idempotência do novo `Dispose()`) — nenhum achado exigiu mudança de comportamento observável exceto a correção do `ContentType`, que é o único ponto onde o comportamento mudou de propósito (bug real, não achado hipotético).
+
+Suíte: 133/133 verdes, estável em 3 execuções seguidas, build limpo (Debug e Release) nos 3 TFMs, 0 warnings. Nada commitado ainda.

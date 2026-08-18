@@ -30,5 +30,83 @@ namespace HealthCheckPlusTests
 
             Assert.Throws<ArgumentException>(() => options.Timeout = TimeSpan.FromMilliseconds(500));
         }
+
+        // Regression coverage for the "at least one second, never infinite" rule now centralized
+        // in PeriodValidation and shared by every property below - previously each setter
+        // reimplemented this rule independently with no test at all exercising its exception
+        // paths, so a slip introduced while extracting the shared helper would have gone
+        // unnoticed by the existing suite.
+        public static IEnumerable<object[]> PeriodPropertiesRejectingBelowOneSecondAndInfinite()
+        {
+            yield return [(Action<HealthCheckPlusBackGroundOptions, TimeSpan>)((o, v) => o.HealthyPeriod = v)];
+            yield return [(Action<HealthCheckPlusBackGroundOptions, TimeSpan>)((o, v) => o.DegradedPeriod = v)];
+            yield return [(Action<HealthCheckPlusBackGroundOptions, TimeSpan>)((o, v) => o.UnhealthyPeriod = v)];
+            yield return [(Action<HealthCheckPlusBackGroundOptions, TimeSpan>)((o, v) => o.Idle = v)];
+            yield return [(Action<HealthCheckPlusBackGroundOptions, TimeSpan>)((o, v) => o.AllStatusPeriod(v))];
+        }
+
+        [Theory]
+        [MemberData(nameof(PeriodPropertiesRejectingBelowOneSecondAndInfinite))]
+        public void PeriodProperty_ShouldRejectValueBelowOneSecond(Action<HealthCheckPlusBackGroundOptions, TimeSpan> setValue)
+        {
+            var options = new HealthCheckPlusBackGroundOptions();
+
+            Assert.Throws<ArgumentException>(() => setValue(options, TimeSpan.FromMilliseconds(500)));
+        }
+
+        [Theory]
+        [MemberData(nameof(PeriodPropertiesRejectingBelowOneSecondAndInfinite))]
+        public void PeriodProperty_ShouldRejectInfiniteTimeSpan(Action<HealthCheckPlusBackGroundOptions, TimeSpan> setValue)
+        {
+            var options = new HealthCheckPlusBackGroundOptions();
+
+            Assert.Throws<ArgumentException>(() => setValue(options, System.Threading.Timeout.InfiniteTimeSpan));
+        }
+
+        [Theory]
+        [MemberData(nameof(PeriodPropertiesRejectingBelowOneSecondAndInfinite))]
+        public void PeriodProperty_ShouldAcceptExactlyOneSecond(Action<HealthCheckPlusBackGroundOptions, TimeSpan> setValue)
+        {
+            var options = new HealthCheckPlusBackGroundOptions();
+
+            setValue(options, TimeSpan.FromSeconds(1));
+            // No exception thrown is the assertion; nothing further to observe since each
+            // delegate targets a different property.
+        }
+
+        // AllStatusPeriod's own contract (distinct from the single-property setters above): it
+        // fans one accepted value out to all three status-specific fields.
+        [Fact]
+        public void AllStatusPeriod_ShouldSetHealthyDegradedAndUnhealthyPeriods()
+        {
+            var options = new HealthCheckPlusBackGroundOptions();
+
+            options.AllStatusPeriod(TimeSpan.FromSeconds(42));
+
+            Assert.Equal(TimeSpan.FromSeconds(42), options.HealthyPeriod);
+            Assert.Equal(TimeSpan.FromSeconds(42), options.DegradedPeriod);
+            Assert.Equal(TimeSpan.FromSeconds(42), options.UnhealthyPeriod);
+        }
+
+        // Delay's contract is deliberately different from the properties above: no minimum, only
+        // "not infinite" - unlike them, it is not scheduling a recurring period.
+        [Fact]
+        public void Delay_ShouldRejectInfiniteTimeSpan()
+        {
+            var options = new HealthCheckPlusBackGroundOptions();
+
+            Assert.Throws<ArgumentException>(() => options.Delay = System.Threading.Timeout.InfiniteTimeSpan);
+        }
+
+        [Fact]
+        public void Delay_ShouldAllowValuesBelowOneSecond()
+        {
+            var options = new HealthCheckPlusBackGroundOptions
+            {
+                Delay = TimeSpan.FromMilliseconds(1)
+            };
+
+            Assert.Equal(TimeSpan.FromMilliseconds(1), options.Delay);
+        }
     }
 }

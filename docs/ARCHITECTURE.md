@@ -24,7 +24,7 @@ Anything not explicitly overridden falls back to native ASP.NET Core behavior. A
 | `WrapperBaseHealthCheckPlus` | Wraps an externally-registered `IHealthCheck` (e.g. from a third-party `AddRedis()`-style package) so it can be adopted via `AddCheckLinkTo`. |
 | `HealthCheckMiddlewarePlus` / `HealthChecksPlusAppExtension` | The HTTP endpoint (`UseHealthChecksPlus`), a thin wrapper that calls into `DefaultHealthCheckServicePlus.CheckHealthPlusAsync`. |
 | `HealthCheckPlusMetrics` | Native `System.Diagnostics.Metrics` instrumentation (no OpenTelemetry SDK dependency). |
-| `IHealthCheckPlusPolicyStatus` / `HealthCheckPlusPolicyStatus` | A registered policy: which status it applies to, its delay/period, and which check it targets. |
+| `HealthCheckPlusPolicyStatus` | A registered policy: which status it applies to, its delay/period, and which check it targets. |
 
 ```mermaid
 flowchart LR
@@ -36,7 +36,7 @@ flowchart LR
     end
     MW -->|CheckHealthPlusAsync| SVC["DefaultHealthCheckServicePlus"]
     BG -->|BackGroudCheckHealthPlusAsync| SVC
-    SVC -->|ResolveForegroundPolicy /\nResolveBackgroundPolicy| POL["IHealthCheckPlusPolicyStatus\n(per check, per status)"]
+    SVC -->|ResolveForegroundPolicy /\nResolveBackgroundPolicy| POL["HealthCheckPlusPolicyStatus\n(per check, per status)"]
     SVC -->|TryBeginRun / Update| CACHE["CacheHealthCheckPlus\n(last result, Running, DateRef)"]
     SVC -->|RunCheckAsync| CHECK["IHealthCheck.CheckHealthAsync"]
     BG -->|RunPublisherAsync| PUB["IHealthCheckPublisher(s)"]
@@ -53,15 +53,15 @@ There are exactly two ways a check gets evaluated, and they deliberately behave 
 
 Both paths share the same core logic, factored into a small set of methods used by both:
 
-- `FindPolicy(name, status)` / `GetHealthyPolicy(name)` — the single lookup into the registered `IHealthCheckPlusPolicyStatus` list.
-- `ScheduleIfDue(item, policy, fallbackWhenNull)` — builds the `HealthCheckRegistration` to run (with the policy's delay/period applied) and atomically decides whether it's actually due (see [Scheduling](#scheduling-and-the-running-flag)).
-- `RunCheckAsync(registration, cancellationToken)` — actually invokes `IHealthCheck.CheckHealthAsync`, with timeout and logging.
+- `BuildDueRegistrations(registrations, resolvePolicy)` — resolves each candidate's policy (the only step that differs between the two paths - see [Policy resolution](#policy-resolution)) via `FindPolicy(name, status)` / `GetHealthyPolicy(name)`, then filters down to what's actually due via `ScheduleIfDue(item, policy, fallbackWhenNull)` (which atomically decides whether it's due - see [Scheduling](#scheduling-and-the-running-flag)).
+- `StartBatch(registrationsToRun, cancellationToken)` — fans every due registration out to its own `RunCheckAsync(registration, cancellationToken)` task, which invokes `IHealthCheck.CheckHealthAsync` with timeout and logging.
+- `ApplyBatchResults(registrationsToRun, tasks, dtref, trigger, cancellationToken)` — once the batch settles, classifies each task's outcome (completed, genuinely cancelled by the ambient token, or failed) and applies it to the cache.
 
-What differs between the foreground and background paths is **only** policy resolution (next section) and the trigger tag recorded on the result. **Benefit**: a fix or behavior change to scheduling, timeout handling, or logging is written once and automatically applies to both entry points. **Point of attention**: if a future change to one path's flow bypasses these shared methods, the two paths can silently diverge again — any change here should keep both paths going through the same three methods.
+What differs between the foreground and background paths is **only** policy resolution (next section) and the trigger tag recorded on the result. **Benefit**: a fix or behavior change to scheduling, timeout handling, task classification, or logging is written once and automatically applies to both entry points. **Point of attention**: if a future change to one path's flow bypasses these shared methods, the two paths can silently diverge again — any change here should keep both paths going through the same shared methods.
 
 ## Policy resolution
 
-`ResolveForegroundPolicy` and `ResolveBackgroundPolicy` decide which `IHealthCheckPlusPolicyStatus` applies for a check's *current* last-known status, before checking whether it's due to run again.
+`ResolveForegroundPolicy` and `ResolveBackgroundPolicy` decide which `HealthCheckPlusPolicyStatus` applies for a check's *current* last-known status, before checking whether it's due to run again.
 
 - **Foreground (HTTP)**: `FindPolicy(name, lastStatus) ?? GetHealthyPolicy(name)`. If there's no explicit policy for the current status (e.g. no `AddUnhealthyPolicy` was registered), it falls back to the check's Healthy policy.
 - **Background**: falls back instead to `HealthCheckPlusBackGroundOptions`' own per-status defaults (`HealthyPeriod`/`DegradedPeriod`/`UnhealthyPeriod`), which only exist when `AddBackgroundPolicy` was used.

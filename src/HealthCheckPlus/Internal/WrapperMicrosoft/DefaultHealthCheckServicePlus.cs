@@ -24,7 +24,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         private readonly IOptions<HealthCheckServiceOptions> _options;
         private readonly IServiceProvider _services;
         private readonly ILogger<HealthCheckService> _logger;
-        private readonly List<IHealthCheckPlusPolicyStatus> _policies;
+        private readonly List<HealthCheckPlusPolicyStatus> _policies;
         private readonly CacheHealthCheckPlus _cacheStatus;
         private readonly HealthChecksPlusRegistrationState _registrationState;
 
@@ -47,7 +47,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             _policies = [];
             _policies.AddRange(_services
-                .GetServices<IHealthCheckPlusPolicyStatus>());
+                .GetServices<HealthCheckPlusPolicyStatus>());
 
             _cacheStatus = (CacheHealthCheckPlus)_services.GetRequiredService<IStateHealthChecksPlus>();
 
@@ -121,7 +121,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // A health check with no matching Healthy policy (i.e. registered without going through
         // AddCheckPlus/AddCheckLinkTo) must fail early and clearly, instead of throwing a
         // NullReferenceException later, at runtime, when health is evaluated.
-        private static void ValidateHealthyPolicies(IEnumerable<HealthCheckRegistration> registrations, List<IHealthCheckPlusPolicyStatus> policies)
+        private static void ValidateHealthyPolicies(IEnumerable<HealthCheckRegistration> registrations, List<HealthCheckPlusPolicyStatus> policies)
         {
             var missing = registrations
                 .Where(r => !policies.Any(p => p.PolicyForStatus == HealthStatus.Healthy && p.PolicyNameDep == r.Name))
@@ -187,7 +187,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // them twice for the same check and status used to collide silently: FindPolicy's
         // FirstOrDefault always picks whichever was registered first, so the second call's
         // Delay/Period was ignored with no warning at all.
-        private static void ValidatePolicyUniqueness(List<IHealthCheckPlusPolicyStatus> policies)
+        private static void ValidatePolicyUniqueness(List<HealthCheckPlusPolicyStatus> policies)
         {
             var duplicates = policies
                 .GroupBy(p => (p.PolicyNameDep, p.PolicyForStatus))
@@ -206,21 +206,21 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
         // Shared by both execution paths (CheckHealthPlusAsync and BackGroudCheckHealthPlusAsync)
         // so that policy lookup can never diverge between them.
-        private IHealthCheckPlusPolicyStatus? FindPolicy(string name, HealthStatus status)
+        private HealthCheckPlusPolicyStatus? FindPolicy(string name, HealthStatus status)
         {
             return _policies.FirstOrDefault(x => x.PolicyNameDep == name && x.PolicyForStatus == status);
         }
 
         // Guaranteed non-null: ValidateHealthyPolicies (called from the constructor) already
         // rejected any registration without a matching Healthy policy.
-        private IHealthCheckPlusPolicyStatus GetHealthyPolicy(string name)
+        private HealthCheckPlusPolicyStatus GetHealthyPolicy(string name)
         {
             return FindPolicy(name, HealthStatus.Healthy)!;
         }
 
         // Foreground/HTTP path: fall back to the check's own Healthy policy when there is no
         // policy registered for the current status.
-        private IHealthCheckPlusPolicyStatus ResolveForegroundPolicy(string name, HealthStatus lastStatus)
+        private HealthCheckPlusPolicyStatus ResolveForegroundPolicy(string name, HealthStatus lastStatus)
         {
             return FindPolicy(name, lastStatus) ?? GetHealthyPolicy(name);
         }
@@ -229,7 +229,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // (HealthCheckPlusBackGroundOptions) when there is no explicit policy for the current
         // status — this fallback source is only available on this path, since
         // HealthCheckPlusBackGroundOptions only exists when AddBackgroundPolicy was used.
-        private IHealthCheckPlusPolicyStatus ResolveBackgroundPolicy(string name, ItemCacheHealth sta, HealthCheckPlusBackGroundOptions backgroudoptions)
+        private HealthCheckPlusPolicyStatus ResolveBackgroundPolicy(string name, ItemCacheHealth sta, HealthCheckPlusBackGroundOptions backgroudoptions)
         {
             switch (sta.LastResult.Status)
             {
@@ -263,7 +263,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // "not running, due" before either marked it, both schedule the same check, and run it
         // twice concurrently, with whichever finished second having its result silently dropped by
         // Update() (see AnomalyReason.UpdateResultDropped).
-        private HealthCheckRegistration? ScheduleIfDue(HealthCheckRegistration item, IHealthCheckPlusPolicyStatus policy, TimeSpan fallbackWhenNull)
+        private HealthCheckRegistration? ScheduleIfDue(HealthCheckRegistration item, HealthCheckPlusPolicyStatus policy, TimeSpan fallbackWhenNull)
         {
             var itemToRun = new HealthCheckRegistration(item.Name, item.Factory, item.FailureStatus, item.Tags, item.Timeout)
             {
@@ -277,6 +277,43 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     : current.DateRef.Add(itemToRun.Period!.Value) < DateTime.UtcNow);
 
             return began ? itemToRun : null;
+        }
+
+        // Shared by both execution paths: resolves each candidate registration's policy (the only
+        // part that differs between them - see the resolvePolicy callers in CheckHealthPlusAsync
+        // and BackGroudCheckHealthPlusAsync) and filters down to the ones actually due via
+        // ScheduleIfDue.
+        private List<HealthCheckRegistration> BuildDueRegistrations(
+            IEnumerable<HealthCheckRegistration> registrations,
+            Func<HealthCheckRegistration, ItemCacheHealth, HealthCheckPlusPolicyStatus> resolvePolicy)
+        {
+            var registrationstorun = new List<HealthCheckRegistration>();
+            foreach (var item in registrations)
+            {
+                var sta = _cacheStatus.FullStatus(item.Name);
+                var policy = resolvePolicy(item, sta);
+
+                var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
+                if (itemToRun != null)
+                {
+                    registrationstorun.Add(itemToRun);
+                }
+            }
+            return registrationstorun;
+        }
+
+        // Shared by both execution paths: fans every due registration out to its own
+        // RunCheckAsync task. Awaiting and classifying the results is the caller's
+        // responsibility (see ApplyBatchResults) - this only starts them.
+        private Task<HealthReportEntry>[] StartBatch(List<HealthCheckRegistration> registrationstorun, CancellationToken cancellationToken)
+        {
+            var tasks = new Task<HealthReportEntry>[registrationstorun.Count];
+            for (var index = 0; index < registrationstorun.Count; index++)
+            {
+                var registration = registrationstorun[index];
+                tasks[index] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);
+            }
+            return tasks;
         }
 
         public override Task<HealthReport> CheckHealthAsync(
@@ -299,19 +336,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
 
             //update policy using last state
-            var registrationstorun = new List<HealthCheckRegistration>();
-            foreach (var item in registrations)
-            {
-                var sta = _cacheStatus.FullStatus(item.Name);
-                var policy = ResolveForegroundPolicy(item.Name, sta.LastResult.Status);
-
-                var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
-                if (itemToRun != null)
-                {
-                    registrationstorun.Add(itemToRun);
-                }
-            }
-
+            var registrationstorun = BuildDueRegistrations(registrations, (item, sta) => ResolveForegroundPolicy(item.Name, sta.LastResult.Status));
 
             var totalTime = Stopwatch.StartNew();
 
@@ -321,14 +346,8 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             {
                 Log.HealthCheckProcessingBegin(_logger);
 
-                var tasks = new Task<HealthReportEntry>[registrationstorun.Count];
-                var index = 0;
-
                 var dtref = DateTime.UtcNow;
-                foreach (var registration in registrationstorun)
-                {
-                    tasks[index++] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);
-                }
+                var tasks = StartBatch(registrationstorun, cancellationToken);
 
                 try
                 {
@@ -343,58 +362,11 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     // RunCheckAsync - otherwise every check in this batch would stay marked Running
                     // forever and never be scheduled again. The exception, if any, still propagates
                     // normally once this finally block completes, so callers see the same behavior
-                    // as before.
-                    //
-                    // A task can end up here in two very different ways, and they must not be
-                    // treated the same:
-                    //  - Canceled: the ambient cancellationToken fired (e.g. httpContext.
-                    //    RequestAborted, or a background-cycle Timeout) while the check was still
-                    //    running - the check itself never actually failed, only the caller went
-                    //    away. Writing a synthetic result here would replace the check's last known
-                    //    real result with a manufactured one, visible to every other reader (other
-                    //    requests, background publishers, IStateHealthChecksPlus.Status) for up to a
-                    //    full policy period. ReleaseRunning clears the scheduling flag and advances
-                    //    DateRef to the actual release time (not dtref, the batch's *start* time -
-                    //    an ambient cancellation is only ever observed after however long the batch
-                    //    ran for, up to a full Timeout, so reusing dtref left DateRef stale by that
-                    //    same amount and defeated the whole point of advancing it) so the normal
-                    //    per-status period still throttles the retry instead of hot-looping, but
-                    //    leaves the last real result untouched.
-                    //  - Faulted (or Canceled by an OperationCanceledException that has nothing to
-                    //    do with cancellationToken actually being canceled - .NET's async machinery
-                    //    routes ANY OperationCanceledException to the Canceled task state,
-                    //    regardless of which token, if any, it's tied to): something outside
-                    //    RunCheckAsync's own try/catch threw - e.g. the registration's Factory
-                    //    itself failing to resolve the check instance. Unlike a genuine ambient
-                    //    cancellation, this really is the check failing, and must be reported as
-                    //    such via Update() - silently leaving the previous result in place (or
-                    //    worse, the InitCache seed of Healthy) would mean a check that can never
-                    //    even be constructed reports Healthy forever.
+                    // as before. See ApplyBatchResults for how each task's outcome is classified and
+                    // applied - shared with BackGroudCheckHealthPlusAsync so there is exactly one
+                    // place that decides this, instead of two copies that can drift apart.
                     totalTime.Stop();
-                    var releasedAt = DateTime.UtcNow;
-
-                    index = 0;
-                    foreach (var registration in registrationstorun)
-                    {
-                        var task = tasks[index++];
-                        if (task.IsCompletedSuccessfully)
-                        {
-                            var result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
-                            _cacheStatus.Update(registration.Name, resultHealthCheckFrom, result, dtref.Add(task.Result.Duration), task.Result.Duration);
-                        }
-                        else if (task.IsCanceled && cancellationToken.IsCancellationRequested)
-                        {
-                            Log.HealthCheckExecutionAborted(_logger, registration.Name);
-                            SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
-                            _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
-                        }
-                        else
-                        {
-                            var exception = task.Exception?.GetBaseException();
-                            var result = new HealthCheckResult(registration.FailureStatus, exception?.Message ?? "The health check threw an unhandled exception before it could run.", exception, null);
-                            _cacheStatus.Update(registration.Name, resultHealthCheckFrom, result, releasedAt, TimeSpan.Zero);
-                        }
-                    }
+                    ApplyBatchResults(registrationstorun, tasks, dtref, resultHealthCheckFrom, cancellationToken);
                 }
             }
 
@@ -433,29 +405,12 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
 
             //update policy using last state
-            var registrationstorun = new List<HealthCheckRegistration>();
-            foreach (var item in registrations)
-            {
-                var sta = _cacheStatus.FullStatus(item.Name);
-                var policy = ResolveBackgroundPolicy(item.Name, sta, backgroudoptions);
-
-                var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
-                if (itemToRun != null)
-                {
-                    registrationstorun.Add(itemToRun);
-                }
-            }
+            var registrationstorun = BuildDueRegistrations(registrations, (item, sta) => ResolveBackgroundPolicy(item.Name, sta, backgroudoptions));
 
             if (registrationstorun.Count != 0)
             {
-                var tasks = new Task<HealthReportEntry>[registrationstorun.Count];
-                var index = 0;
-
                 var dtref = DateTime.UtcNow;
-                foreach (var registration in registrationstorun)
-                {
-                    tasks[index++] = Task.Run(() => RunCheckAsync(registration, cancellationToken), cancellationToken);
-                }
+                var tasks = StartBatch(registrationstorun, cancellationToken);
 
                 try
                 {
@@ -467,42 +422,107 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     // for every check in this batch even when Task.WhenAll faults - here, typically
                     // the per-cycle Timeout cancelling this call's linked token while a check is
                     // still in flight - otherwise it would stay marked Running forever and never
-                    // run again on any later cycle. A genuine ambient cancellation (Canceled AND
-                    // cancellationToken actually requested - .NET routes ANY OperationCanceledException
-                    // to the Canceled task state regardless of which token, if any, it's tied to, so
-                    // both must hold) is not the check failing, so it only releases Running
-                    // (advancing DateRef to the release time - not dtref, the batch's stale start
-                    // time - so the normal period still throttles the retry) without touching the
-                    // last real result; anything else (Faulted, or a Canceled task that wasn't
-                    // really this token's doing) genuinely is the check failing and must be
-                    // reported via Update() like any other failure. The exception, if any, still
-                    // propagates afterward so HealthCheckPlusBackGroundService's own timeout/shutdown
-                    // handling around this call is unaffected.
-                    var releasedAt = DateTime.UtcNow;
+                    // run again on any later cycle. The exception, if any, still propagates
+                    // afterward so HealthCheckPlusBackGroundService's own timeout/shutdown handling
+                    // around this call is unaffected. See ApplyBatchResults for how each task's
+                    // outcome is classified and applied - shared with CheckHealthPlusAsync so there
+                    // is exactly one place that decides this, instead of two copies that can drift
+                    // apart.
+                    ApplyBatchResults(registrationstorun, tasks, dtref, HealthCheckTrigger.Background, cancellationToken);
+                    _cacheStatus.UpdateStatusName();
+                }
+            }
+        }
 
-                    index = 0;
-                    foreach (var registration in registrationstorun)
-                    {
-                        var task = tasks[index++];
-                        if (task.IsCompletedSuccessfully)
+        // Outcome of a single fanned-out RunCheckAsync task, as seen by the caller once
+        // Task.WhenAll has settled (successfully or not). Kept as its own type - rather than an
+        // inline bool check - so the classification rule itself is a small, pure, directly
+        // testable function (ClassifyBatchTask), independent of the cache/logging side effects
+        // that consume it.
+        internal enum BatchTaskOutcome
+        {
+            Success,
+            AmbientCancellation,
+            Failure
+        }
+
+        // The one place that decides whether a task that didn't complete successfully means "the
+        // caller went away" (AmbientCancellation) or "the check itself failed" (Failure). Three
+        // rounds of adversarial review each found a variant of the same bug living in an inline
+        // copy of this check at a different call site (CheckHealthPlusAsync's finally,
+        // BackGroudCheckHealthPlusAsync's finally, and a related guard inside RunCheckAsync) -
+        // centralizing the finally-block half here, and unit-testing it directly with synthetic
+        // Task states below, means the rule only needs to be gotten right once.
+        //
+        // task.IsCanceled alone is not proof that cancellationToken caused it: .NET's async
+        // machinery routes ANY OperationCanceledException thrown by an async delegate to the
+        // Canceled task state, regardless of which token, if any, it's tied to. Requiring
+        // cancellationToken.IsCancellationRequested as well is only a safe proxy for "this task's
+        // cancellation is attributable to cancellationToken" because RunCheckAsync itself
+        // guarantees no other OperationCanceledException can reach this point Canceled - it
+        // sterilizes a check factory's own OCE into a Faulted InvalidOperationException, and its
+        // own catch guard rejects an unrelated OCE (compared by the exact CancellationToken it
+        // carries) rather than deferring to a batch-wide flag. That invariant lives in
+        // RunCheckAsync, not here - if it's ever relaxed, this classification must be revisited.
+        internal static BatchTaskOutcome ClassifyBatchTask(Task task, CancellationToken cancellationToken)
+        {
+            if (task.IsCompletedSuccessfully)
+            {
+                return BatchTaskOutcome.Success;
+            }
+
+            if (task.IsCanceled && cancellationToken.IsCancellationRequested)
+            {
+                return BatchTaskOutcome.AmbientCancellation;
+            }
+
+            return BatchTaskOutcome.Failure;
+        }
+
+        // Applies ClassifyBatchTask's verdict for every task in a fanned-out batch: a genuine
+        // ambient cancellation only releases the Running flag and advances DateRef to the actual
+        // release time (not dtref, the batch's *start* time - the cancellation is only ever
+        // observed after however long the batch ran for, so reusing dtref would leave DateRef
+        // stale by that same amount and defeat the whole point of advancing it), leaving the last
+        // real result untouched; anything else - a completed result, or a genuine failure - is
+        // reported via Update() like any other result. Shared by CheckHealthPlusAsync and
+        // BackGroudCheckHealthPlusAsync so this logic exists in exactly one place.
+        private void ApplyBatchResults(
+            List<HealthCheckRegistration> registrationstorun,
+            Task<HealthReportEntry>[] tasks,
+            DateTime dtref,
+            HealthCheckTrigger trigger,
+            CancellationToken cancellationToken)
+        {
+            var releasedAt = DateTime.UtcNow;
+
+            for (var index = 0; index < registrationstorun.Count; index++)
+            {
+                var registration = registrationstorun[index];
+                var task = tasks[index];
+
+                switch (ClassifyBatchTask(task, cancellationToken))
+                {
+                    case BatchTaskOutcome.Success:
                         {
                             var result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
-                            _cacheStatus.Update(registration.Name, HealthCheckTrigger.Background, result, dtref.Add(task.Result.Duration), task.Result.Duration);
+                            _cacheStatus.Update(registration.Name, trigger, result, dtref.Add(task.Result.Duration), task.Result.Duration);
+                            break;
                         }
-                        else if (task.IsCanceled && cancellationToken.IsCancellationRequested)
-                        {
-                            Log.HealthCheckExecutionAborted(_logger, registration.Name);
-                            SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
-                            _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
-                        }
-                        else
+
+                    case BatchTaskOutcome.AmbientCancellation:
+                        Log.HealthCheckExecutionAborted(_logger, registration.Name);
+                        SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
+                        _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
+                        break;
+
+                    default: // Failure
                         {
                             var exception = task.Exception?.GetBaseException();
                             var result = new HealthCheckResult(registration.FailureStatus, exception?.Message ?? "The health check threw an unhandled exception before it could run.", exception, null);
-                            _cacheStatus.Update(registration.Name, HealthCheckTrigger.Background, result, releasedAt, TimeSpan.Zero);
+                            _cacheStatus.Update(registration.Name, trigger, result, releasedAt, TimeSpan.Zero);
+                            break;
                         }
-                    }
-                    _cacheStatus.UpdateStatusName();
                 }
             }
         }

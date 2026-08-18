@@ -65,5 +65,19 @@ namespace HealthCheckPlusTests
 
             Assert.Throws<ObjectDisposedException>(() => scope.ServiceProvider.GetService(typeof(object)));
         }
+
+        // Regression test for the disposed guard: calling Dispose() a second time must be a
+        // no-op, not attempt to dispose the wrapped instance/scope again.
+        [Fact]
+        public void Dispose_CalledTwice_ShouldBeIdempotent()
+        {
+            var inner = new DisposableTrackingCheck();
+            var wrapper = new WrapperBaseHealthCheckPlus(inner);
+
+            wrapper.Dispose();
+            wrapper.Dispose();
+
+            Assert.True(inner.Disposed);
+        }
     }
 }

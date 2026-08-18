@@ -34,17 +34,12 @@ namespace HealthCheckPlus.options
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(report);
 
-            context.Response.ContentType = "application/json";
-            var result = JsonSerializer.Serialize(new
+            var entries = report.Entries.Select(e => new
             {
-                status = report.Status.ToString(),
-                entries = report.Entries.Select(e => new
-                {
-                    name = e.Key,
-                    status = e.Value.Status.ToString()
-                })
-            }, options: optionsSerilz);
-            return context.Response.WriteAsync(result);
+                name = e.Key,
+                status = e.Value.Status.ToString()
+            });
+            return WriteReport(context, report.Status, entries);
         }
 
         /// <summary>
@@ -61,19 +56,14 @@ namespace HealthCheckPlus.options
             ArgumentNullException.ThrowIfNull(statecache);
 
             var lst = statecache.ConvertToPlus(report);
-            context.Response.ContentType = "application/json; charset=utf-8";
-            var result = JsonSerializer.Serialize(new
+            var entries = lst.Select(e => new
             {
-                status = report.Status.ToString(),
-                entries = lst.Select(e => new
-                {
-                    name = e.Name,
-                    status = e.LastResult.Status.ToString(),
-                    dateRef  = e.DateRef,
-                    origin = e.Origin.ToString()
-                })
-            }, options: optionsSerilz);
-            return context.Response.WriteAsync(result);
+                name = e.Name,
+                status = e.LastResult.Status.ToString(),
+                dateRef = e.DateRef,
+                origin = e.Origin.ToString()
+            });
+            return WriteReport(context, report.Status, entries);
         }
 
         /// <summary>
@@ -87,19 +77,14 @@ namespace HealthCheckPlus.options
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(report);
 
-            context.Response.ContentType = "application/json; charset=utf-8";
-            var result = JsonSerializer.Serialize(new
+            var entries = report.Entries.Select(e => new
             {
-                status = report.Status.ToString(),
-                entries = report.Entries.Select(e => new
-                {
-                    name = e.Key,
-                    status = e.Value.Status.ToString(),
-                    description = e.Value.Description,
-                    duration = e.Value.Duration
-                })
-            }, options: optionsSerilz);
-            return context.Response.WriteAsync(result);
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                duration = e.Value.Duration
+            });
+            return WriteReport(context, report.Status, entries);
         }
 
         /// <summary>
@@ -116,21 +101,16 @@ namespace HealthCheckPlus.options
             ArgumentNullException.ThrowIfNull(statecache);
 
             var lst = statecache.ConvertToPlus(report);
-            context.Response.ContentType = "application/json; charset=utf-8";
-            var result = JsonSerializer.Serialize(new
+            var entries = lst.Select(e => new
             {
-                status = report.Status.ToString(),
-                entries = lst.Select(e => new
-                {
-                    name = e.Name,
-                    status = e.LastResult.Status.ToString(),
-                    description = e.LastResult.Description,
-                    dateRef = e.DateRef,
-                    duration = e.Duration,
-                    origin = e.Origin.ToString()
-                })
-            }, options: optionsSerilz);
-            return context.Response.WriteAsync(result);
+                name = e.Name,
+                status = e.LastResult.Status.ToString(),
+                description = e.LastResult.Description,
+                dateRef = e.DateRef,
+                duration = e.Duration,
+                origin = e.Origin.ToString()
+            });
+            return WriteReport(context, report.Status, entries);
         }
 
         /// <summary>
@@ -144,20 +124,15 @@ namespace HealthCheckPlus.options
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(report);
 
-            context.Response.ContentType = "application/json; charset=utf-8";
-            var result = JsonSerializer.Serialize(new
+            var entries = report.Entries.Select(e => new
             {
-                status = report.Status.ToString(),
-                entries = report.Entries.Select(e => new
-                {
-                    name = e.Key,
-                    status = e.Value.Status.ToString(),
-                    description = e.Value.Description,
-                    exception = e.Value.Exception?.ToString().Replace(Environment.NewLine,""),
-                    duration = e.Value.Duration
-                })
-            }, options: optionsSerilz);
-            return context.Response.WriteAsync(result);
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                exception = e.Value.Exception?.ToString().Replace(Environment.NewLine, ""),
+                duration = e.Value.Duration
+            });
+            return WriteReport(context, report.Status, entries);
         }
 
 
@@ -175,20 +150,31 @@ namespace HealthCheckPlus.options
             ArgumentNullException.ThrowIfNull(statecache);
 
             var lst = statecache.ConvertToPlus(report);
+            var entries = lst.Select(e => new
+            {
+                name = e.Name,
+                status = e.LastResult.Status.ToString(),
+                description = e.LastResult.Description,
+                dateRef = e.DateRef,
+                duration = e.Duration,
+                exception = e.LastResult.Exception?.ToString().Replace(Environment.NewLine, ""),
+                origin = e.Origin.ToString()
+            });
+            return WriteReport(context, report.Status, entries);
+        }
+
+        // Shared tail of every WriteXxx method above: set the response ContentType, serialize
+        // {status, entries}, write it. Centralized after WriteShortDetails was found to have
+        // drifted to a bare "application/json" ContentType while the other five overloads used
+        // "application/json; charset=utf-8" - a duplication-caused inconsistency, not a
+        // deliberate difference.
+        private static Task WriteReport(HttpContext context, HealthStatus status, object entries)
+        {
             context.Response.ContentType = "application/json; charset=utf-8";
             var result = JsonSerializer.Serialize(new
             {
-                status = report.Status.ToString(),
-                entries = lst.Select(e => new
-                {
-                    name = e.Name,
-                    status = e.LastResult.Status.ToString(),
-                    description = e.LastResult.Description,
-                    dateRef = e.DateRef,
-                    duration = e.Duration,
-                    exception = e.LastResult.Exception?.ToString().Replace(Environment.NewLine, ""),
-                    origin = e.Origin.ToString()
-                })
+                status = status.ToString(),
+                entries
             }, options: optionsSerilz);
             return context.Response.WriteAsync(result);
         }

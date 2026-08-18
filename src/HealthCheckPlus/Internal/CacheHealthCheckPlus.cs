@@ -44,7 +44,6 @@ namespace HealthCheckPlus.Internal
             _statusName = new ConcurrentDictionary<string, HealthStatus>();
             _statusFunction = [];
             _dateregister = DateTime.UtcNow;
-            _statusFunction.Add(string.Empty, (_) => _statusDeps.Values.Min(x => x.LastResult.Status));
         }
 
         public DateTime DateRegister => _dateregister;
@@ -59,7 +58,7 @@ namespace HealthCheckPlus.Internal
             {
                 throw new ArgumentException("HealthCheckName already exists");
             }
-            _statusFunction.Add(options.HealthCheckName, options.StatusHealthReport ?? (_ => _statusDeps.Values.Min(x => x.LastResult.Status)));
+            _statusFunction.Add(options.HealthCheckName, options.StatusHealthReport ?? (_ => AggregateStatus()));
         }
 
         public void InitCache(IEnumerable<string> names)
@@ -125,7 +124,7 @@ namespace HealthCheckPlus.Internal
         {
             if (string.IsNullOrEmpty(name))
             {
-                return _statusDeps.Values.Min(x => x.LastResult.Status);
+                return AggregateStatus();
             }
             if (!_statusFunction.TryGetValue(name, out var value))
             {
@@ -137,6 +136,16 @@ namespace HealthCheckPlus.Internal
                 _statusName[name] = status;
             }
             return status;
+        }
+
+        // The default aggregation rule (worst status wins) - used both as the no-name Status()
+        // shortcut and as AddStatusName's fallback when no custom StatusHealthReport is provided.
+        // Previously expressed independently in three places, one of which (a seed entry keyed by
+        // string.Empty, recomputed every UpdateStatusName() cycle) was never actually read by
+        // anything.
+        private HealthStatus AggregateStatus()
+        {
+            return _statusDeps.Values.Min(x => x.LastResult.Status);
         }
 
         public void Running(string key, bool value)
@@ -314,35 +323,31 @@ namespace HealthCheckPlus.Internal
 
         public bool TryGetNotHealthy(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            var auxresult = _statusDeps
-                .Where(kv => kv.Value.LastResult.Status != HealthStatus.Healthy)
-                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
-            result = auxresult;
-            return result.Count > 0;
+            return TryGetByStatus(out result, status => status != HealthStatus.Healthy);
         }
 
         public bool TryGetHealthy(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            var auxresult = _statusDeps
-                .Where(kv => kv.Value.LastResult.Status == HealthStatus.Healthy)
-                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
-            result = auxresult;
-            return result.Count > 0;
+            return TryGetByStatus(out result, status => status == HealthStatus.Healthy);
         }
 
         public bool TryGetDegraded(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
-            var auxresult = _statusDeps
-                .Where(kv => kv.Value.LastResult.Status == HealthStatus.Degraded)
-                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
-            result = auxresult;
-            return result.Count > 0;
+            return TryGetByStatus(out result, status => status == HealthStatus.Degraded);
         }
 
         public bool TryGetUnhealthy(out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
+            return TryGetByStatus(out result, status => status == HealthStatus.Unhealthy);
+        }
+
+        // Mirrors HealthReportExtensions.TryGetByStatus - same shape, different data source
+        // (_statusDeps here vs. a HealthReport's Entries there), previously reimplemented inline
+        // four times in this class alone.
+        private bool TryGetByStatus(out IReadOnlyDictionary<string, HealthCheckResult> result, Func<HealthStatus, bool> predicate)
+        {
             var auxresult = _statusDeps
-                .Where(kv => kv.Value.LastResult.Status == HealthStatus.Unhealthy)
+                .Where(kv => predicate(kv.Value.LastResult.Status))
                 .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
             result = auxresult;
             return result.Count > 0;

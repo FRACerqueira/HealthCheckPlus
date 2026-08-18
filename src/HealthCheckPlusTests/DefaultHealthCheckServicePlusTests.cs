@@ -26,6 +26,18 @@ namespace HealthCheckPlusTests
             }
         }
 
+        // A check with a configurable, observable duration - used to prove that a fast check's
+        // DateRef reflects its OWN duration, not the overall duration of a batch it happens to
+        // share with a much slower check.
+        private sealed class DelayedHealthyCheck(TimeSpan delay) : IHealthCheck
+        {
+            public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                return HealthCheckResult.Healthy();
+            }
+        }
+
         private sealed class SlowCountingCheck : IHealthCheck
         {
             public int CallCount;
@@ -77,7 +89,7 @@ namespace HealthCheckPlusTests
         private static DefaultHealthCheckServicePlus BuildService(
             CacheHealthCheckPlus cache,
             HealthCheckServiceOptions hcOptions,
-            params IHealthCheckPlusPolicyStatus[] policies)
+            params HealthCheckPlusPolicyStatus[] policies)
         {
             var services = new ServiceCollection();
             services.AddSingleton<IStateHealthChecksPlus>(cache);
@@ -493,6 +505,34 @@ namespace HealthCheckPlusTests
                 $"DateRef ({status.DateRef:o}) was stuck at the batch's start time instead of being advanced to the release time (~{justBeforeCancel:o}).");
         }
 
+        // Regression guard for ApplyBatchResults' success branch (dtref.Add(task.Result.Duration)):
+        // a fast check's DateRef must reflect the batch's start time plus ITS OWN duration, not
+        // the release time of the whole batch - which a much slower check running concurrently in
+        // the same batch would inflate. Nothing else pins this after centralizing the
+        // finally-block logic shared by CheckHealthPlusAsync and BackGroudCheckHealthPlusAsync.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldSetDateRefToBatchStartPlusOwnDuration_OnSuccess_EvenWhenAnotherCheckInTheSameBatchIsSlower()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Fast", "Slow"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Fast", _ => new AlwaysHealthyCheck(), null, null));
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Slow", _ => new DelayedHealthyCheck(TimeSpan.FromSeconds(2)), null, null));
+
+            var fastPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Fast");
+            var slowPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Slow");
+
+            var service = BuildService(cache, hcOptions, fastPolicy, slowPolicy);
+
+            var batchStart = DateTime.UtcNow;
+            await service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, CancellationToken.None);
+
+            var fastStatus = cache.FullStatus("Fast");
+            Assert.True(fastStatus.DateRef < batchStart.AddMilliseconds(800),
+                $"Fast check's DateRef ({fastStatus.DateRef:o}, batch started {batchStart:o}) reflects the slow check's ~2s duration instead of its own near-instant one.");
+        }
+
         // Regression test: .NET's async machinery routes ANY OperationCanceledException thrown by
         // an async delegate to the Canceled task state - regardless of which token it's tied to, or
         // even if it's a bespoke exception with no token at all. A registration Factory throwing an
@@ -629,6 +669,59 @@ namespace HealthCheckPlusTests
             var status = cache.FullStatus("Broken");
             Assert.False(status.Running);
             Assert.Equal(HealthStatus.Unhealthy, status.LastResult.Status);
+        }
+
+        // Direct, synchronous coverage of the classification rule shared by CheckHealthPlusAsync's
+        // and BackGroudCheckHealthPlusAsync's finally blocks - the exact piece that a variant of
+        // the same bug kept reappearing in across independent reviews, once per call site, before
+        // it was centralized into DefaultHealthCheckServicePlus.ClassifyBatchTask. These use
+        // synthetic Task states (Task.FromResult/FromCanceled/FromException) instead of exercising
+        // real async timing, so they exist alongside - not instead of - the integration-style
+        // tests above that already cover the real RunCheckAsync plumbing.
+        [Fact]
+        public void ClassifyBatchTask_ReturnsSuccess_WhenTaskCompletedSuccessfully()
+        {
+            var task = Task.FromResult(0);
+
+            var outcome = DefaultHealthCheckServicePlus.ClassifyBatchTask(task, CancellationToken.None);
+
+            Assert.Equal(DefaultHealthCheckServicePlus.BatchTaskOutcome.Success, outcome);
+        }
+
+        [Fact]
+        public void ClassifyBatchTask_ReturnsAmbientCancellation_WhenTaskCanceled_AndAmbientTokenWasRequested()
+        {
+            var task = Task.FromCanceled(new CancellationToken(canceled: true));
+
+            var outcome = DefaultHealthCheckServicePlus.ClassifyBatchTask(task, new CancellationToken(canceled: true));
+
+            Assert.Equal(DefaultHealthCheckServicePlus.BatchTaskOutcome.AmbientCancellation, outcome);
+        }
+
+        // Guards the exact gap the third narrow-review round closed one layer down inside
+        // RunCheckAsync: a task ending up Canceled is not, by itself, proof that the ambient token
+        // caused it. This classifier only treats it as ambient cancellation when the ambient token
+        // was ALSO actually requested - it relies on RunCheckAsync's own invariant (documented on
+        // ClassifyBatchTask) that no other kind of OperationCanceledException can reach this point
+        // as a Canceled task.
+        [Fact]
+        public void ClassifyBatchTask_ReturnsFailure_WhenTaskCanceled_ButAmbientTokenWasNotRequested()
+        {
+            var task = Task.FromCanceled(new CancellationToken(canceled: true));
+
+            var outcome = DefaultHealthCheckServicePlus.ClassifyBatchTask(task, CancellationToken.None);
+
+            Assert.Equal(DefaultHealthCheckServicePlus.BatchTaskOutcome.Failure, outcome);
+        }
+
+        [Fact]
+        public void ClassifyBatchTask_ReturnsFailure_WhenTaskFaulted()
+        {
+            var task = Task.FromException(new InvalidOperationException("simulated failure"));
+
+            var outcome = DefaultHealthCheckServicePlus.ClassifyBatchTask(task, new CancellationToken(canceled: true));
+
+            Assert.Equal(DefaultHealthCheckServicePlus.BatchTaskOutcome.Failure, outcome);
         }
     }
 }
