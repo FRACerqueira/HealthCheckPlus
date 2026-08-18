@@ -12,13 +12,24 @@ namespace HealthCheckPlus.Internal
     {
         public string Name { get; set; } = string.Empty;
 
-        public TimeSpan Duration { get; set; }
+        private CheckResultSnapshot _snapshot = new(default, default, default, HealthCheckTrigger.None);
 
-        public DateTime DateRef { get; set; }
+        public TimeSpan Duration => _snapshot.Duration;
 
-        public HealthCheckResult LastResult { get; set; }
+        public DateTime DateRef => _snapshot.DateRef;
 
-        public HealthCheckTrigger Origin { get; set; }
+        public HealthCheckResult LastResult => _snapshot.LastResult;
+
+        public HealthCheckTrigger Origin => _snapshot.Origin;
+
+        // A caller that needs more than one of the four properties above together (e.g.
+        // building a report entry, which needs LastResult and Duration in the same breath) must
+        // read this ONCE and pull every field from the same local value - reading the properties
+        // above separately, one statement at a time, defeats the whole point of bundling them:
+        // a concurrent SetResult() between two of those separate reads would still hand back a
+        // mix of an old and a new generation, even though neither individual property read was
+        // itself torn.
+        public CheckResultSnapshot Snapshot => _snapshot;
 
         public bool Running { get; set; }
 
@@ -29,5 +40,12 @@ namespace HealthCheckPlus.Internal
         // sees the same Tags a callback consuming it through the HTTP endpoint's own
         // StatusHealthReport sees.
         public IEnumerable<string> Tags { get; set; } = [];
+
+        // The only way to change LastResult/DateRef/Duration/Origin - always together, as a
+        // single atomic reference swap. See CheckResultSnapshot for why this matters.
+        public void SetResult(HealthCheckResult lastResult, DateTime dateRef, TimeSpan duration, HealthCheckTrigger origin)
+        {
+            _snapshot = new CheckResultSnapshot(lastResult, dateRef, duration, origin);
+        }
     }
 }

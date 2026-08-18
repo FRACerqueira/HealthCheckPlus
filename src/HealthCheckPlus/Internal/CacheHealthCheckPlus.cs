@@ -65,15 +65,9 @@ namespace HealthCheckPlus.Internal
         {
             foreach (var item in names)
             {
-                _statusDeps.TryAdd(item, new ItemCacheHealth
-                {
-                    Name = item,
-                    Duration = TimeSpan.Zero,
-                    DateRef = _dateregister,
-                    Running = false,
-                    Origin = HealthCheckTrigger.None,
-                    LastResult = new HealthCheckResult(HealthStatus.Healthy)
-                });
+                var newItem = new ItemCacheHealth { Name = item, Running = false };
+                newItem.SetResult(new HealthCheckResult(HealthStatus.Healthy), _dateregister, TimeSpan.Zero, HealthCheckTrigger.None);
+                _statusDeps.TryAdd(item, newItem);
             }
         }
 
@@ -106,15 +100,25 @@ namespace HealthCheckPlus.Internal
             // OrdinalIgnoreCase to match the equivalent dictionary DefaultHealthCheckServicePlus.
             // CheckHealthPlusAsync builds for its own HealthReport - a HealthReport.Entries lookup
             // should behave the same regardless of which code path produced the report.
+            //
+            // Each entry reads kvp.Value.Snapshot exactly once and pulls every field from that
+            // same local value - reading .LastResult/.Duration as separate property accesses
+            // here (as this used to) could each land on a different generation if a concurrent
+            // Update() lands in between, handing back e.g. a new Status paired with an old
+            // Description.
             var entries = _statusDeps.ToDictionary(
                 kvp => kvp.Key,
-                kvp => new HealthReportEntry(
-                    kvp.Value.LastResult.Status,
-                    kvp.Value.LastResult.Description,
-                    kvp.Value.Duration,
-                    kvp.Value.LastResult.Exception,
-                    kvp.Value.LastResult.Data,
-                    kvp.Value.Tags),
+                kvp =>
+                {
+                    var snapshot = kvp.Value.Snapshot;
+                    return new HealthReportEntry(
+                        snapshot.LastResult.Status,
+                        snapshot.LastResult.Description,
+                        snapshot.Duration,
+                        snapshot.LastResult.Exception,
+                        snapshot.LastResult.Data,
+                        kvp.Value.Tags);
+                },
                 StringComparer.OrdinalIgnoreCase
             );
             return new HealthReport(entries, TimeSpan.Zero);
@@ -195,7 +199,11 @@ namespace HealthCheckPlus.Internal
             if (_statusDeps.TryGetValue(key, out var item))
             {
                 item.Running = false;
-                item.DateRef = dateRef;
+                // Advance DateRef alone, preserving the rest of the last real result - read the
+                // other three fields from a single Snapshot rather than three separate property
+                // reads, then write them all back through SetResult as one atomic swap.
+                var current = item.Snapshot;
+                item.SetResult(current.LastResult, dateRef, current.Duration, current.Origin);
             }
         }
 
@@ -225,10 +233,7 @@ namespace HealthCheckPlus.Internal
 
             var previousStatus = item.LastResult.Status;
 
-            item.LastResult = result;
-            item.DateRef = lastexecute;
-            item.Duration = duration;
-            item.Origin = healthCheckFrom;
+            item.SetResult(result, lastexecute, duration, healthCheckFrom);
             item.Running = false;
 
             // This is the single point every execution path (foreground/HTTP and background)
@@ -342,18 +347,38 @@ namespace HealthCheckPlus.Internal
         // Mirrors HealthReportExtensions.TryGetByStatus - same shape, different data source
         // (_statusDeps here vs. a HealthReport's Entries there), previously reimplemented inline
         // four times in this class alone.
+        //
+        // LastResult is read exactly once per item (into the anonymous type below) and reused
+        // for both the predicate check and the stored value - reading it twice (once to filter,
+        // once to select, as this used to) could filter on one generation and return another if
+        // a concurrent Update() lands in between, e.g. a check going Unhealthy->Healthy right
+        // between the two reads would slip an already-Healthy entry into TryGetUnhealthy()'s
+        // result.
         private bool TryGetByStatus(out IReadOnlyDictionary<string, HealthCheckResult> result, Func<HealthStatus, bool> predicate)
         {
             var auxresult = _statusDeps
-                .Where(kv => predicate(kv.Value.LastResult.Status))
-                .ToDictionary(kv => kv.Key, kv => kv.Value.LastResult);
+                .Select(kv => (kv.Key, LastResult: kv.Value.LastResult))
+                .Where(x => predicate(x.LastResult.Status))
+                .ToDictionary(x => x.Key, x => x.LastResult);
             result = auxresult;
             return result.Count > 0;
         }
 
+        // Each entry is a fresh, immutable snapshot (Name + a single Snapshot read), not the
+        // live ItemCacheHealth itself - two problems this fixes together: a consumer reading
+        // several of the returned properties one at a time (as every "Plus" response writer in
+        // HealthCheckPlusOptions does) could otherwise see a mix of fields from before and after
+        // a concurrent Update() landing mid-read (the read window for a slow JSON serialization
+        // pass over many entries is far wider than a single CreateReport() call); and
+        // IDataHealthPlus.Name being settable used to let a consumer mutate the shared cache
+        // entry in place just by assigning to it - it now only mutates this caller-owned copy.
         public IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
         {
-            return report.Entries.Select(x => GetItemOrThrow(x.Key));
+            return report.Entries.Select(x =>
+            {
+                var item = GetItemOrThrow(x.Key);
+                return (IDataHealthPlus)new DataHealthPlusSnapshot(item.Name, item.Snapshot);
+            });
         }
 
         #endregion

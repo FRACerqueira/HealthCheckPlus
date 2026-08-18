@@ -325,9 +325,13 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             foreach (var registration in registrations)
             {
-                var sta = _cacheStatus.FullStatus(registration.Name);
-                var result = new HealthReportEntry(sta.LastResult.Status,
-                    sta.LastResult.Description, sta.Duration, sta.LastResult.Exception, sta.LastResult.Data, registration.Tags);
+                // One Snapshot read, every field pulled from that same local value - reading
+                // .LastResult/.Duration as separate property accesses here (as this used to)
+                // could each land on a different generation if a concurrent Update() lands in
+                // between.
+                var snapshot = _cacheStatus.FullStatus(registration.Name).Snapshot;
+                var result = new HealthReportEntry(snapshot.LastResult.Status,
+                    snapshot.LastResult.Description, snapshot.Duration, snapshot.LastResult.Exception, snapshot.LastResult.Data, registration.Tags);
                 entries[registration.Name] = result;
             }
             var report = new HealthReport(entries, totalTime.Elapsed);

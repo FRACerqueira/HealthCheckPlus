@@ -380,5 +380,67 @@ namespace HealthCheckPlusTests
 
             Assert.Equal(1, winners);
         }
+
+        // Regression test for a real, empirically-reproduced concurrency bug: LastResult/
+        // DateRef/Duration/Origin used to be four independent mutable properties on
+        // ItemCacheHealth, written one assignment at a time inside Update() with no
+        // synchronization. A reader landing between two of those writes could observe an
+        // inconsistent mix - e.g. the new Status paired with the old Description, or an
+        // Exception that doesn't match either. Fixed by bundling all four into one immutable
+        // CheckResultSnapshot, swapped with a single reference assignment (never torn on .NET),
+        // with every multi-field read site (CreateReport, TryGetByStatus, ConvertToPlus,
+        // DefaultHealthCheckServicePlus's own report loop) updated to read that snapshot once
+        // instead of the four properties separately. This test alternates Update() between two
+        // fully-distinct results on a background thread while continuously reading CreateReport()
+        // on the foreground thread, and asserts every observed entry exactly matches one of the
+        // two known-good combinations - never a mix of the two.
+        [Fact]
+        public async Task CreateReport_ShouldNeverExposeATornCombinationOfResultFields_UnderConcurrentUpdates()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            var resultA = new HealthCheckResult(HealthStatus.Healthy, "healthy-desc", null, null);
+            var resultB = new HealthCheckResult(HealthStatus.Unhealthy, "unhealthy-desc", new InvalidOperationException("simulated failure"), null);
+
+            using var cts = new CancellationTokenSource();
+            using var firstUpdateDone = new ManualResetEventSlim(false);
+            var writer = Task.Run(() =>
+            {
+                var useA = true;
+                while (!cts.IsCancellationRequested)
+                {
+                    _cacheHealthCheckPlus.Running("Test1", true);
+                    _cacheHealthCheckPlus.Update("Test1", HealthCheckTrigger.Background, useA ? resultA : resultB, DateTime.UtcNow, TimeSpan.FromTicks(useA ? 1 : 2));
+                    firstUpdateDone.Set();
+                    useA = !useA;
+                }
+            }, TestContext.Current.CancellationToken);
+
+            // Wait for the writer's first real Update() before measuring - otherwise, under
+            // heavy contention (e.g. this test running alongside the rest of the suite), the
+            // reader loop could spend its first iterations racing InitCache's own seed value
+            // (Healthy, null description) before the writer ever runs, which matches neither
+            // resultA nor resultB and would be a false positive, not a torn read.
+            Assert.True(firstUpdateDone.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The writer never completed its first Update().");
+
+            var tornReads = 0;
+            for (var i = 0; i < 500_000; i++)
+            {
+                var entry = _cacheHealthCheckPlus.CreateReport().Entries["Test1"];
+
+                var matchesA = entry.Status == resultA.Status && entry.Description == resultA.Description && entry.Exception == resultA.Exception;
+                var matchesB = entry.Status == resultB.Status && entry.Description == resultB.Description && entry.Exception == resultB.Exception;
+
+                if (!matchesA && !matchesB)
+                {
+                    tornReads++;
+                }
+            }
+
+            cts.Cancel();
+            await writer;
+
+            Assert.Equal(0, tornReads);
+        }
     }
 }
