@@ -26,7 +26,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             ArgumentNullException.ThrowIfNull(healthCheckService);
 
             _healthCheckOptions = healthCheckOptions.Value;
-            _healthCheckService = (DefaultHealthCheckServicePlus)healthCheckService;
+            _healthCheckService = InternalCast.To<DefaultHealthCheckServicePlus>(healthCheckService, "the registered HealthCheckService");
         }
 
         public async Task InvokeAsync(HttpContext httpContext)

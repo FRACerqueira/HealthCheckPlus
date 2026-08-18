@@ -240,7 +240,7 @@ namespace HealthCheckPlusTests.Integration
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
 
-        // Regression test: FilterReportByPredicate (invoked only when building the report to hand
+        // Regression test: FilterReportForPublishing (invoked only when building the report to hand
         // to publishers) calls the same consumer-supplied Predicate used to decide which checks
         // run - but that specific invocation used to sit completely outside any try/catch in the
         // background loop, unlike every other step here. A Predicate that throws while the report
@@ -340,6 +340,50 @@ namespace HealthCheckPlusTests.Integration
             {
                 Assert.Contains("Included", report.Entries.Keys);
                 Assert.DoesNotContain("Excluded", report.Entries.Keys);
+            });
+        }
+
+        // Regression test: a check that hasn't run even once yet (its own Delay, from AddCheckPlus,
+        // is longer than this cycle's Delay+Idle - the README's own example values, 30s vs. 5s,
+        // trigger this on the very first cycle) used to be published as a genuine Healthy result,
+        // because CreateReport() has no way to distinguish InitCache's seed (Healthy, Origin=None)
+        // from a real observation. A not-yet-run check must be excluded from what the background
+        // service publishes, the same way a Predicate-excluded one already is.
+        [Fact]
+        public async Task BackgroundService_ShouldExcludeNotYetRunChecks_FromThePublishedReport()
+        {
+            var publisher = new CapturingPublisher();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    services.AddSingleton<IHealthCheckPublisher>(publisher);
+
+                    var ihb = services.AddHealthChecksPlus();
+                    ihb.AddCheckPlus<CountingCheck>("HasRun");
+                    ihb.AddCheckPlus<CountingCheck>("NeverRun", delay: TimeSpan.FromSeconds(1000));
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(50);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = false };
+                    });
+                },
+                _ => { });
+
+            // A generous wait relative to the ~1s minimum cycle time: a CI runner slower than this
+            // machine (observed in practice on windows-latest) can otherwise miss even the single
+            // publish cycle this test needs.
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            Assert.NotEmpty(publisher.Reports);
+            Assert.All(publisher.Reports, report =>
+            {
+                Assert.Contains("HasRun", report.Entries.Keys);
+                Assert.DoesNotContain("NeverRun", report.Entries.Keys);
             });
         }
 

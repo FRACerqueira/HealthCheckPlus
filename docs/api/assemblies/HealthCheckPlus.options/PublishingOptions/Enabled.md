@@ -4,11 +4,15 @@
 </br>
 
 
-#### Gets or sets the usage is enabled. Default value is true
+#### Gets whether publishing is enabled. There is no setter - the only way to change this is to construct a whole new instance (the parameterless constructor defaults to `true`). Whatever this evaluates to, it is also forced to `false` whenever [`AfterIdleCount`](./AfterIdleCount.md) is less than 1.
 
 ```csharp
 public bool Enabled { get; }
 ```
+
+### Remarks
+
+The instance actually assigned to [`HealthCheckPlusBackGroundOptions.Publishing`](../HealthCheckPlusBackGroundOptions/Publishing.md) by default is constructed via the internal constructor with publishing disabled, not via this class's own public parameterless constructor - so `true` is only this class's own standalone default, not what a consumer sees from `AddBackgroundPolicy` unless they explicitly replace the whole [`HealthCheckPlusBackGroundOptions.Publishing`](../HealthCheckPlusBackGroundOptions/Publishing.md) instance with `new PublishingOptions()` (or one built via its object-initializer form).
 
 ### See Also
 

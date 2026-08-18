@@ -16,8 +16,8 @@ public static IHealthChecksBuilder AddCheckLinkTo(this IHealthChecksBuilder ihb,
 | ihb | The IHealthChecksBuilder. |
 | namedep | The name health check list to run. |
 | name | The name health check registered. This param is case insensitive |
-| delay | An optional TimeSpan. The initial delay applied after the application starts before executing IHealthCheckPublisher instances. The delay is applied once at startup, and does not apply to subsequent iterations. The default value is 5 seconds. |
-| period | An optional TimeSpan. The period of IHealthCheckPublisher execution. The default value is 30 seconds |
+| delay | An optional TimeSpan for the adopted check's own `Healthy` policy - the initial delay before it is first eligible to run, not a delay of any IHealthCheckPublisher. When omitted, the check has no delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back to HealthCheckPlusBackGroundOptions.Delay for that check's very first run only. |
+| period | An optional TimeSpan for the adopted check's own `Healthy` policy - how often it reruns while it stays `Healthy`, not a period of any IHealthCheckPublisher. When omitted, the check reruns on every request on the HTTP path; on the background path, an omitted period falls back to HealthCheckPlusBackGroundOptions.HealthyPeriod. |
 
 ### Return Value
 

@@ -16,6 +16,7 @@ namespace HealthCheckPlus.Internal
     {
         private static readonly EventId MetricsRecordingErrorEventId = new(100, "HealthCheckPlusMetricsRecordingError");
         private static readonly EventId UpdateDroppedEventId = new(101, "HealthCheckPlusUpdateDropped");
+        private static readonly EventId SwitchToDroppedEventId = new(102, "HealthCheckPlusSwitchToDropped");
 
         private readonly ConcurrentDictionary<string, ItemCacheHealth> _statusDeps;
         private readonly ConcurrentDictionary<string, HealthStatus> _statusName;
@@ -29,20 +30,17 @@ namespace HealthCheckPlus.Internal
         public CacheHealthCheckPlus(ILogger<CacheHealthCheckPlus>? logger = null)
         {
             _logger = logger ?? NullLogger<CacheHealthCheckPlus>.Instance;
-            // OrdinalIgnoreCase to match the other places a check name is compared case-insensitively
-            // - ValidateRegistrations/HealthReport.Entries (OrdinalIgnoreCase) and AddCheckLinkTo's
-            // own name matching (CurrentCultureIgnoreCase). Note this does NOT extend to policy
-            // lookup (FindPolicy/ValidateHealthyPolicies/ValidatePolicyUniqueness), which still
-            // compares names ordinally/case-sensitively - a pre-existing inconsistency, not fixed
-            // here, that can silently miss a policy for a check whose registered Name differs only in
-            // casing from the name passed to AddUnhealthyPolicy/AddDegradedPolicy. A case-sensitive
-            // cache here would additionally let a name in AddHealthChecksPlus's `names` list that
-            // differs only in casing from its registration's Name be rejected as a phantom/missing
-            // entry by the fail-fast validations, even though HealthReport.Entries and
-            // AddCheckLinkTo already treat them as the same check.
+            // OrdinalIgnoreCase throughout, to match the other places a check (or named-aggregate)
+            // name is compared case-insensitively - ValidateRegistrations/HealthReport.Entries and
+            // AddCheckLinkTo's own name matching. This now also extends to policy lookup
+            // (DefaultHealthCheckServicePlus.FindPolicy/ValidateHealthyPolicies/
+            // ValidatePolicyUniqueness/ValidatePolicyTargets), which previously compared names
+            // case-sensitively - a pre-existing inconsistency that could silently miss a policy for
+            // a check whose registered Name differed only in casing from the name passed to
+            // AddUnhealthyPolicy/AddDegradedPolicy.
             _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>(StringComparer.OrdinalIgnoreCase);
-            _statusName = new ConcurrentDictionary<string, HealthStatus>();
-            _statusFunction = [];
+            _statusName = new ConcurrentDictionary<string, HealthStatus>(StringComparer.OrdinalIgnoreCase);
+            _statusFunction = new Dictionary<string, Func<HealthReport, HealthStatus>?>(StringComparer.OrdinalIgnoreCase);
             _dateregister = DateTime.UtcNow;
         }
 
@@ -160,6 +158,18 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        // InitCache seeds every check as Healthy/Origin=None before it has ever actually run - a
+        // deliberate, documented seed (see the `origin` table in RUNBOOK.md), but a report built
+        // straight from the cache before a check's own Delay has elapsed would report that seed as
+        // a genuine Healthy result rather than "not checked yet". Used by
+        // HealthCheckPlusBackGroundService to exclude a not-yet-run check from what it publishes
+        // and hashes for WhenReportChange, the same way it already excludes a Predicate-excluded
+        // one.
+        public bool HasEverRun(string key)
+        {
+            return _statusDeps.TryGetValue(key, out var item) && item.Snapshot.Origin != HealthCheckTrigger.None;
+        }
+
         // Atomically checks "is this check due" (per the caller-supplied predicate, evaluated
         // against the live cache item) and, if so, marks it Running - used by
         // DefaultHealthCheckServicePlus.ScheduleIfDue to close a scheduling race: two concurrent
@@ -267,14 +277,36 @@ namespace HealthCheckPlus.Internal
         public void SwithState(string key, HealthStatus status)
         {
             var item = GetItemOrThrow(key);
+            var beganOverride = false;
             lock (_lock)
             {
-                if (item.Running || item.LastResult.Status == status)
+                if (item.LastResult.Status == status)
                 {
                     return;
                 }
-                item.Running = true;
+                if (!item.Running)
+                {
+                    item.Running = true;
+                    beganOverride = true;
+                }
             }
+
+            if (!beganOverride)
+            {
+                // A scheduled execution (HTTP request or background cycle) is already in flight for
+                // this check when the manual override is requested - applying it here would race
+                // with that execution's own upcoming Update() call, so it's dropped instead. Left
+                // silent before, this is exactly the "no silent catch" pattern this project's own
+                // doctrine forbids elsewhere (see docs/ARCHITECTURE.md's logging-and-anomalies
+                // section): a consumer calling SwitchToUnhealthy/SwitchToDegraded would see no
+                // exception and reasonably assume the override took effect.
+                _logger.LogWarning(SwitchToDroppedEventId,
+                    "A manual override to '{TargetStatus}' for health check '{HealthCheckName}' was dropped: a scheduled execution is currently running for it and will produce its own result shortly. Retry after it completes if the override is still needed.",
+                    status, key);
+                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.SwitchToDroppedWhileRunning), key);
+                return;
+            }
+
             var itemres = new HealthCheckResult(status, item.LastResult.Description);
             Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.UtcNow, TimeSpan.Zero);
 
@@ -372,13 +404,20 @@ namespace HealthCheckPlus.Internal
         // pass over many entries is far wider than a single CreateReport() call); and
         // IDataHealthPlus.Name being settable used to let a consumer mutate the shared cache
         // entry in place just by assigning to it - it now only mutates this caller-owned copy.
+        // Materialized eagerly (ToArray), not returned as a lazy Select - every "Plus" response
+        // writer in HealthCheckPlusOptions enumerates this while a JSON response is already being
+        // serialized to the output stream. A lazy sequence would let GetItemOrThrow's
+        // ArgumentException (an entry naming a check no longer tracked in the cache) surface
+        // mid-write, after some bytes of a JSON document already went out - an unrecoverable,
+        // truncated response. Materializing here means any such failure happens before this method
+        // even returns, while it's still a normal, whole exception the caller can act on.
         public IEnumerable<IDataHealthPlus> ConvertToPlus(HealthReport report)
         {
             return report.Entries.Select(x =>
             {
                 var item = GetItemOrThrow(x.Key);
                 return (IDataHealthPlus)new DataHealthPlusSnapshot(item.Name, item.Snapshot);
-            });
+            }).ToArray();
         }
 
         #endregion

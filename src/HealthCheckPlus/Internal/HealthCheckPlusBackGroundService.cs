@@ -42,7 +42,7 @@ namespace HealthCheckPlus.Internal
                 _haspublishers = true;
             }
             _healthcheckserviceOptions = healthcheckserviceOptions;
-            _healthCheckService = (DefaultHealthCheckServicePlus)healthCheckService;
+            _healthCheckService = InternalCast.To<DefaultHealthCheckServicePlus>(healthCheckService, "the registered HealthCheckService");
             _logger = logger;
             _stopping = new CancellationTokenSource();
         }
@@ -122,7 +122,7 @@ namespace HealthCheckPlus.Internal
                     }
                     if (runpublish)
                     {
-                        // CreateReport()/FilterReportByPredicate (which invokes the consumer-
+                        // CreateReport()/FilterReportForPublishing (which invokes the consumer-
                         // supplied Predicate) used to sit completely outside any try/catch in this
                         // loop - unlike every other step here, which already has one (the dispatch
                         // try/catch just below, and the check-execution try/catch above). A throw
@@ -134,7 +134,7 @@ namespace HealthCheckPlus.Internal
                         // for a failure in building/filtering the report itself.
                         try
                         {
-                            var report = FilterReportByPredicate(_healthCheckService.CreateReport());
+                            var report = FilterReportForPublishing(_healthCheckService.CreateReport());
                             if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
                             {
                                 runpublish = false;
@@ -245,19 +245,22 @@ namespace HealthCheckPlus.Internal
 
         private async Task RunPublisherAsync(IHealthCheckPublisher publisher, HealthReport report, CancellationToken cancellationToken)
         {
-            if (publisher is IHealthCheckPlusPublisher publisherPlus)
-            {
-                if (publisherPlus.PublisherCondition != null && !publisherPlus.PublisherCondition(report))
-                {
-                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.SkippedCondition));
-                    return;
-                }
-            }
-
             var duration = Stopwatch.StartNew();
 
             try
             {
+                // Evaluated inside this try/catch (unlike before) so a throwing PublisherCondition
+                // is attributed to this exact publisher - HealthCheckPublisherError naming it and
+                // the "error" metric tagged with its type - instead of only surfacing one level up,
+                // as the generic HealthCheckPublisherCycleError/publisher_cycle_failed_but_continued
+                // signal that doesn't say which publisher or why.
+                if (publisher is IHealthCheckPlusPublisher publisherPlus &&
+                    publisherPlus.PublisherCondition != null && !publisherPlus.PublisherCondition(report))
+                {
+                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.SkippedCondition));
+                    return;
+                }
+
                 Log.HealthCheckPublisherBegin(_logger, publisher);
                 await publisher.PublishAsync(report, cancellationToken).ConfigureAwait(false);
                 Log.HealthCheckPublisherEnd(_logger, publisher, duration.ElapsedMilliseconds);
@@ -317,24 +320,33 @@ namespace HealthCheckPlus.Internal
             }
         }
 
-        // HealthCheckPlusBackGroundOptions.Predicate decides which checks this background service
-        // runs (see BackGroudCheckHealthPlusAsync), but CacheHealthCheckPlus.CreateReport() has no
-        // notion of it and always reports on every check tracked in the cache - including one the
-        // predicate excludes from ever running here, which would otherwise never leave its
-        // InitCache seed status (Healthy) and be published as such forever. A predicate-excluded
-        // check is explicitly outside what this background service manages, so it must not appear
-        // in the report this service hashes (for WhenReportChange) or hands to its publishers at
-        // all - not reported incorrectly, not reported.
-        private HealthReport FilterReportByPredicate(HealthReport report)
+        // Two independent reasons a cache entry must not reach publishers or the WhenReportChange
+        // hash, combined here so both are excluded together in one pass:
+        //
+        // 1. HealthCheckPlusBackGroundOptions.Predicate decides which checks this background
+        //    service runs (see BackGroudCheckHealthPlusAsync), but CacheHealthCheckPlus.CreateReport()
+        //    has no notion of it and always reports on every check tracked in the cache - including
+        //    one the predicate excludes from ever running here, which would otherwise never leave
+        //    its InitCache seed status (Healthy) and be published as such forever.
+        // 2. A check the predicate *does* include can still not have run even once yet - e.g. its
+        //    own Delay (AddCheckPlus/AddCheckLinkTo) is longer than this cycle's Delay+Idle, which
+        //    the README's own example values (30s check delay vs. 5s background delay) trigger on
+        //    the very first cycle. CreateReport() reports InitCache's seed (Healthy, Origin=None)
+        //    for it exactly the same as a real result, with nothing distinguishing "never checked"
+        //    from "checked and found Healthy" - see CacheHealthCheckPlus.HasEverRun.
+        //
+        // Either way, the check is explicitly not yet part of what this background service
+        // publishes, so it must not appear in the report at all - not reported incorrectly, not
+        // reported.
+        private HealthReport FilterReportForPublishing(HealthReport report)
         {
             var predicate = _optionsBackGround.Value.Predicate;
-            if (predicate == null)
-            {
-                return report;
-            }
+            var eligibleNames = predicate == null
+                ? _healthcheckserviceOptions.Value.Registrations.Select(r => r.Name)
+                : _healthcheckserviceOptions.Value.Registrations.Where(predicate).Select(r => r.Name);
 
             var includedNames = new HashSet<string>(
-                _healthcheckserviceOptions.Value.Registrations.Where(predicate).Select(r => r.Name),
+                eligibleNames.Where(_healthCheckService.HasEverRun),
                 StringComparer.OrdinalIgnoreCase);
 
             if (includedNames.Count == report.Entries.Count)

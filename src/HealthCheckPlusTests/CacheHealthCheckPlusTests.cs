@@ -44,6 +44,28 @@ namespace HealthCheckPlusTests
             Assert.Equal("Test2", _cacheHealthCheckPlus.FullStatus("Test2").Name);
         }
 
+        // Regression test: HasEverRun distinguishes InitCache's seed (Healthy, Origin=None) from a
+        // genuine result - used by HealthCheckPlusBackGroundService to keep a not-yet-run check out
+        // of what it publishes/hashes instead of reporting the seed as a real Healthy observation.
+        [Fact]
+        public void HasEverRun_ShouldReturnFalse_UntilTheCheckActuallyRunsOnce()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            Assert.False(_cacheHealthCheckPlus.HasEverRun("Test1"));
+
+            _cacheHealthCheckPlus.Running("Test1", true);
+            _cacheHealthCheckPlus.Update("Test1", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Healthy), DateTime.UtcNow, TimeSpan.Zero);
+
+            Assert.True(_cacheHealthCheckPlus.HasEverRun("Test1"));
+        }
+
+        [Fact]
+        public void HasEverRun_ShouldReturnFalse_ForAnUnregisteredName()
+        {
+            Assert.False(_cacheHealthCheckPlus.HasEverRun("DoesNotExist"));
+        }
+
         [Fact]
         public void UpdateStatusName_ShouldUpdateStatusName()
         {
@@ -172,6 +194,24 @@ namespace HealthCheckPlusTests
 
             var ex = Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.ConvertToPlus(report).ToArray());
             Assert.Contains("DoesNotExist", ex.Message, StringComparison.Ordinal);
+        }
+
+        // Regression test: ConvertToPlus used to return a lazy Select - every "Plus" response
+        // writer enumerates it while a JSON response is already being serialized to the output
+        // stream, so a failure here used to surface mid-write (some bytes of a truncated JSON
+        // document already sent) instead of before any of them went out. Calling ConvertToPlus
+        // without ever enumerating the result (no .ToArray()/.ToList()/foreach here) proves the
+        // exception now happens inside the call itself, not deferred to the caller's enumeration.
+        [Fact]
+        public void ConvertToPlus_ShouldThrowImmediately_NotOnlyWhenTheResultIsLaterEnumerated()
+        {
+            var entries = new Dictionary<string, HealthReportEntry>
+            {
+                ["DoesNotExist"] = new HealthReportEntry(HealthStatus.Healthy, null, TimeSpan.Zero, null, null)
+            };
+            var report = new HealthReport(entries, TimeSpan.Zero);
+
+            Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.ConvertToPlus(report));
         }
 
         [Fact]

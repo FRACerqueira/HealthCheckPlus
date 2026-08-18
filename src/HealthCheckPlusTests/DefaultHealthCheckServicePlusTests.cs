@@ -196,6 +196,46 @@ namespace HealthCheckPlusTests
             Assert.Contains("Test1", ex.Message, StringComparison.Ordinal);
         }
 
+        // Regression test: ValidateHealthyPolicies only catches a registered check with no matching
+        // policy - nothing previously caught the opposite direction, a policy naming a check that
+        // was never actually registered (e.g. a typo, or a casing mismatch, in AddUnhealthyPolicy/
+        // AddDegradedPolicy's target name). This must also fail fast at construction.
+        [Fact]
+        public void Constructor_ShouldThrowClearException_WhenAPolicyTargetsAnUnregisteredCheckName()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "Test1");
+            var orphanedPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Unhealthy, TimeSpan.Zero, TimeSpan.FromSeconds(10), "Tset1");
+
+            var ex = Assert.Throws<InvalidOperationException>(() => BuildService(cache, hcOptions, healthyPolicy, orphanedPolicy));
+            Assert.Contains("Tset1", ex.Message, StringComparison.Ordinal);
+        }
+
+        // Regression test: FindPolicy/ValidateHealthyPolicies/ValidatePolicyTargets used to compare
+        // policy names ordinally (case-sensitively), while CacheHealthCheckPlus's own cache
+        // (_statusDeps) and HealthReport.Entries already treat a check name case-insensitively - a
+        // policy registered for "test1" would silently never match a check actually named "Test1".
+        // All three now compare OrdinalIgnoreCase, matching the cache.
+        [Fact]
+        public void Constructor_ShouldAcceptPolicy_WhenItsNameDiffersOnlyByCasing_FromTheRegisteredCheckName()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "test1");
+
+            // No exception thrown is the assertion.
+            BuildService(cache, hcOptions, healthyPolicy);
+        }
+
         // Characterization test confirming the Unhealthy branch of the foreground/HTTP path behaves
         // correctly through ResolveForegroundPolicy.
         [Fact]

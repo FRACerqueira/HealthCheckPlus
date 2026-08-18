@@ -191,5 +191,33 @@ namespace HealthCheckPlusTests
             Assert.Contains(capture.Measurements, m =>
                 m.InstrumentName == "healthcheckplus.anomalies" && (string?)m.Tags["healthcheckplus.anomaly.reason"] == "update_result_dropped");
         }
+
+        // SwithState (SwitchToUnhealthy/SwitchToDegraded) used to drop a manual override with zero
+        // signal - no exception, no log, no metric - whenever the check was already Running (a
+        // scheduled execution in flight). A consumer would see no error and reasonably assume the
+        // override took effect. This is exactly the "no silent catch" pattern this project's own
+        // doctrine forbids elsewhere.
+        [Fact]
+        public void SwitchToUnhealthy_ShouldLogWarning_AndRecordAnomaly_WhenCheckIsCurrentlyRunning()
+        {
+            const string checkName = nameof(SwitchToUnhealthy_ShouldLogWarning_AndRecordAnomaly_WhenCheckIsCurrentlyRunning);
+            using var capture = new MetricsCapture();
+            var loggerProvider = new CapturingLoggerProvider();
+            using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(loggerProvider));
+            var logger = loggerFactory.CreateLogger<CacheHealthCheckPlus>();
+
+            var cache = new CacheHealthCheckPlus(logger);
+            cache.InitCache([checkName]); // starts Healthy, Running = false
+            cache.Running(checkName, true); // simulate a scheduled execution currently in flight
+
+            var exception = Record.Exception(() => cache.SwitchToUnhealthy(checkName));
+
+            Assert.Null(exception);
+            Assert.Equal(HealthStatus.Healthy, cache.StatusResult(checkName).Status); // override was dropped
+            Assert.Contains(loggerProvider.Entries, e =>
+                e.Level == LogLevel.Warning && e.EventId.Name == "HealthCheckPlusSwitchToDropped" && e.Message.Contains(checkName, StringComparison.Ordinal));
+            Assert.Contains(capture.Measurements, m =>
+                m.InstrumentName == "healthcheckplus.anomalies" && (string?)m.Tags["healthcheckplus.anomaly.reason"] == "switchto_dropped_while_running");
+        }
     }
 }

@@ -52,6 +52,14 @@ namespace HealthCheckPlusTests.Integration
                 throw new InvalidOperationException("simulated publisher failure");
         }
 
+        private sealed class ConditionThrowingPublisher : IHealthCheckPlusPublisher
+        {
+            public Func<HealthReport, bool>? PublisherCondition { get; set; } =
+                _ => throw new InvalidOperationException("simulated PublisherCondition failure");
+
+            public Task PublishAsync(HealthReport report, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
         private sealed class CountingCheck : IHealthCheck
         {
             public int CallCount;
@@ -256,6 +264,49 @@ namespace HealthCheckPlusTests.Integration
             // just grep logs.
             Assert.Contains(capture.Measurements, m =>
                 m.InstrumentName == "healthcheckplus.anomalies" && (string?)m.Tags["healthcheckplus.anomaly.reason"] == "publisher_cycle_failed_but_continued");
+        }
+
+        // Regression test: a throwing IHealthCheckPlusPublisher.PublisherCondition used to be
+        // evaluated outside RunPublisherAsync's own try/catch - so it was only ever caught one
+        // level up, by the generic cycle-dispatch catch (HealthCheckPublisherCycleError /
+        // publisher_cycle_failed_but_continued), which names neither the publisher nor that its
+        // PublisherCondition specifically was the cause. It must now be attributed to this exact
+        // publisher, the same way a throwing PublishAsync already is.
+        [Fact]
+        public async Task BackgroundService_ShouldAttributeFailureToThePublisher_WhenItsPublisherConditionThrows()
+        {
+            using var capture = new MetricsCapture();
+            var loggerProvider = new CapturingLoggerProvider();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging(builder => builder.AddProvider(loggerProvider));
+                    services.AddSingleton<IHealthCheckPublisher, ConditionThrowingPublisher>();
+
+                    var ihb = services.AddHealthChecksPlus();
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(100);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = false };
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            var invocations = capture.Measurements
+                .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(ConditionThrowingPublisher).FullName)
+                .ToArray();
+
+            Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "error");
+
+            Assert.Contains(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPublisherError"
+                && e.Message.Contains(typeof(ConditionThrowingPublisher).Name, StringComparison.Ordinal));
         }
 
         // Regression test: _hashlaststatus used to be committed to the new report's hash *before*

@@ -22,9 +22,19 @@
 
 
         /// <summary>
-        /// Gets or sets the usage is enabled.
-        /// Default value is true
+        /// Gets whether publishing is enabled. There is no setter - the only way to change this is
+        /// to construct a whole new instance (the parameterless constructor defaults to
+        /// <c>true</c>). Whatever this evaluates to, it is also forced to <c>false</c> whenever
+        /// <see cref="AfterIdleCount"/> is less than 1.
         /// </summary>
+        /// <remarks>
+        /// The instance actually assigned to <see cref="HealthCheckPlusBackGroundOptions.Publishing"/>
+        /// by default is constructed via the internal constructor with publishing disabled, not via
+        /// this class's own public parameterless constructor - so <c>true</c> is only this class's
+        /// own standalone default, not what a consumer sees from <c>AddBackgroundPolicy</c> unless
+        /// they explicitly replace the whole <see cref="HealthCheckPlusBackGroundOptions.Publishing"/>
+        /// instance with <c>new PublishingOptions()</c> (or one built via its object-initializer form).
+        /// </remarks>
         public bool Enabled => AfterIdleCount >= 1 && _enabled;
 
         /// <summary>

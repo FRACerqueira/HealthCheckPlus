@@ -92,7 +92,7 @@ namespace Microsoft.AspNetCore.Builder
 
             ArgumentNullException.ThrowIfNull(options);
 
-            var cacheStatus = (CacheHealthCheckPlus)app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!;
+            var cacheStatus = InternalCast.To<CacheHealthCheckPlus>(app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!, "the registered IStateHealthChecksPlus");
             cacheStatus.AddStatusName(options);
 
             object[] args = [Options.Create(options)];
@@ -121,7 +121,7 @@ namespace Microsoft.AspNetCore.Builder
 
             ArgumentNullException.ThrowIfNull(options);
 
-            var cacheStatus = (CacheHealthCheckPlus)app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!;
+            var cacheStatus = InternalCast.To<CacheHealthCheckPlus>(app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!, "the registered IStateHealthChecksPlus");
             cacheStatus.AddStatusName(options);
 
             object[] args = [Options.Create(options)];

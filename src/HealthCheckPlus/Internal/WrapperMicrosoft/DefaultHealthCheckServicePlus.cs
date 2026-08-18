@@ -24,7 +24,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         private readonly IOptions<HealthCheckServiceOptions> _options;
         private readonly IServiceProvider _services;
         private readonly ILogger<HealthCheckService> _logger;
-        private readonly List<HealthCheckPlusPolicyStatus> _policies;
+        private readonly Dictionary<(string NormalizedName, HealthStatus Status), HealthCheckPlusPolicyStatus> _policyIndex;
         private readonly CacheHealthCheckPlus _cacheStatus;
         private readonly HealthChecksPlusRegistrationState _registrationState;
 
@@ -45,11 +45,11 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             // actually tries to **run** health checks would be real baaaaad.
             ValidateRegistrations(_options.Value.Registrations);
 
-            _policies = [];
-            _policies.AddRange(_services
+            var policies = new List<HealthCheckPlusPolicyStatus>();
+            policies.AddRange(_services
                 .GetServices<HealthCheckPlusPolicyStatus>());
 
-            _cacheStatus = (CacheHealthCheckPlus)_services.GetRequiredService<IStateHealthChecksPlus>();
+            _cacheStatus = InternalCast.To<CacheHealthCheckPlus>(_services.GetRequiredService<IStateHealthChecksPlus>(), "the registered IStateHealthChecksPlus");
 
             // Registrations (and their Tags) aren't known yet when InitCache runs, so the cache's
             // per-check Tags are populated here instead, once the real registrations exist - see
@@ -59,8 +59,18 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 _cacheStatus.SetTags(registration.Name, registration.Tags);
             }
 
-            ValidateHealthyPolicies(_options.Value.Registrations, _policies);
-            ValidatePolicyUniqueness(_policies);
+            ValidateHealthyPolicies(_options.Value.Registrations, policies);
+            ValidatePolicyUniqueness(policies);
+            ValidatePolicyTargets(_options.Value.Registrations, policies);
+
+            // Indexed by (name, status) for O(1) lookup in FindPolicy below, instead of a linear
+            // scan through every policy - BuildDueRegistrations resolves a policy for every
+            // registration on every background cycle and every HTTP request, so a linear scan
+            // here used to make that cost proportional to registrations × policies (effectively
+            // quadratic, since policy count grows with registration count), not just registrations.
+            // ValidatePolicyUniqueness above already guarantees no two policies collide on this
+            // same (normalized name, status) key, so this can never throw for a duplicate key.
+            _policyIndex = policies.ToDictionary(p => (p.PolicyNameDep.ToUpperInvariant(), p.PolicyForStatus));
         }
 
         // DefaultHealthCheckServicePlus is a container-constructed singleton (registered via
@@ -118,11 +128,14 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
         // A health check with no matching Healthy policy (i.e. registered without going through
         // AddCheckPlus/AddCheckLinkTo) must fail early and clearly, instead of throwing a
-        // NullReferenceException later, at runtime, when health is evaluated.
+        // NullReferenceException later, at runtime, when health is evaluated. Compared
+        // OrdinalIgnoreCase, matching FindPolicy's own comparison below and CacheHealthCheckPlus's
+        // _statusDeps - a policy name differing only in casing from its check's registered Name is
+        // still the same check everywhere else in this library.
         private static void ValidateHealthyPolicies(IEnumerable<HealthCheckRegistration> registrations, List<HealthCheckPlusPolicyStatus> policies)
         {
             var missing = registrations
-                .Where(r => !policies.Any(p => p.PolicyForStatus == HealthStatus.Healthy && p.PolicyNameDep == r.Name))
+                .Where(r => !policies.Any(p => p.PolicyForStatus == HealthStatus.Healthy && string.Equals(p.PolicyNameDep, r.Name, StringComparison.OrdinalIgnoreCase)))
                 .Select(r => r.Name)
                 .ToArray();
 
@@ -139,13 +152,15 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // IServiceCollection.AddSingleton, which accumulates rather than replaces - calling one of
         // them twice for the same check and status used to collide silently: FindPolicy's
         // FirstOrDefault always picks whichever was registered first, so the second call's
-        // Delay/Period was ignored with no warning at all.
+        // Delay/Period was ignored with no warning at all. Grouped by the upper-invariant name (not
+        // the raw name) so two calls differing only in casing are caught as the same duplicate too -
+        // FindPolicy below would already treat them as one policy at lookup time.
         private static void ValidatePolicyUniqueness(List<HealthCheckPlusPolicyStatus> policies)
         {
             var duplicates = policies
-                .GroupBy(p => (p.PolicyNameDep, p.PolicyForStatus))
+                .GroupBy(p => (p.PolicyNameDep.ToUpperInvariant(), p.PolicyForStatus))
                 .Where(g => g.Count() > 1)
-                .Select(g => $"{g.Key.PolicyNameDep} ({g.Key.PolicyForStatus})")
+                .Select(g => $"{g.First().PolicyNameDep} ({g.Key.PolicyForStatus})")
                 .ToArray();
 
             if (duplicates.Length > 0)
@@ -157,11 +172,40 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
         }
 
+        // ValidateHealthyPolicies only catches the opposite direction (a registered check with no
+        // matching Healthy policy). Nothing previously caught a policy naming a check that was
+        // never actually registered - e.g. a typo in AddUnhealthyPolicy/AddDegradedPolicy's
+        // `namedep` - which used to silently register a policy that FindPolicy could never match
+        // against any real check, with no signal that it was doing nothing. OrdinalIgnoreCase,
+        // matching FindPolicy's own comparison.
+        private static void ValidatePolicyTargets(IEnumerable<HealthCheckRegistration> registrations, List<HealthCheckPlusPolicyStatus> policies)
+        {
+            var registeredNames = new HashSet<string>(registrations.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+
+            var orphaned = policies
+                .Where(p => !registeredNames.Contains(p.PolicyNameDep))
+                .Select(p => $"{p.PolicyNameDep} ({p.PolicyForStatus})")
+                .Distinct()
+                .ToArray();
+
+            if (orphaned.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "The following HealthCheckPlus policies target a health check name that isn't registered: " +
+                    string.Join(", ", orphaned) +
+                    ". Check for a typo between the policy's name and the check's actual registered name.");
+            }
+        }
+
         // Shared by both execution paths (CheckHealthPlusAsync and BackGroudCheckHealthPlusAsync)
-        // so that policy lookup can never diverge between them.
+        // so that policy lookup can never diverge between them. O(1) via _policyIndex rather than
+        // a linear scan. OrdinalIgnoreCase (via the same upper-invariant normalization used to
+        // build _policyIndex) to match CacheHealthCheckPlus's _statusDeps and HealthReport.Entries
+        // - a policy registered for a name differing only in casing from the check's actual
+        // registered Name is still found.
         private HealthCheckPlusPolicyStatus? FindPolicy(string name, HealthStatus status)
         {
-            return _policies.FirstOrDefault(x => x.PolicyNameDep == name && x.PolicyForStatus == status);
+            return _policyIndex.TryGetValue((name.ToUpperInvariant(), status), out var policy) ? policy : null;
         }
 
         // Guaranteed non-null: ValidateHealthyPolicies (called from the constructor) already
@@ -491,6 +535,13 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         public DateTime? LastReport()
         {
             return _cacheStatus.LastReport();
+        }
+
+        // Used by HealthCheckPlusBackGroundService to exclude a not-yet-run check from what it
+        // publishes - see CacheHealthCheckPlus.HasEverRun.
+        internal bool HasEverRun(string name)
+        {
+            return _cacheStatus.HasEverRun(name);
         }
 
         private async Task<HealthReportEntry> RunCheckAsync(HealthCheckRegistration registration, CancellationToken cancellationToken)

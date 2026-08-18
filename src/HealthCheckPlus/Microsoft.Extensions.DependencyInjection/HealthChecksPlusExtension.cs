@@ -195,10 +195,14 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </summary>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="namedep">The name health check list to run.</param>
-        /// <param name="delay">An optional <see cref="TimeSpan"/>. The initial delay applied after the application starts before executing
-        /// <see cref="IHealthCheckPublisher"/> instances. The delay is applied once at startup, and does
-        /// not apply to subsequent iterations. The default value is 5 seconds.</param>
-        /// <param name="period">An optional <see cref="TimeSpan"/>. The period of <see cref="IHealthCheckPublisher"/> execution. The default value is 30 seconds</param>
+        /// <param name="delay">An optional <see cref="TimeSpan"/> for this check's own <c>Healthy</c> policy - the initial delay before
+        /// the check is first eligible to run, not a delay of any <see cref="IHealthCheckPublisher"/>. When omitted, the check has no
+        /// delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back
+        /// to <see cref="HealthCheckPlusBackGroundOptions.Delay"/> for that check's very first run only.</param>
+        /// <param name="period">An optional <see cref="TimeSpan"/> for this check's own <c>Healthy</c> policy - how often it reruns
+        /// while it stays <c>Healthy</c>, not a period of any <see cref="IHealthCheckPublisher"/>. When omitted, the check reruns on
+        /// every request on the HTTP path; on the background path, an omitted period falls back to
+        /// <see cref="HealthCheckPlusBackGroundOptions.HealthyPeriod"/>.</param>
         /// <param name="tags">A list of tags that can be used for filtering health checks.</param>
         /// <param name="failureStatus">
         /// The <see cref="HealthStatus"/> that should be reported when the health check reports a failure. If the provided value
@@ -251,10 +255,14 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="namedep">The name health check list to run.</param>
         /// <param name="name">The name health check registered. This param is case insensitive</param>
-        /// <param name="delay">An optional <see cref="TimeSpan"/>. The initial delay applied after the application starts before executing
-        /// <see cref="IHealthCheckPublisher"/> instances. The delay is applied once at startup, and does
-        /// not apply to subsequent iterations. The default value is 5 seconds.</param>
-        /// <param name="period">An optional <see cref="TimeSpan"/>. The period of <see cref="IHealthCheckPublisher"/> execution. The default value is 30 seconds</param>
+        /// <param name="delay">An optional <see cref="TimeSpan"/> for the adopted check's own <c>Healthy</c> policy - the initial delay
+        /// before it is first eligible to run, not a delay of any <see cref="IHealthCheckPublisher"/>. When omitted, the check has no
+        /// delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back
+        /// to <see cref="HealthCheckPlusBackGroundOptions.Delay"/> for that check's very first run only.</param>
+        /// <param name="period">An optional <see cref="TimeSpan"/> for the adopted check's own <c>Healthy</c> policy - how often it
+        /// reruns while it stays <c>Healthy</c>, not a period of any <see cref="IHealthCheckPublisher"/>. When omitted, the check
+        /// reruns on every request on the HTTP path; on the background path, an omitted period falls back to
+        /// <see cref="HealthCheckPlusBackGroundOptions.HealthyPeriod"/>.</param>
         /// <remarks>
         /// The <see cref="AddCheckLinkTo"/> cannot be set to a period value lower than 1 second.
         /// </remarks>
