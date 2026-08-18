@@ -248,11 +248,19 @@ namespace HealthCheckPlus.Internal
                 // method (rather than inline in the continuation) so it can be unit-tested
                 // directly against synthetic Task states, the same pattern
                 // DefaultHealthCheckServicePlus.ClassifyBatchTask already uses.
+                // TaskScheduler.Default, not TaskScheduler.Current: this continuation must always
+                // run on the thread pool, regardless of what scheduler happens to be ambient at
+                // the point StopAsync itself is called - a well-known .NET pitfall, since
+                // ContinueWith with no explicit scheduler otherwise captures TaskScheduler.Current.
+                // If a host ever invoked StopAsync from within a task queued to a custom,
+                // limited-concurrency scheduler, capturing that scheduler here would tie this
+                // continuation's fate to it - a scheduler saturated with unrelated work could stall
+                // shutdown indefinitely for no reason connected to this class's own logic.
                 return _runningHealthCheckPlus.ContinueWith(task =>
                 {
                     ObserveLoopCompletion(task, _logger);
                     _runningHealthCheckPlus.Dispose();
-                }, TaskScheduler.Current);
+                }, TaskScheduler.Default);
             }
             return Task.CompletedTask;
         }
@@ -387,99 +395,56 @@ namespace HealthCheckPlus.Internal
             return string.Join("", report.Entries.Select(x => (x.Key + x.Value.Status))).GetHashCode(StringComparison.InvariantCulture);
         }
 
-        private static class EventIdsPublisher
-        {
-            public const int HealthCheckPublisherBeginId = 102;
-            public const int HealthCheckPublisherEndId = 103;
-            public const int HealthCheckPublisherErrorId = 104;
-            public const int HealthCheckPublisherTimeoutId = 105;
-            public const int HealthCheckPublisherCycleErrorId = 106;
-            public const int HealthCheckPublisherMetricsRecordingErrorId = 107;
-
-            // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
-            public const string HealthCheckPublisherBeginName = "HealthCheckPublisherBegin";
-            public const string HealthCheckPublisherEndName = "HealthCheckPublisherEnd";
-            public const string HealthCheckPublisherErrorName = "HealthCheckPublisherError";
-            public const string HealthCheckPublisherTimeoutName = "HealthCheckPublisherTimeout";
-            public const string HealthCheckPublisherCycleErrorName = "HealthCheckPublisherCycleError";
-            public const string HealthCheckPublisherMetricsRecordingErrorName = "HealthCheckPlusPublisherMetricsRecordingError";
-        }
-
-        private static class EventIds
-        {
-            public const int HealthCheckPlusBackGroundProcessingBeginId = 100;
-            public const int HealthCheckPlusBackGroundProcessingEndId = 101;
-            // 108, not 104 - 104 is EventIdsPublisher.HealthCheckPublisherErrorId, used by
-            // HealthCheckPublisherError within the same generated Log class below; reusing it
-            // here would conflate "a publisher threw" with "the background cycle's own
-            // unhandled exception" under one EventId.
-            public const int HealthCheckPlusBackGroundErrorId = 108;
-            public const int HealthCheckPlusBackGroundWarningId = 105;
-            public const int HealthCheckPlusBackGroundStopCancellationErrorId = 106;
-            public const int HealthCheckPlusBackGroundPublishReportBuildErrorId = 107;
-            public const int HealthCheckPlusBackGroundLoopFaultedId = 109;
-
-            // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
-            public const string HealthCheckProcessingBeginName = "HealthCheckPlusBackGroundProcessingBegin";
-            public const string HealthCheckProcessingEndName = "HealthCheckPlusBackGroundProcessingEnd";
-            public const string HealthCheckErrorName = "HealthCheckPlusBackGroundError";
-            public const string HealthCheckTimeoutName = "HealthCheckPlusBackGroundTimeout";
-            public const string HealthCheckStopCancellationErrorName = "HealthCheckPlusBackGroundStopCancellationError";
-            public const string HealthCheckPublishReportBuildErrorName = "HealthCheckPlusBackGroundPublishReportBuildError";
-            public const string HealthCheckPlusBackGroundLoopFaultedName = "HealthCheckPlusBackGroundLoopFaulted";
-
-        }
-
 #pragma warning disable IDE0079
         private static partial class Log
         {
-            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherBeginId, LogLevel.Debug, "Running health check publisher '{HealthCheckPublisher}'", EventName = EventIdsPublisher.HealthCheckPublisherBeginName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPublisherBeginId, LogLevel.Debug, "Running health check publisher '{HealthCheckPublisher}'", EventName = HealthCheckPlusEventIds.HealthCheckPublisherBeginName)]
             public static partial void HealthCheckPublisherBegin(ILogger logger, IHealthCheckPublisher HealthCheckPublisher);
 
-            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherEndId, LogLevel.Debug, "Health check '{HealthCheckPublisher}' completed after {ElapsedMilliseconds}ms", EventName = EventIdsPublisher.HealthCheckPublisherEndName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPublisherEndId, LogLevel.Debug, "Health check '{HealthCheckPublisher}' completed after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckPublisherEndName)]
             public static partial void HealthCheckPublisherEnd(ILogger logger, IHealthCheckPublisher HealthCheckPublisher, double ElapsedMilliseconds);
 
-            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherErrorId, LogLevel.Error, "Health check {HealthCheckPublisher} threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = EventIdsPublisher.HealthCheckPublisherErrorName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPublisherErrorId, LogLevel.Error, "Health check {HealthCheckPublisher} threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckPublisherErrorName)]
             public static partial void HealthCheckPublisherError(ILogger logger, IHealthCheckPublisher HealthCheckPublisher, double ElapsedMilliseconds, Exception exception);
 
-            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherTimeoutId, LogLevel.Error, "Health check {HealthCheckPublisher} was canceled after {ElapsedMilliseconds}ms", EventName = EventIdsPublisher.HealthCheckPublisherTimeoutName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPublisherTimeoutId, LogLevel.Error, "Health check {HealthCheckPublisher} was canceled after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckPublisherTimeoutName)]
             public static partial void HealthCheckPublisherTimeout(ILogger logger, IHealthCheckPublisher HealthCheckPublisher, double ElapsedMilliseconds);
 
-            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherCycleErrorId, LogLevel.Warning,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPublisherCycleErrorId, LogLevel.Warning,
                 "One or more health check publishers failed this cycle (see the HealthCheckPublisherError/HealthCheckPublisherTimeout entries above for which one and why); HealthCheckPlus Background-Service will continue running.",
-                EventName = EventIdsPublisher.HealthCheckPublisherCycleErrorName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckPublisherCycleErrorName)]
             public static partial void HealthCheckPublisherCycleError(ILogger logger, Exception exception);
 
-            [LoggerMessage(EventIdsPublisher.HealthCheckPublisherMetricsRecordingErrorId, LogLevel.Warning,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPublisherMetricsRecordingErrorId, LogLevel.Warning,
                 "Recording the anomaly metric for a publisher cycle failure also failed; the cycle failure itself was already logged above.",
-                EventName = EventIdsPublisher.HealthCheckPublisherMetricsRecordingErrorName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckPublisherMetricsRecordingErrorName)]
             public static partial void HealthCheckPublisherMetricsRecordingError(ILogger logger, Exception exception);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundProcessingBeginId, LogLevel.Debug, "Running HealthCheckPlus Background-Service checks", EventName = EventIds.HealthCheckProcessingBeginName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundProcessingBeginId, LogLevel.Debug, "Running HealthCheckPlus Background-Service checks", EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundProcessingBeginName)]
             public static partial void ProcessingBegin(ILogger logger);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundProcessingEndId, LogLevel.Debug, "HealthCheckPlus Background-Service completed after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckProcessingEndName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundProcessingEndId, LogLevel.Debug, "HealthCheckPlus Background-Service completed after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundProcessingEndName)]
             public static partial void ProcessingEnd(ILogger logger, double ElapsedMilliseconds);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundErrorId, LogLevel.Error, "HealthCheckPlus Background-Service threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckErrorName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundErrorId, LogLevel.Error, "HealthCheckPlus Background-Service threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundErrorName)]
             public static partial void ProcessingError(ILogger logger, double ElapsedMilliseconds, Exception exception);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundWarningId, LogLevel.Warning, "HealthCheckPlus Background-Service threw an timeout after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckTimeoutName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundWarningId, LogLevel.Warning, "HealthCheckPlus Background-Service threw an timeout after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundTimeoutName)]
             public static partial void ProcessingTimeout(ILogger logger, double ElapsedMilliseconds);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundStopCancellationErrorId, LogLevel.Warning,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundStopCancellationErrorId, LogLevel.Warning,
                 "Cancelling the HealthCheckPlus Background-Service's stopping token threw; shutdown continues regardless.",
-                EventName = EventIds.HealthCheckStopCancellationErrorName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundStopCancellationErrorName)]
             public static partial void StopCancellationError(ILogger logger, Exception exception);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundPublishReportBuildErrorId, LogLevel.Error,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundPublishReportBuildErrorId, LogLevel.Error,
                 "Building the report to publish this cycle failed (e.g. the configured Predicate threw); no publishers were invoked this cycle. HealthCheckPlus Background-Service will continue running.",
-                EventName = EventIds.HealthCheckPublishReportBuildErrorName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundPublishReportBuildErrorName)]
             public static partial void PublishReportBuildError(ILogger logger, Exception exception);
 
-            [LoggerMessage(EventIds.HealthCheckPlusBackGroundLoopFaultedId, LogLevel.Critical,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckPlusBackGroundLoopFaultedId, LogLevel.Critical,
                 "The HealthCheckPlus Background-Service's loop terminated with an unhandled exception; it will not run again until the host restarts.",
-                EventName = EventIds.HealthCheckPlusBackGroundLoopFaultedName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckPlusBackGroundLoopFaultedName)]
             public static partial void BackgroundLoopFaulted(ILogger logger, Exception exception);
         }
 #pragma warning restore IDE0079

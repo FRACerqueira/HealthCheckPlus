@@ -17,11 +17,17 @@ public static IHealthChecksBuilder AddCheckLinkTo(this IHealthChecksBuilder ihb,
 | namedep | The name health check list to run. |
 | name | The name health check registered. This param is case insensitive |
 | delay | An optional TimeSpan for the adopted check's own `Healthy` policy - the initial delay before it is first eligible to run, not a delay of any IHealthCheckPublisher. When omitted, the check has no delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back to [`Delay`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/Delay.md) for that check's very first run only. |
-| period | An optional TimeSpan for the adopted check's own `Healthy` policy - how often it reruns, not a period of any IHealthCheckPublisher. On the HTTP path this also applies whenever the check's current status (Degraded/Unhealthy) has no explicit policy of its own registered via [`AddDegradedPolicy`](./AddDegradedPolicy.md)/ [`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) - not only while the check is genuinely `Healthy`. When omitted, the check reruns on every request on the HTTP path; on the background path, an omitted period falls back to [`HealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/HealthyPeriod.md) (again, only as a fallback for a status with no explicit policy of its own). |
+| period | An optional TimeSpan for the adopted check's own `Healthy` policy - how often it reruns, not a period of any IHealthCheckPublisher. On the HTTP path this also applies whenever the check's current status (Degraded/Unhealthy) has no explicit policy of its own registered via [`AddDegradedPolicy`](./AddDegradedPolicy.md)/ [`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) - not only while the check is genuinely `Healthy`. When omitted, the check reruns on every request on the HTTP path; on the background path, this period (or, if omitted, [`HealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/HealthyPeriod.md)) is only ever consulted while the check is currently `Healthy` - a check currently Degraded/Unhealthy uses [`DegradedPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/DegradedPeriod.md)/[`UnhealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/UnhealthyPeriod.md) instead, unless an explicit [`AddDegradedPolicy`](./AddDegradedPolicy.md)/[`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) period was registered for it. |
 
 ### Return Value
 
 The IHealthChecksBuilder.
+
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentException | *namedep* or *name* is `null` or empty, *namedep* equals *name*, or *period* is provided and below one second. |
 
 ### Remarks
 

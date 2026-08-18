@@ -14,18 +14,32 @@ namespace HealthCheckPlus.Internal
 {
     internal class CacheHealthCheckPlus : IStateHealthChecksPlus
     {
-        private static readonly EventId MetricsRecordingErrorEventId = new(100, "HealthCheckPlusMetricsRecordingError");
-        private static readonly EventId UpdateDroppedEventId = new(101, "HealthCheckPlusUpdateDropped");
-        private static readonly EventId SwitchToDroppedEventId = new(102, "HealthCheckPlusSwitchToDropped");
+        private static readonly EventId MetricsRecordingErrorEventId = HealthCheckPlusEventIds.CacheMetricsRecordingError;
+        private static readonly EventId UpdateDroppedEventId = HealthCheckPlusEventIds.UpdateDropped;
+        private static readonly EventId SwitchToDroppedEventId = HealthCheckPlusEventIds.SwitchToDropped;
 
         private readonly ConcurrentDictionary<string, ItemCacheHealth> _statusDeps;
-        private readonly ConcurrentDictionary<string, HealthStatus> _statusName;
-        private readonly Dictionary<string, Func<HealthReport, HealthStatus>?> _statusFunction;
+        // Each entry carries the _stateVersion the stored status was computed as-of, so a stale
+        // write (an UpdateStatusName()/Status(name) call whose StatusHealthReport delegate took
+        // long enough that a NEWER call already wrote a fresher value) can be detected and
+        // dropped instead of blindly overwriting - see TryStoreStatusName.
+        private readonly ConcurrentDictionary<string, (HealthStatus Status, long Version)> _statusName;
+        // ConcurrentDictionary, not a plain Dictionary - AddStatusName (the only writer) is only
+        // ever called during app startup configuration today, before UpdateStatusName()/Status(name)
+        // (the readers) can run, but nothing enforces that ordering; a plain Dictionary is only
+        // safe for concurrent reads with zero concurrent writes, and a plain Dictionary sitting
+        // right next to two ConcurrentDictionary fields for the same class's other shared state
+        // reads as an oversight, not a deliberate choice.
+        private readonly ConcurrentDictionary<string, Func<HealthReport, HealthStatus>?> _statusFunction;
         private readonly DateTime _dateregister;
         private readonly ILogger<CacheHealthCheckPlus> _logger;
 #pragma warning disable IDE0330
         private readonly object _lock = new();
 #pragma warning restore IDE0330
+        // Incremented once per real state change (see Update()) - not a "generation" of any single
+        // check, but a global heartbeat used purely to order UpdateStatusName()/Status(name) writes
+        // against each other. See TryStoreStatusName.
+        private long _stateVersion;
 
         public CacheHealthCheckPlus(ILogger<CacheHealthCheckPlus>? logger = null)
         {
@@ -39,8 +53,8 @@ namespace HealthCheckPlus.Internal
             // a check whose registered Name differed only in casing from the name passed to
             // AddUnhealthyPolicy/AddDegradedPolicy.
             _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>(StringComparer.OrdinalIgnoreCase);
-            _statusName = new ConcurrentDictionary<string, HealthStatus>(StringComparer.OrdinalIgnoreCase);
-            _statusFunction = new Dictionary<string, Func<HealthReport, HealthStatus>?>(StringComparer.OrdinalIgnoreCase);
+            _statusName = new ConcurrentDictionary<string, (HealthStatus Status, long Version)>(StringComparer.OrdinalIgnoreCase);
+            _statusFunction = new ConcurrentDictionary<string, Func<HealthReport, HealthStatus>?>(StringComparer.OrdinalIgnoreCase);
             _dateregister = DateTime.UtcNow;
         }
 
@@ -52,11 +66,14 @@ namespace HealthCheckPlus.Internal
             {
                 return;
             }
-            if (_statusFunction.ContainsKey(options.HealthCheckName))
+            // TryAdd makes the check-and-add atomic, instead of a separate ContainsKey then Add -
+            // AddStatusName is only ever called sequentially during app startup configuration
+            // today, so this TOCTOU was never actually reachable concurrently, but it's no more
+            // code to just make it atomic.
+            if (!_statusFunction.TryAdd(options.HealthCheckName, options.StatusHealthReport ?? (_ => AggregateStatus())))
             {
                 throw new ArgumentException("HealthCheckName already exists");
             }
-            _statusFunction.Add(options.HealthCheckName, options.StatusHealthReport ?? (_ => AggregateStatus()));
         }
 
         public void InitCache(IEnumerable<string> names)
@@ -79,12 +96,61 @@ namespace HealthCheckPlus.Internal
             }
         }
 
+        // Regression fix for a real, empirically-reproduced race: two concurrent calls to this
+        // method (e.g. one from a routine background cycle, one triggered by SwithState right
+        // after a manual override) each capture their own report and invoke their own
+        // (consumer-supplied, possibly slow) StatusHealthReport delegate independently, then write
+        // _statusName directly with no ordering between the two writes - whichever call's delegate
+        // happened to finish LAST won, even if it started first and is working from a report
+        // that's now stale. That let a fresh SwitchToUnhealthy get silently overwritten moments
+        // later by a slower, in-flight call that captured its report before the override happened.
+        // Capturing _stateVersion before CreateReport() (so it never overstates freshness - a
+        // concurrent Update() landing in the gap only makes the actual report fresher than the
+        // captured version implies, never the reverse) and only ever committing a write whose
+        // version is not older than what's already stored closes that gap, without needing to
+        // hold any lock across the delegate call itself (which is arbitrary consumer code and
+        // could be slow).
         public void UpdateStatusName()
         {
+            var version = Volatile.Read(ref _stateVersion);
             var report = CreateReport();
             foreach (var item in _statusFunction)
             {
-                _statusName[item.Key] = item.Value!.Invoke(report);
+                var status = item.Value!.Invoke(report);
+                TryStoreStatusName(item.Key, status, version);
+            }
+        }
+
+        // Only overwrites the stored (status, version) pair for key if version is not older than
+        // whatever is already recorded - see UpdateStatusName's comment for why. A plain
+        // ConcurrentDictionary indexer write (as this used to be) has no such check. Returns
+        // whichever status ends up authoritative (the caller's own, or a fresher one that was
+        // already there) so a caller like Status(name) can return the winning value instead of
+        // always its own, possibly-just-rejected computation.
+        private HealthStatus TryStoreStatusName(string key, HealthStatus status, long version)
+        {
+            var updated = (status, version);
+            while (true)
+            {
+                if (_statusName.TryGetValue(key, out var current))
+                {
+                    if (current.Version > version)
+                    {
+                        return current.Status;
+                    }
+                    if (_statusName.TryUpdate(key, updated, current))
+                    {
+                        return status;
+                    }
+                    // Another writer landed between the read above and this TryUpdate - retry
+                    // against whatever is there now.
+                }
+                else if (_statusName.TryAdd(key, updated))
+                {
+                    return status;
+                }
+                // TryAdd lost a race with another writer that added the key first - retry via the
+                // TryGetValue branch above, which will now see it.
             }
         }
 
@@ -169,12 +235,18 @@ namespace HealthCheckPlus.Internal
             {
                 throw new ArgumentException("HealthCheckName not exists");
             }
-            if (!_statusName.TryGetValue(name, out var status))
+            if (!_statusName.TryGetValue(name, out var cached))
             {
-                status = value!.Invoke(CreateReport());
-                _statusName[name] = status;
+                // Same version-before-CreateReport() ordering as UpdateStatusName, and the same
+                // TryStoreStatusName - this is the only other writer of _statusName, and needs the
+                // same protection against a slower concurrent caller's stale write landing after.
+                // Returns whatever TryStoreStatusName says actually won, not necessarily this
+                // call's own computation.
+                var version = Volatile.Read(ref _stateVersion);
+                var status = value!.Invoke(CreateReport());
+                return TryStoreStatusName(name, status, version);
             }
-            return status;
+            return cached.Status;
         }
 
         // The default aggregation rule (worst status wins) - used both as the no-name Status()
@@ -297,6 +369,12 @@ namespace HealthCheckPlus.Internal
             item.SetResult(result, lastexecute, duration, healthCheckFrom);
             item.Running = false;
 
+            // Bumps the heartbeat UpdateStatusName/Status(name) use to order their writes against
+            // each other (see TryStoreStatusName) - this is the single point every real state
+            // change (a genuine execution, or a manual SwitchTo override, which calls Update() too)
+            // converges on, so it's the one place that needs to increment it.
+            Interlocked.Increment(ref _stateVersion);
+
             // This is the single point every execution path (foreground/HTTP and background)
             // and the manual SwitchTo override converge on, so it's the right place to emit
             // metrics once instead of duplicating the call at each call site.
@@ -329,9 +407,19 @@ namespace HealthCheckPlus.Internal
         {
             var item = GetItemOrThrow(key);
             var beganOverride = false;
+            // Read once and reuse for both the equality check above and the Description used
+            // below, instead of two separate item.LastResult accesses - not a demonstrated live
+            // race today (once beganOverride is true, this call exclusively owns Running until
+            // its own Update() call below clears it, and every other writer of the snapshot
+            // requires owning Running first), but reading a mutable snapshot reference twice for
+            // one logical decision is exactly the torn-read shape this project already treats as
+            // a defect elsewhere (see ItemCacheHealth.Snapshot's own doc) - cheap to close for
+            // good rather than rely on that invariant never being relaxed.
+            HealthCheckResult lastResult;
             lock (_lock)
             {
-                if (item.LastResult.Status == status)
+                lastResult = item.LastResult;
+                if (lastResult.Status == status)
                 {
                     return;
                 }
@@ -358,7 +446,7 @@ namespace HealthCheckPlus.Internal
                 return;
             }
 
-            var itemres = new HealthCheckResult(status, item.LastResult.Description);
+            var itemres = new HealthCheckResult(status, lastResult.Description);
             Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.UtcNow, TimeSpan.Zero);
 
             // Update() alone only refreshes Status(null)'s live aggregate. A named aggregate

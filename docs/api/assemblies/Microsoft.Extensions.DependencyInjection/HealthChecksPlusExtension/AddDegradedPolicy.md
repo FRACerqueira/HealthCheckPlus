@@ -21,6 +21,12 @@ public static IHealthChecksBuilder AddDegradedPolicy(this IHealthChecksBuilder i
 
 The IHealthChecksBuilder.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentException | *namedep* is `null` or empty, or *period* is below one second. |
+
 ### Remarks
 
 The `AddDegradedPolicy` cannot be set to a value lower than 1 second.

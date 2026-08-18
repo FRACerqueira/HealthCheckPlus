@@ -21,6 +21,12 @@ public static IHealthChecksBuilder AddUnhealthyPolicy(this IHealthChecksBuilder 
 
 The IHealthChecksBuilder.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentException | *namedep* is `null` or empty, or *period* is below one second. |
+
 ### Remarks
 
 The `AddUnhealthyPolicy` cannot be set to a value lower than 1 second.

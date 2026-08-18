@@ -280,23 +280,55 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // part that differs between them - see the resolvePolicy callers in CheckHealthPlusAsync
         // and BackGroudCheckHealthPlusAsync) and filters down to the ones actually due via
         // ScheduleIfDue.
+        //
+        // ScheduleIfDue/TryBeginRun marks a check Running as soon as it decides that check is due -
+        // one item at a time, inside this loop. If a LATER item's FullStatus/resolvePolicy throws
+        // (FullStatus throwing means the cache and _options.Value.Registrations have somehow
+        // diverged; resolvePolicy throwing would mean the "every registration has a Healthy policy"
+        // invariant ValidateHealthyPolicies enforces at startup was somehow violated - neither is
+        // reachable through the public API today, but nothing prevents a future change from making
+        // one of them reachable), every item already marked Running earlier in this same loop would
+        // otherwise be lost - registrationstorun is local and never returned, so nothing else could
+        // ever release them, and they'd stay marked Running (and therefore un-schedulable) forever.
         private List<HealthCheckRegistration> BuildDueRegistrations(
             IEnumerable<HealthCheckRegistration> registrations,
             Func<HealthCheckRegistration, ItemCacheHealth, HealthCheckPlusPolicyStatus> resolvePolicy)
         {
             var registrationstorun = new List<HealthCheckRegistration>();
-            foreach (var item in registrations)
+            try
             {
-                var sta = _cacheStatus.FullStatus(item.Name);
-                var policy = resolvePolicy(item, sta);
-
-                var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
-                if (itemToRun != null)
+                foreach (var item in registrations)
                 {
-                    registrationstorun.Add(itemToRun);
+                    var sta = _cacheStatus.FullStatus(item.Name);
+                    var policy = resolvePolicy(item, sta);
+
+                    var itemToRun = ScheduleIfDue(item, policy, TimeSpan.Zero);
+                    if (itemToRun != null)
+                    {
+                        registrationstorun.Add(itemToRun);
+                    }
                 }
             }
+            catch
+            {
+                ReleaseRunningForBatch(registrationstorun, DateTime.UtcNow);
+                throw;
+            }
             return registrationstorun;
+        }
+
+        // Shared release-on-failure fallback for a batch BuildDueRegistrations/TryBeginRun already
+        // marked Running, used wherever something can throw after that marking but before
+        // ApplyBatchResults gets a chance to run for the batch (which normally does the releasing).
+        // Safe to call even for an item ApplyBatchResults already handled: ReleaseRunning just
+        // re-preserves whatever result is already there, only nudging DateRef - the call sites below
+        // only ever reach this for items ApplyBatchResults never got the chance to touch.
+        private void ReleaseRunningForBatch(IReadOnlyList<HealthCheckRegistration> registrationstorun, DateTime releasedAt)
+        {
+            foreach (var registration in registrationstorun)
+            {
+                _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
+            }
         }
 
         // Shared by both execution paths: fans every due registration out to its own
@@ -341,10 +373,31 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             if (registrationstorun.Count != 0)
             {
-                Log.HealthCheckProcessingBegin(_logger);
-
-                var dtref = DateTime.UtcNow;
-                var tasks = StartBatch(registrationstorun, cancellationToken);
+                // ScheduleIfDue/TryBeginRun already marked every one of these checks Running before
+                // this point. Log.HealthCheckProcessingBegin and StartBatch used to run completely
+                // unguarded here - if the injected ILogger threw (a broken third-party logging
+                // provider/sink), or StartBatch's own Task.Run somehow threw synchronously, the
+                // exception propagated before the try/finally below ever got a chance to open, and
+                // every check in this batch stayed marked Running forever: TryBeginRun would never
+                // schedule it again, and /health would keep serving its frozen cached value with no
+                // signal at all - recoverable only by restarting the process. This class already
+                // wraps every metrics call in SafeRecordMetric for exactly this class of risk; this
+                // one log call was missed. ReleaseRunningForBatch's own doc explains why releasing
+                // here is safe even in the (impossible today) case both catches below somehow fired
+                // for the same batch.
+                Task<HealthReportEntry>[] tasks;
+                DateTime dtref;
+                try
+                {
+                    Log.HealthCheckProcessingBegin(_logger);
+                    dtref = DateTime.UtcNow;
+                    tasks = StartBatch(registrationstorun, cancellationToken);
+                }
+                catch
+                {
+                    ReleaseRunningForBatch(registrationstorun, DateTime.UtcNow);
+                    throw;
+                }
 
                 try
                 {
@@ -352,16 +405,15 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 finally
                 {
-                    // ScheduleIfDue/TryBeginRun already marked every one of these checks Running
-                    // before the tasks above were started, and Running must still be released here
-                    // even when Task.WhenAll faults - the ambient cancellationToken firing
-                    // mid-flight (e.g. httpContext.RequestAborted) is deliberately not swallowed by
-                    // RunCheckAsync - otherwise every check in this batch would stay marked Running
-                    // forever and never be scheduled again. The exception, if any, still propagates
-                    // normally once this finally block completes, so callers see the same behavior
-                    // as before. See ApplyBatchResults for how each task's outcome is classified and
-                    // applied - shared with BackGroudCheckHealthPlusAsync so there is exactly one
-                    // place that decides this, instead of two copies that can drift apart.
+                    // Running must still be released here even when Task.WhenAll faults - the
+                    // ambient cancellationToken firing mid-flight (e.g. httpContext.RequestAborted)
+                    // is deliberately not swallowed by RunCheckAsync - otherwise every check in this
+                    // batch would stay marked Running forever and never be scheduled again. The
+                    // exception, if any, still propagates normally once this finally block
+                    // completes, so callers see the same behavior as before. See ApplyBatchResults
+                    // for how each task's outcome is classified and applied - shared with
+                    // BackGroudCheckHealthPlusAsync so there is exactly one place that decides this,
+                    // instead of two copies that can drift apart.
                     totalTime.Stop();
                     ApplyBatchResults(registrationstorun, tasks, dtref, resultHealthCheckFrom, cancellationToken);
                 }
@@ -410,8 +462,22 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             if (registrationstorun.Count != 0)
             {
-                var dtref = DateTime.UtcNow;
-                var tasks = StartBatch(registrationstorun, cancellationToken);
+                // See the matching comment in CheckHealthPlusAsync: StartBatch used to run
+                // completely unguarded here, after BuildDueRegistrations/TryBeginRun already marked
+                // every one of these checks Running - a synchronous throw here would have leaked
+                // Running for the whole batch forever, with nothing left to release it.
+                Task<HealthReportEntry>[] tasks;
+                DateTime dtref;
+                try
+                {
+                    dtref = DateTime.UtcNow;
+                    tasks = StartBatch(registrationstorun, cancellationToken);
+                }
+                catch
+                {
+                    ReleaseRunningForBatch(registrationstorun, DateTime.UtcNow);
+                    throw;
+                }
 
                 try
                 {
@@ -419,16 +485,15 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 finally
                 {
-                    // See the matching comment in CheckHealthPlusAsync: Running must be released
-                    // for every check in this batch even when Task.WhenAll faults - here, typically
-                    // the per-cycle Timeout cancelling this call's linked token while a check is
-                    // still in flight - otherwise it would stay marked Running forever and never
-                    // run again on any later cycle. The exception, if any, still propagates
-                    // afterward so HealthCheckPlusBackGroundService's own timeout/shutdown handling
-                    // around this call is unaffected. See ApplyBatchResults for how each task's
-                    // outcome is classified and applied - shared with CheckHealthPlusAsync so there
-                    // is exactly one place that decides this, instead of two copies that can drift
-                    // apart.
+                    // Running must be released for every check in this batch even when Task.WhenAll
+                    // faults - here, typically the per-cycle Timeout cancelling this call's linked
+                    // token while a check is still in flight - otherwise it would stay marked
+                    // Running forever and never run again on any later cycle. The exception, if any,
+                    // still propagates afterward so HealthCheckPlusBackGroundService's own
+                    // timeout/shutdown handling around this call is unaffected. See ApplyBatchResults
+                    // for how each task's outcome is classified and applied - shared with
+                    // CheckHealthPlusAsync so there is exactly one place that decides this, instead
+                    // of two copies that can drift apart.
                     ApplyBatchResults(registrationstorun, tasks, dtref, HealthCheckTrigger.Background, cancellationToken);
                     _cacheStatus.UpdateStatusName();
                 }
@@ -688,34 +753,34 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 #pragma warning disable IDE0079
         private static partial class Log
         {
-            [LoggerMessage(EventIds.HealthCheckProcessingBeginId, LogLevel.Debug, "Running health checks", EventName = EventIds.HealthCheckProcessingBeginName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckProcessingBeginId, LogLevel.Debug, "Running health checks", EventName = HealthCheckPlusEventIds.HealthCheckProcessingBeginName)]
             public static partial void HealthCheckProcessingBegin(ILogger logger);
 
             public static void HealthCheckProcessingEnd(ILogger logger, HealthStatus status, TimeSpan duration) =>
                 HealthCheckProcessingEnd(logger, status, duration.TotalMilliseconds);
 
-            [LoggerMessage(EventIds.HealthCheckProcessingEndId, LogLevel.Debug, "Health check processing with combined status {HealthStatus} completed after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckProcessingEndName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckProcessingEndId, LogLevel.Debug, "Health check processing with combined status {HealthStatus} completed after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckProcessingEndName)]
             private static partial void HealthCheckProcessingEnd(ILogger logger, HealthStatus HealthStatus, double ElapsedMilliseconds);
 
-            [LoggerMessage(EventIds.HealthCheckBeginId, LogLevel.Debug, "Running health check {HealthCheckName}", EventName = EventIds.HealthCheckBeginName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckBeginId, LogLevel.Debug, "Running health check {HealthCheckName}", EventName = HealthCheckPlusEventIds.HealthCheckBeginName)]
             public static partial void HealthCheckBegin(ILogger logger, string HealthCheckName);
 
             // These are separate so they can have different log levels
             private const string HealthCheckEndText = "Health check {HealthCheckName} with status {HealthStatus} completed after {ElapsedMilliseconds}ms with message '{HealthCheckDescription}'";
 
-            [LoggerMessage(EventIds.HealthCheckEndId, LogLevel.Debug, HealthCheckEndText, EventName = EventIds.HealthCheckEndName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckEndId, LogLevel.Debug, HealthCheckEndText, EventName = HealthCheckPlusEventIds.HealthCheckEndName)]
             private static partial void HealthCheckEndHealthy(ILogger logger, string HealthCheckName, HealthStatus HealthStatus, double ElapsedMilliseconds, string? HealthCheckDescription);
 
 #pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
 #pragma warning disable SYSLIB1025 // Multiple logging methods should not use the same event name within a class
-            [LoggerMessage(EventIds.HealthCheckEndId, LogLevel.Warning, HealthCheckEndText, EventName = EventIds.HealthCheckEndName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckEndId, LogLevel.Warning, HealthCheckEndText, EventName = HealthCheckPlusEventIds.HealthCheckEndName)]
 #pragma warning restore SYSLIB1025 // Multiple logging methods should not use the same event name within a class
 #pragma warning restore SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             private static partial void HealthCheckEndDegraded(ILogger logger, string HealthCheckName, HealthStatus HealthStatus, double ElapsedMilliseconds, string? HealthCheckDescription, Exception? exception);
 
 #pragma warning disable SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
 #pragma warning disable SYSLIB1025 // Multiple logging methods should not use the same event name within a class
-            [LoggerMessage(EventIds.HealthCheckEndId, LogLevel.Error, HealthCheckEndText, EventName = EventIds.HealthCheckEndName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckEndId, LogLevel.Error, HealthCheckEndText, EventName = HealthCheckPlusEventIds.HealthCheckEndName)]
 #pragma warning restore SYSLIB1025 // Multiple logging methods should not use the same event name within a class
 #pragma warning restore SYSLIB1006 // Multiple logging methods cannot use the same event id within a class
             private static partial void HealthCheckEndUnhealthy(ILogger logger, string HealthCheckName, HealthStatus HealthStatus, double ElapsedMilliseconds, string? HealthCheckDescription, Exception? exception);
@@ -738,25 +803,25 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
             }
 
-            [LoggerMessage(EventIds.HealthCheckErrorId, LogLevel.Error, "Health check {HealthCheckName} threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = EventIds.HealthCheckErrorName)]
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckErrorId, LogLevel.Error, "Health check {HealthCheckName} threw an unhandled exception after {ElapsedMilliseconds}ms", EventName = HealthCheckPlusEventIds.HealthCheckErrorName)]
             private static partial void HealthCheckError(ILogger logger, string HealthCheckName, double ElapsedMilliseconds, Exception exception);
 
             public static void HealthCheckError(ILogger logger, HealthCheckRegistration registration, Exception exception, TimeSpan duration) =>
                 HealthCheckError(logger, registration.Name, duration.TotalMilliseconds, exception);
 
-            [LoggerMessage(EventIds.HealthCheckDisposeErrorId, LogLevel.Warning,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckDisposeErrorId, LogLevel.Warning,
                 "Disposing the adopted external health check '{HealthCheckName}' threw an exception; continuing to dispose the remaining adopted checks.",
-                EventName = EventIds.HealthCheckDisposeErrorName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckDisposeErrorName)]
             public static partial void HealthCheckDisposeError(ILogger logger, string HealthCheckName, Exception exception);
 
-            [LoggerMessage(EventIds.HealthCheckMetricsRecordingErrorId, LogLevel.Warning,
+            [LoggerMessage(HealthCheckPlusEventIds.ServiceMetricsRecordingErrorId, LogLevel.Warning,
                 "Recording an anomaly metric also failed; the anomaly itself was already logged separately above.",
-                EventName = EventIds.HealthCheckMetricsRecordingErrorName)]
+                EventName = HealthCheckPlusEventIds.ServiceMetricsRecordingErrorName)]
             public static partial void HealthCheckMetricsRecordingError(ILogger logger, Exception exception);
 
-            [LoggerMessage(EventIds.HealthCheckExecutionAbortedId, LogLevel.Warning,
+            [LoggerMessage(HealthCheckPlusEventIds.HealthCheckExecutionAbortedId, LogLevel.Warning,
                 "Health check '{HealthCheckName}' did not complete because the operation was cancelled (e.g. the HTTP client disconnected, or the background cycle timed out); its last known result is unchanged and it remains eligible to run again.",
-                EventName = EventIds.HealthCheckExecutionAbortedName)]
+                EventName = HealthCheckPlusEventIds.HealthCheckExecutionAbortedName)]
             public static partial void HealthCheckExecutionAborted(ILogger logger, string HealthCheckName);
 
             public static void HealthCheckData(ILogger logger, HealthCheckRegistration registration, HealthReportEntry entry)
@@ -765,7 +830,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 {
                     logger.Log(
                         LogLevel.Debug,
-                        EventIds.HealthCheckData,
+                        HealthCheckPlusEventIds.HealthCheckData,
                         new HealthCheckDataLogValue(registration.Name, entry.Data),
                         null,
                         (state, ex) => state.ToString());
@@ -838,32 +903,6 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
                 return _formatted;
             }
-        }
-
-        private static class EventIds
-        {
-            public const int HealthCheckProcessingBeginId = 100;
-            public const int HealthCheckProcessingEndId = 101;
-            public const int HealthCheckBeginId = 102;
-            public const int HealthCheckEndId = 103;
-            public const int HealthCheckErrorId = 104;
-            public const int HealthCheckDataId = 105;
-            public const int HealthCheckDisposeErrorId = 106;
-            public const int HealthCheckMetricsRecordingErrorId = 107;
-            public const int HealthCheckExecutionAbortedId = 108;
-
-            // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
-            public const string HealthCheckProcessingBeginName = "HealthCheckProcessingBegin";
-            public const string HealthCheckProcessingEndName = "HealthCheckProcessingEnd";
-            public const string HealthCheckBeginName = "HealthCheckBegin";
-            public const string HealthCheckEndName = "HealthCheckEnd";
-            public const string HealthCheckErrorName = "HealthCheckError";
-            public const string HealthCheckDataName = "HealthCheckData";
-            public const string HealthCheckMetricsRecordingErrorName = "HealthCheckPlusMetricsRecordingError";
-            public const string HealthCheckDisposeErrorName = "HealthCheckDisposeError";
-            public const string HealthCheckExecutionAbortedName = "HealthCheckExecutionAborted";
-
-            public static readonly EventId HealthCheckData = new(HealthCheckDataId, HealthCheckDataName);
         }
 
         private class HealthCheckLogScopePlus(string healthCheckName) : IReadOnlyList<KeyValuePair<string, object>>

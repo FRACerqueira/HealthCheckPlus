@@ -124,6 +124,59 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("Named"));
         }
 
+        // Regression test for a real, empirically-reproduced race: two concurrent UpdateStatusName()
+        // calls each capture their own report and invoke their own (consumer-supplied, possibly
+        // slow) StatusHealthReport delegate independently, then used to write _statusName directly
+        // with no ordering between the two writes - whichever call's delegate happened to finish
+        // LAST won, even if it started first and is working from a now-stale report. A slow call
+        // that started BEFORE a manual override, but finishes AFTER the override's own (fast)
+        // UpdateStatusName() call already wrote the fresh value, must not be allowed to overwrite it.
+        // The delegate below blocks on its first invocation (simulating the slow, stale call) and
+        // returns immediately on every later one (simulating the override's own fresh call).
+        [Fact]
+        public async Task UpdateStatusName_ShouldNotLetAStaleConcurrentCall_OverwriteAFresherOverride()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            using var firstCallStarted = new ManualResetEventSlim(false);
+            using var releaseFirstCall = new ManualResetEventSlim(false);
+            var callCount = 0;
+
+            var options = new HealthCheckPlusOptions
+            {
+                HealthCheckName = "Named",
+                StatusHealthReport = _ =>
+                {
+                    if (Interlocked.Increment(ref callCount) == 1)
+                    {
+                        firstCallStarted.Set();
+                        releaseFirstCall.Wait();
+                        return HealthStatus.Healthy; // stale - computed before the override below
+                    }
+                    return HealthStatus.Unhealthy; // the override's own, fresh computation
+                }
+            };
+            _cacheHealthCheckPlus.AddStatusName(options);
+
+            var staleCall = Task.Run(() => _cacheHealthCheckPlus.UpdateStatusName(), TestContext.Current.CancellationToken);
+            Assert.True(firstCallStarted.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
+                "The stale UpdateStatusName call's delegate never started.");
+
+            // Update() (called by SwitchToUnhealthy) bumps the version, then SwithState's own
+            // UpdateStatusName() call captures that newer version and writes Unhealthy immediately -
+            // its delegate is the "second call" branch above, which returns without blocking.
+            _cacheHealthCheckPlus.SwitchToUnhealthy("Test1");
+
+            Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("Named"));
+
+            // Now let the stale call's delegate finally return its old value and try to write it.
+            releaseFirstCall.Set();
+            var completed = await Task.WhenAny(staleCall, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            Assert.Same(staleCall, completed);
+
+            Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("Named"));
+        }
+
         [Fact]
         public void LastReport_ShouldReturnMaxDateRef()
         {

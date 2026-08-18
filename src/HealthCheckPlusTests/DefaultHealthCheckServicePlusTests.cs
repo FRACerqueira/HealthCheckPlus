@@ -10,6 +10,7 @@ using HealthCheckPlus.Internal.WrapperMicrosoft;
 using HealthCheckPlus.options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -91,6 +92,15 @@ namespace HealthCheckPlusTests
             HealthCheckServiceOptions hcOptions,
             params HealthCheckPlusPolicyStatus[] policies)
         {
+            return BuildService(cache, hcOptions, NullLogger<HealthCheckService>.Instance, policies);
+        }
+
+        private static DefaultHealthCheckServicePlus BuildService(
+            CacheHealthCheckPlus cache,
+            HealthCheckServiceOptions hcOptions,
+            ILogger<HealthCheckService> logger,
+            params HealthCheckPlusPolicyStatus[] policies)
+        {
             var services = new ServiceCollection();
             services.AddSingleton<IStateHealthChecksPlus>(cache);
             foreach (var policy in policies)
@@ -102,9 +112,23 @@ namespace HealthCheckPlusTests
             return new DefaultHealthCheckServicePlus(
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 provider,
-                NullLogger<HealthCheckService>.Instance,
+                logger,
                 Options.Create(hcOptions),
                 new HealthChecksPlusRegistrationState());
+        }
+
+        // A logging provider that throws on every call - simulates a broken third-party sink
+        // (e.g. a misconfigured exporter, a file logger hitting a permission error).
+        private sealed class ThrowingLogger : ILogger<HealthCheckService>
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                throw new InvalidOperationException("Simulated broken logging provider.");
+            }
         }
 
         // The Degraded status must resolve to its own policy on the HTTP request path, not the
@@ -403,6 +427,39 @@ namespace HealthCheckPlusTests
             Assert.False(status.Running, "The check was left permanently marked Running after the linked token was cancelled.");
             Assert.Equal(HealthStatus.Healthy, status.LastResult.Status);
         }
+
+        // Regression test: Log.HealthCheckProcessingBegin used to run completely unguarded, after
+        // BuildDueRegistrations/TryBeginRun already marked the due check Running - a throwing
+        // logger (a broken third-party sink) propagated before the try/finally that normally
+        // releases Running (via ApplyBatchResults) ever got a chance to open, leaving the check
+        // marked Running forever: TryBeginRun would never schedule it again on any later request.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldReleaseRunning_WhenLoggingThrowsBeforeTheBatchIsAwaited()
+        {
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
+
+            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test1");
+
+            var service = BuildService(cache, hcOptions, new ThrowingLogger(), healthyPolicy);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, CancellationToken.None));
+
+            Assert.False(cache.FullStatus("Test1").Running,
+                "The check was left permanently marked Running because the logging call that threw ran outside the release try/finally.");
+        }
+
+        // BackGroudCheckHealthPlusAsync gets the same release-on-throw guard around StartBatch as
+        // CheckHealthPlusAsync above, for consistency, but it has no realistic trigger today:
+        // BackGroudCheckHealthPlusAsync never logs directly in that span, and Task.Run itself does
+        // not throw synchronously even when handed a token from an already-disposed
+        // CancellationTokenSource (confirmed empirically - it simply schedules the work). Left as a
+        // defensive backstop, the same category as InternalCast's null-value handling: no test
+        // manufactures a scenario that doesn't currently exist just to exercise it.
 
         // Regression test: releasing Running on any task that didn't complete successfully (not
         // just ambient cancellation) used to also cover a genuine, non-cancellation failure - e.g.

@@ -20,6 +20,12 @@ public static IHealthChecksBuilder AddBackgroundPolicy(this IHealthChecksBuilder
 
 The IHealthChecksBuilder.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| InvalidOperationException | `AddBackgroundPolicy` was already called once for this IHealthChecksBuilder, or `AddHealthChecksPlus` was never called first. |
+
 ### See Also
 
 * class [HealthCheckPlusBackGroundOptions](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md)
