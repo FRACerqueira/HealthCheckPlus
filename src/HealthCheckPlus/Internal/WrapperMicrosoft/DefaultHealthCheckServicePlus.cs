@@ -553,6 +553,18 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // real result untouched; anything else - a completed result, or a genuine failure - is
         // reported via Update() like any other result. Shared by CheckHealthPlusAsync and
         // BackGroudCheckHealthPlusAsync so this logic exists in exactly one place.
+        //
+        // Log.HealthCheckExecutionAborted in the AmbientCancellation case used to run completely
+        // unguarded, before ReleaseRunning - the same class of bug fixed elsewhere in this class
+        // for the batch-start log/StartBatch, just missed here. Worse here: since this all runs
+        // in a single loop over the whole batch, a throwing ILogger on item N used to abort the
+        // loop entirely, leaving every item from N onward - not just item N - stuck Running
+        // forever. Each iteration now has its own try/catch: whatever throws, this item's
+        // Running is still released (ReleaseRunning is safe to call even for an item Update()
+        // already handled - it just re-preserves the already-fresh result), and the loop
+        // continues to the next item instead of aborting the rest of the batch. The exception
+        // isn't swallowed - every one caught is collected and (re)thrown together once every
+        // item in the batch has been finalized, so the failure still surfaces to the caller.
         private void ApplyBatchResults(
             List<HealthCheckRegistration> registrationstorun,
             Task<HealthReportEntry>[] tasks,
@@ -561,35 +573,51 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             CancellationToken cancellationToken)
         {
             var releasedAt = DateTime.UtcNow;
+            List<Exception>? failures = null;
 
             for (var index = 0; index < registrationstorun.Count; index++)
             {
                 var registration = registrationstorun[index];
                 var task = tasks[index];
 
-                switch (ClassifyBatchTask(task, cancellationToken))
+                try
                 {
-                    case BatchTaskOutcome.Success:
-                        {
-                            var result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
-                            _cacheStatus.Update(registration.Name, trigger, result, dtref.Add(task.Result.Duration), task.Result.Duration);
-                            break;
-                        }
+                    switch (ClassifyBatchTask(task, cancellationToken))
+                    {
+                        case BatchTaskOutcome.Success:
+                            {
+                                var result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
+                                _cacheStatus.Update(registration.Name, trigger, result, dtref.Add(task.Result.Duration), task.Result.Duration);
+                                break;
+                            }
 
-                    case BatchTaskOutcome.AmbientCancellation:
-                        Log.HealthCheckExecutionAborted(_logger, registration.Name);
-                        SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
-                        _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
-                        break;
-
-                    default: // Failure
-                        {
-                            var exception = task.Exception?.GetBaseException();
-                            var result = new HealthCheckResult(registration.FailureStatus, exception?.Message ?? "The health check threw an unhandled exception before it could run.", exception, null);
-                            _cacheStatus.Update(registration.Name, trigger, result, releasedAt, TimeSpan.Zero);
+                        case BatchTaskOutcome.AmbientCancellation:
+                            Log.HealthCheckExecutionAborted(_logger, registration.Name);
+                            SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
+                            _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
                             break;
-                        }
+
+                        default: // Failure
+                            {
+                                var exception = task.Exception?.GetBaseException();
+                                var result = new HealthCheckResult(registration.FailureStatus, exception?.Message ?? "The health check threw an unhandled exception before it could run.", exception, null);
+                                _cacheStatus.Update(registration.Name, trigger, result, releasedAt, TimeSpan.Zero);
+                                break;
+                            }
+                    }
                 }
+                catch (Exception ex)
+                {
+                    _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
+                    (failures ??= []).Add(ex);
+                }
+            }
+
+            if (failures is { Count: > 0 })
+            {
+                throw new AggregateException(
+                    $"Applying results for {failures.Count} of {registrationstorun.Count} check(s) in this batch failed.",
+                    failures);
             }
         }
 

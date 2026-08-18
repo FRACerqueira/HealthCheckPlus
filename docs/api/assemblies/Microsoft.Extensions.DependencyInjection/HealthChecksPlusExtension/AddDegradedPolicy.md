@@ -26,6 +26,7 @@ The IHealthChecksBuilder.
 | exception | condition |
 | --- | --- |
 | ArgumentException | *namedep* is `null` or empty, or *period* is below one second. |
+| InvalidOperationException | `AddHealthChecksPlus` was never called first. |
 
 ### Remarks
 

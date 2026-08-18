@@ -115,6 +115,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> is <c>null</c> or empty, or <paramref name="period"/> is below one second.</exception>
+        /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddUnhealthyPolicy(this IHealthChecksBuilder ihb, string namedep, TimeSpan period)
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
@@ -143,6 +144,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> is <c>null</c> or empty, or <paramref name="period"/> is below one second.</exception>
+        /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddDegradedPolicy(this IHealthChecksBuilder ihb, string namedep, TimeSpan period)
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
@@ -235,6 +237,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> is <c>null</c> or empty, or <paramref name="period"/> is provided and below one second.</exception>
+        /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddCheckPlus<T>(this IHealthChecksBuilder ihb, string namedep, TimeSpan? delay = null, TimeSpan? period = null, IEnumerable<string>? tags = null, HealthStatus? failureStatus = null, TimeSpan? timeout = null) where T : IHealthCheck
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {
@@ -295,6 +298,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> or <paramref name="name"/> is <c>null</c> or empty, <paramref name="namedep"/> equals <paramref name="name"/>, or <paramref name="period"/> is provided and below one second.</exception>
+        /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddCheckLinkTo(this IHealthChecksBuilder ihb, string namedep, string name, TimeSpan? delay = null, TimeSpan? period = null)
 #pragma warning restore CS0419 // Ambiguous reference in cref attribute
         {

@@ -131,6 +131,23 @@ namespace HealthCheckPlusTests
             }
         }
 
+        // Throws only for the one named event under test, so a batch-start log (already guarded
+        // elsewhere) doesn't throw before the checks it's meant to isolate ever get a chance to run.
+        private sealed class SelectivelyThrowingLogger(string throwingEventName) : ILogger<HealthCheckService>
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (eventId.Name == throwingEventName)
+                {
+                    throw new InvalidOperationException($"Simulated broken logging provider for '{throwingEventName}'.");
+                }
+            }
+        }
+
         // The Degraded status must resolve to its own policy on the HTTP request path, not the
         // Healthy policy. Setup: check "Test1" has been Degraded for 10s. The Healthy policy has a
         // 1000s period (must NOT trigger a rerun on its own). The Degraded policy has a 3s period
@@ -451,6 +468,46 @@ namespace HealthCheckPlusTests
 
             Assert.False(cache.FullStatus("Test1").Running,
                 "The check was left permanently marked Running because the logging call that threw ran outside the release try/finally.");
+        }
+
+        // Regression test for a fifth-audit finding: ApplyBatchResults's AmbientCancellation
+        // branch logs (Log.HealthCheckExecutionAborted) before calling ReleaseRunning, with
+        // neither step guarded - the same class of bug as the test above, at a different site
+        // that fix missed. Worse here: since ApplyBatchResults processes the whole batch in one
+        // loop, a throwing logger on the FIRST item used to abort the loop before it ever reached
+        // any LATER item, leaving every item from that point on stuck Running forever too - not
+        // just the one whose log call actually threw. Test1 is the one that hits
+        // AmbientCancellation (and the throwing logger); Test2 completes normally and is only
+        // ever reached if the loop survives Test1's failure.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldReleaseRunning_ForEveryCheckInTheBatch_WhenLoggingThrowsInsideApplyBatchResults()
+        {
+            var check1 = new CancelableCheck();
+            var check2 = new AlwaysHealthyCheck();
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1", "Test2"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => check1, null, null));
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test2", _ => check2, null, null));
+
+            var healthyPolicy1 = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test1");
+            var healthyPolicy2 = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test2");
+
+            var service = BuildService(cache, hcOptions, new SelectivelyThrowingLogger("HealthCheckExecutionAborted"), healthyPolicy1, healthyPolicy2);
+
+            using var cts = new CancellationTokenSource();
+            var callTask = service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, cts.Token);
+
+            Assert.True(check1.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The check never started.");
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<Exception>(() => callTask);
+
+            Assert.False(cache.FullStatus("Test1").Running,
+                "Test1 (whose AmbientCancellation log call threw) was left permanently marked Running.");
+            Assert.False(cache.FullStatus("Test2").Running,
+                "Test2 (a later item in the same batch) was left permanently marked Running because Test1's logging failure aborted the loop before ever reaching it.");
         }
 
         // BackGroudCheckHealthPlusAsync gets the same release-on-throw guard around StartBatch as

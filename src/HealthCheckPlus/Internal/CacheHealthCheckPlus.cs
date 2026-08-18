@@ -104,16 +104,28 @@ namespace HealthCheckPlus.Internal
         // happened to finish LAST won, even if it started first and is working from a report
         // that's now stale. That let a fresh SwitchToUnhealthy get silently overwritten moments
         // later by a slower, in-flight call that captured its report before the override happened.
-        // Capturing _stateVersion before CreateReport() (so it never overstates freshness - a
-        // concurrent Update() landing in the gap only makes the actual report fresher than the
-        // captured version implies, never the reverse) and only ever committing a write whose
-        // version is not older than what's already stored closes that gap, without needing to
-        // hold any lock across the delegate call itself (which is arbitrary consumer code and
-        // could be slow).
+        //
+        // version and report are captured together, under _lock, so they always describe the
+        // exact same instant - Update() now also takes _lock around the equivalent write (see its
+        // own comment). A first version of this fix read _stateVersion separately, just before
+        // calling CreateReport(), with neither step synchronized against Update(): that closed the
+        // originally-reported scenario (SwithState's own Update() call always happens-before its
+        // own UpdateStatusName() call, so its version can never tie with a stale in-flight one) but
+        // left a narrower, empirically-reproduced residual - two callers whose version reads
+        // happened to tie (nothing had changed yet) could still end up with reports describing
+        // different instants if an Update() landed mid-way through one of their CreateReport()
+        // calls, and a tied version doesn't get rejected by TryStoreStatusName's `>` comparison.
+        // Locking only the capture - not the delegate invocation below, which is arbitrary
+        // consumer code and could be slow - keeps that same guarantee without ever blocking on it.
         public void UpdateStatusName()
         {
-            var version = Volatile.Read(ref _stateVersion);
-            var report = CreateReport();
+            HealthReport report;
+            long version;
+            lock (_lock)
+            {
+                version = _stateVersion;
+                report = CreateReport();
+            }
             foreach (var item in _statusFunction)
             {
                 var status = item.Value!.Invoke(report);
@@ -237,13 +249,19 @@ namespace HealthCheckPlus.Internal
             }
             if (!_statusName.TryGetValue(name, out var cached))
             {
-                // Same version-before-CreateReport() ordering as UpdateStatusName, and the same
-                // TryStoreStatusName - this is the only other writer of _statusName, and needs the
-                // same protection against a slower concurrent caller's stale write landing after.
-                // Returns whatever TryStoreStatusName says actually won, not necessarily this
-                // call's own computation.
-                var version = Volatile.Read(ref _stateVersion);
-                var status = value!.Invoke(CreateReport());
+                // Same version+report captured together under _lock as UpdateStatusName, and the
+                // same TryStoreStatusName - this is the only other writer of _statusName, and
+                // needs the same protection against a slower concurrent caller's stale write
+                // landing after. Returns whatever TryStoreStatusName says actually won, not
+                // necessarily this call's own computation.
+                HealthReport report;
+                long version;
+                lock (_lock)
+                {
+                    version = _stateVersion;
+                    report = CreateReport();
+                }
+                var status = value!.Invoke(report);
                 return TryStoreStatusName(name, status, version);
             }
             return cached.Status;
@@ -356,24 +374,25 @@ namespace HealthCheckPlus.Internal
                 return;
             }
 
-            // Deliberately not under _lock, unlike TryBeginRun/SwithState/ReleaseRunning:
-            // SafeRecordMetric below runs a third-party MeterListener callback synchronously, and
-            // holding _lock across an exporter's own code would let a slow or blocking listener
-            // stall every other check's TryBeginRun/ReleaseRunning scheduling decision, not just
-            // this one's metrics. This is safe without the lock because SetResult happens before
-            // Running is cleared, so any later TryBeginRun only ever observes Running=false once
-            // this fresh result is already published - the exact ordering ReleaseRunning was
-            // missing.
             var previousStatus = item.LastResult.Status;
 
-            item.SetResult(result, lastexecute, duration, healthCheckFrom);
-            item.Running = false;
-
-            // Bumps the heartbeat UpdateStatusName/Status(name) use to order their writes against
-            // each other (see TryStoreStatusName) - this is the single point every real state
-            // change (a genuine execution, or a manual SwitchTo override, which calls Update() too)
-            // converges on, so it's the one place that needs to increment it.
-            Interlocked.Increment(ref _stateVersion);
+            // SetResult, clearing Running, and bumping _stateVersion now happen atomically under
+            // _lock - not for Running's own sake (SetResult still happens before Running is
+            // cleared either way, the exact ordering ReleaseRunning was missing, so any later
+            // TryBeginRun only ever observes Running=false once this fresh result is already
+            // published), but so UpdateStatusName()/Status(name) capturing (version, report)
+            // together under the same lock (see their own comments) can never have a real state
+            // change land in the middle of that capture - closing the last piece of the race those
+            // methods were fixed for. SafeRecordMetric below stays outside the lock: a third-party
+            // MeterListener callback runs synchronously on this thread, and holding _lock across an
+            // exporter's own code would let a slow or blocking listener stall every other check's
+            // TryBeginRun/ReleaseRunning scheduling decision, not just this one's metrics.
+            lock (_lock)
+            {
+                item.SetResult(result, lastexecute, duration, healthCheckFrom);
+                item.Running = false;
+                _stateVersion++;
+            }
 
             // This is the single point every execution path (foreground/HTTP and background)
             // and the manual SwitchTo override converge on, so it's the right place to emit
@@ -409,12 +428,16 @@ namespace HealthCheckPlus.Internal
             var beganOverride = false;
             // Read once and reuse for both the equality check above and the Description used
             // below, instead of two separate item.LastResult accesses - not a demonstrated live
-            // race today (once beganOverride is true, this call exclusively owns Running until
-            // its own Update() call below clears it, and every other writer of the snapshot
-            // requires owning Running first), but reading a mutable snapshot reference twice for
-            // one logical decision is exactly the torn-read shape this project already treats as
-            // a defect elsewhere (see ItemCacheHealth.Snapshot's own doc) - cheap to close for
-            // good rather than rely on that invariant never being relaxed.
+            // race today (once beganOverride is true, Running only ever goes false again via
+            // this same call's own Update() below - TryBeginRun and this method's own
+            // Running-acquire check below are the only places that claim ownership, and both
+            // only do so when Running is currently false, under _lock; ReleaseRunning/Update
+            // themselves don't check Running before writing, but nothing else calls them for
+            // this key while it's held, since no batch will ever include an already-Running
+            // check), but reading a mutable snapshot reference twice for one logical decision is
+            // exactly the torn-read shape this project already treats as a defect elsewhere (see
+            // ItemCacheHealth.Snapshot's own doc) - cheap to close for good rather than rely on
+            // that invariant never being relaxed.
             HealthCheckResult lastResult;
             lock (_lock)
             {
