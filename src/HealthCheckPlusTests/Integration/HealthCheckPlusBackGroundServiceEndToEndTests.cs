@@ -97,7 +97,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddSingleton(check);
                     services.AddSingleton<IHealthCheckPublisher>(publisher);
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -135,7 +135,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddBackgroundPolicy();
                 },
@@ -162,7 +162,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus([checkName]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>(checkName);
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -210,7 +210,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddSingleton(check);
                     services.AddSingleton<IHealthCheckPublisher>(publisher);
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -240,6 +240,62 @@ namespace HealthCheckPlusTests.Integration
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
 
+        // Regression test: FilterReportByPredicate (invoked only when building the report to hand
+        // to publishers) calls the same consumer-supplied Predicate used to decide which checks
+        // run - but that specific invocation used to sit completely outside any try/catch in the
+        // background loop, unlike every other step here. A Predicate that throws while the report
+        // is being built (as opposed to while filtering which checks run, which was already
+        // guarded by the check-execution try/catch above) used to kill the loop permanently and
+        // silently: checks stopped running, publishers stopped firing, with no log or metric at
+        // all. The Predicate below alternates true/throw so the "which checks run" evaluation
+        // (once per cycle, with a single registration) always succeeds while the later "report to
+        // publish" evaluation (also once per cycle, over the same single registration) always
+        // throws - isolating the fix under test from the already-guarded check-execution path.
+        [Fact]
+        public async Task BackgroundService_ShouldKeepRunning_WhenThePredicateThrowsWhileBuildingTheReportToPublish()
+        {
+            var check = new CountingCheck();
+            var publisher = new RecordingPublisher();
+            var predicateCallCount = 0;
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    services.AddSingleton(check);
+                    services.AddSingleton<IHealthCheckPublisher>(publisher);
+
+                    var ihb = services.AddHealthChecksPlus();
+                    ihb.AddCheckPlus<CountingCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(50);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Predicate = _ =>
+                        {
+                            var call = Interlocked.Increment(ref predicateCallCount);
+                            if (call % 2 == 0)
+                            {
+                                throw new InvalidOperationException("simulated Predicate failure while building the report to publish");
+                            }
+                            return true;
+                        };
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = false };
+                    });
+                },
+                _ => { });
+
+            // A generous wait relative to the ~1s minimum cycle time - see the CI-timing note on
+            // the sibling "keep running" test above.
+            await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            Assert.True(check.CallCount >= 2,
+                $"Expected the background service to keep rerunning checks across multiple cycles despite the Predicate throwing while building the report to publish, got {check.CallCount}.");
+            Assert.Equal(0, publisher.PublishCount);
+        }
+
         // Regression test: HealthCheckPlusBackGroundOptions.Predicate is used to decide which
         // checks the background service *runs* (see BackGroudCheckHealthPlusAsync), but the report
         // it hashes (for WhenReportChange) and hands to publishers used to come straight from
@@ -259,7 +315,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddLogging();
                     services.AddSingleton<IHealthCheckPublisher>(publisher);
 
-                    var ihb = services.AddHealthChecksPlus(["Included", "Excluded"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Included");
                     ihb.AddCheckPlus<CountingCheck>("Excluded");
                     ihb.AddBackgroundPolicy(opt =>
@@ -305,7 +361,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddLogging(builder => builder.AddProvider(loggerProvider));
                     services.AddSingleton(check);
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<ThrowingOnCancelCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {

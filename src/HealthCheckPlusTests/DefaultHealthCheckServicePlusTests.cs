@@ -154,55 +154,10 @@ namespace HealthCheckPlusTests
             Assert.Contains("NativeCheck", ex.Message, StringComparison.Ordinal);
         }
 
-        // A health check registered with a Healthy policy (as AddCheckPlus/AddCheckLinkTo always
-        // do) but whose name was left out of the `names` list passed to AddHealthChecksPlus has no
-        // entry in the cache - ValidateHealthyPolicies alone doesn't catch this, since it only
-        // checks the opposite direction (a name without a matching policy). Left unchecked, this
-        // reaches CacheHealthCheckPlus.FullStatus's raw dictionary indexer on every later
-        // request/cycle and crashes with an unhandled KeyNotFoundException - exactly the kind of
-        // failure the constructor-time fail-fast for the original NRE finding was meant to
-        // eliminate, just reachable from the other direction. Setup: "Kafka" has a Healthy policy
-        // but only "OtherCheck" was passed to AddHealthChecksPlus's names list (simulated here via
-        // cache.InitCache).
-        [Fact]
-        public void Constructor_ShouldThrowClearException_WhenRegistrationNameIsMissingFromCache()
-        {
-            var cache = new CacheHealthCheckPlus();
-            cache.InitCache(["OtherCheck"]);
-
-            var hcOptions = new HealthCheckServiceOptions();
-            hcOptions.Registrations.Add(new HealthCheckRegistration("Kafka", _ => new AlwaysHealthyCheck(), null, null));
-
-            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "Kafka");
-
-            var ex = Assert.Throws<InvalidOperationException>(() => BuildService(cache, hcOptions, healthyPolicy));
-            Assert.Contains("Kafka", ex.Message, StringComparison.Ordinal);
-        }
-
-        // The opposite direction of the same misconfiguration: a name passed to
-        // AddHealthChecksPlus's `names` list with no matching health check registration - it would
-        // otherwise sit seeded Healthy in the cache forever, with nothing ever updating it, and
-        // (if a background Predicate is explicitly set to null) could even reach publishers as a
-        // permanently-Healthy phantom check.
-        [Fact]
-        public void Constructor_ShouldThrowClearException_WhenCacheNameHasNoRegistration()
-        {
-            var cache = new CacheHealthCheckPlus();
-            cache.InitCache(["Test1", "Phantom"]);
-
-            var hcOptions = new HealthCheckServiceOptions();
-            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
-
-            var healthyPolicy = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(30), "Test1");
-
-            var ex = Assert.Throws<InvalidOperationException>(() => BuildService(cache, hcOptions, healthyPolicy));
-            Assert.Contains("Phantom", ex.Message, StringComparison.Ordinal);
-        }
-
         // Regression test: the cache's per-check Tags (used by CacheHealthCheckPlus.CreateReport,
         // which a callback registered via AddStatusName consumes through IStateHealthChecksPlus.
         // Status) must be populated from the real registrations at construction time - InitCache
-        // alone has no access to them (only the plain `names` list passed to AddHealthChecksPlus).
+        // alone has no access to them (only the check names it's seeded with).
         [Fact]
         public void Constructor_ShouldPopulateCacheTags_FromRegistrations()
         {

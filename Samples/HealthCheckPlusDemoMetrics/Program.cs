@@ -6,15 +6,13 @@ namespace HealthCheckPlusDemoMetrics
 {
     public class Program
     {
-        private static readonly string[] names = ["Flaky"];
-
         public static void Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
             builder.Services
                 //Add HealthCheckPlus
-                .AddHealthChecksPlus(names)
+                .AddHealthChecksPlus()
                 //a check that cycles Healthy/Degraded/Unhealthy on every run - see FlakyCheck.cs
                 .AddCheckPlus<FlakyCheck>("Flaky")
                 //run continuously in the background, independent of any HTTP traffic, so metrics

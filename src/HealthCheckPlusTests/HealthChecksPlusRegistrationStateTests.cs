@@ -59,7 +59,7 @@ namespace HealthCheckPlusTests
         {
             var services = new ServiceCollection();
             services.AddLogging();
-            var ihb = services.AddHealthChecksPlus(["MyCheck"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration(linkName, _ => new AlwaysHealthyCheck(), null, null));
             ihb.AddCheckLinkTo("MyCheck", linkName);
             return services.BuildServiceProvider();
@@ -97,7 +97,7 @@ namespace HealthCheckPlusTests
 
             var services = new ServiceCollection();
             services.AddLogging();
-            var ihb = services.AddHealthChecksPlus(["MyCheck"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration("Original", _ => check, null, null));
             ihb.AddCheckLinkTo("MyCheck", "Original");
 
@@ -126,7 +126,7 @@ namespace HealthCheckPlusTests
 
             var services = new ServiceCollection();
             services.AddLogging(builder => builder.AddProvider(loggerProvider));
-            var ihb = services.AddHealthChecksPlus(["Check1", "Check2"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration("Original1", _ => throwing, null, null));
             ihb.Add(new HealthCheckRegistration("Original2", _ => healthy, null, null));
             ihb.AddCheckLinkTo("Check1", "Original1");

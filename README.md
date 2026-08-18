@@ -86,16 +86,11 @@ Three runnable projects under [**Samples**](https://github.com/FRACerqueira/Heal
 The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
 
 ```csharp
-
-//create list all HealthCheck by string (compatible type)
-private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
-```
-
-```csharp
 //At Statup / Program (without background services policies)
 builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus(HealthChecknames)
+    //Add HealthCheckPlus - the set of tracked checks comes from whatever ends up registered
+    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync
+    .AddHealthChecksPlus()
     //your custom HC    
     .AddCheckPlus<HcTeste1>("HcTest1")
     //your custom HC    
@@ -116,7 +111,7 @@ builder.Services
 //At Statup / Program (with background services policies)
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecksPlus(HealthChecknames)
+    .AddHealthChecksPlus()
     //your custom HC with custom delay and period   
     .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
     //your custom HC without delay and period (using BackgroundPolicy)     

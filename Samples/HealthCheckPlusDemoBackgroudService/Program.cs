@@ -9,8 +9,6 @@ namespace HealthCheckPlusDemoBackgroudService
 
     public class Program
     {
-        private static readonly string[] names = ["HcTest1", "HcTest2", "Redis"];
-
         public static void Main(string[] args)
         {
             IStateHealthChecksPlus? _stateHealthChecksPlus;
@@ -24,7 +22,7 @@ namespace HealthCheckPlusDemoBackgroudService
 
             builder.Services
                 //Add HealthCheckPlus
-                .AddHealthChecksPlus(names)
+                .AddHealthChecksPlus()
                 //your custom HC with custom delay and period   
                 .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
                 //your custom HC without delay and period (using BackgroundPolicy)     

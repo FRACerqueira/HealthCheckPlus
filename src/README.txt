@@ -59,15 +59,11 @@ See folder : https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples
 Usage
 *****
 
-//create list all HealthCheck by string (compatible type)
-private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
-
-...
-
 //At Statup / Program (without background services policies)
 builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus(HealthChecknames)
+    //Add HealthCheckPlus - the set of tracked checks comes from whatever ends up registered
+    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync
+    .AddHealthChecksPlus()
     //your custom HC    
     .AddCheckPlus<HcTeste1>("HcTest1")
     //your custom HC    
@@ -87,7 +83,7 @@ builder.Services
 //At Statup / Program (wit background services policies)
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecksPlus(HealthChecknames)
+    .AddHealthChecksPlus()
     //your custom HC with custom delay and period
     .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
     //your custom HC without delay and period (using BackgroundPolicy)     

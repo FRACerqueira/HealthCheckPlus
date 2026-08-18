@@ -27,7 +27,7 @@ namespace HealthCheckPlusTests
         {
             var services = new ServiceCollection();
             services.AddLogging();
-            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration("Original", _ => new AlwaysHealthyCheck(), null, null));
             ihb.AddCheckLinkTo("Adopted", "Original");
 
@@ -43,7 +43,7 @@ namespace HealthCheckPlusTests
         {
             var services = new ServiceCollection();
             services.AddLogging();
-            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.AddCheckLinkTo("Adopted", "DoesNotExist");
 
             using var provider = services.BuildServiceProvider();
@@ -76,7 +76,7 @@ namespace HealthCheckPlusTests
 
             var services = new ServiceCollection();
             services.AddLogging();
-            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration("Original", _ =>
             {
                 Interlocked.Increment(ref constructionCount);
@@ -136,7 +136,7 @@ namespace HealthCheckPlusTests
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddScoped<ScopedDependency>();
-            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration("Original", sp => new ScopedDependencyCheck(sp.GetRequiredService<ScopedDependency>()), null, null));
             ihb.AddCheckLinkTo("Adopted", "Original");
 
@@ -181,7 +181,7 @@ namespace HealthCheckPlusTests
 
             ScopedDisposalMarker? capturedMarker = null;
 
-            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            var ihb = services.AddHealthChecksPlus();
             ihb.Add(new HealthCheckRegistration("Original", sp =>
             {
                 capturedMarker = sp.GetRequiredService<ScopedDisposalMarker>();

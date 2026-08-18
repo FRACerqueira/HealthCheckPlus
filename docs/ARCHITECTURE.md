@@ -110,6 +110,8 @@ This cache — along with `HealthChecksPlusRegistrationState` (registration-time
 
 `HealthCheckTrigger.SwitchTo` (the manual override) is recorded as a status transition but deliberately excluded from `RecordCheckExecution`/duration metrics — no code actually ran, so it isn't an "execution."
 
+`SwithState` also calls `UpdateStatusName()` right after `Update()`, so a named aggregate registered via `AddStatusName` (read back through `Status(name)`) reflects a manual override immediately. **Point of attention**: `Status(null)` (the default, unnamed aggregate) always recomputes live and never needed this — only a *named* aggregate is cached in `_statusName`, refreshed by every foreground/background execution cycle *and* now by every manual override too, so it can never go stale waiting for the next poll.
+
 ## Adopting external checks (`AddCheckLinkTo`)
 
 A third-party package's own `IHealthChecksBuilder` extension (e.g. `AddRedis(...)`) registers a plain `HealthCheckRegistration` the native way. `AddCheckLinkTo(namedep, name)` adopts that registration under a new name (`namedep`) so it can carry a HealthCheckPlus policy, by hooking into `IServiceCollection.Configure<HealthCheckServiceOptions>` — the same public, documented Options pipeline the original registration used to get there. It removes the original registration and adds a replacement whose factory wraps the original check in `WrapperBaseHealthCheckPlus`.
@@ -129,6 +131,8 @@ When `AddBackgroundPolicy` is used, `HealthCheckPlusBackGroundService` removes t
 - A publisher can additionally implement `IHealthCheckPlusPublisher.PublisherCondition` for its own custom gating.
 
 Each publisher invocation is fault-isolated (`RunPublisherAsync`): a publisher that throws is logged and recorded with `healthcheckplus.publisher.invocations{result=error}`, then the exception is rethrown so the *cycle* (not the whole background loop) sees it. The cycle-level dispatch (`await Task.WhenAll(tasks)` over all publishers) is itself wrapped in a try/catch that logs `HealthCheckPublisherCycleError` (Warning) and records a `publisher_cycle_failed_but_continued` anomaly. **Point of attention**: without this outer try/catch, a single publisher throwing once would permanently kill the entire background loop (checks *and* publishing) for the rest of the process's life, with no crash and no log — a scenario a happy-path publisher test won't catch, so a publisher that's expected to occasionally throw is worth testing explicitly against this exact behavior.
+
+Building the report handed to that dispatch (`CreateReport()` plus `FilterReportByPredicate`, which invokes the consumer-supplied `HealthCheckPlusBackGroundOptions.Predicate`) is wrapped in its own, separate try/catch that logs `HealthCheckPlusBackGroundPublishReportBuildError` (Error) and records a `publish_report_build_failed` anomaly. **Point of attention**: this exists for the same reason as the dispatch try/catch above it, at a step that used to have no guard at all — a `Predicate` that throws (e.g. assuming every registration carries a tag it doesn't) used to kill the entire background loop exactly like an unguarded publisher would, just one step earlier in the cycle.
 
 ## Metrics
 
@@ -152,6 +156,7 @@ A shutdown-time cancellation in `RunPublisherAsync` (the app is stopping, not a 
 The library uses the standard `[LoggerMessage]` source-generated logging pattern throughout, with hard-coded `EventId`/`EventName` pairs per class (so renaming a method never changes what shows up in logs). Beyond the routine begin/end/error logs around check and publisher execution, there is a specific family of Warning-level logs for **defensive paths that were handled without failing the caller** — every one of them is paired with a `healthcheckplus.anomalies` metric (see above), except where recording the metric would itself be circular:
 
 - `HealthCheckPublisherCycleError` — a publisher failed this cycle; the loop is continuing.
+- `HealthCheckPlusBackGroundPublishReportBuildError` — building the report to hand to publishers this cycle failed (most likely `Predicate` throwing); no publishers were invoked this cycle, and the loop is continuing.
 - `HealthCheckDisposeError` — an adopted check's `Dispose()` threw; the remaining checks are still being disposed.
 - `HealthCheckPlusUpdateDropped` — `Update()`'s result was dropped (unregistered key, or an overlapping execution already claimed `Running`).
 - `HealthCheckExecutionAborted` — a scheduled check never actually completed because the ambient cancellation fired (an HTTP client disconnected, or a background-cycle Timeout elapsed) while it was still running — not the check itself failing. Its last known result (`LastResult`, `Duration`, `Origin`) is left untouched rather than overwritten with a synthetic one; only the scheduling state (`Running`, `DateRef`) is released, advancing `DateRef` to the abort time so it's retried on its normal schedule instead of hot-looping. This means `DateRef` can briefly read newer than the `LastResult`/`Duration`/`Origin` it's paired with in a report — see the `dateRef` caveat in `RUNBOOK.md`.

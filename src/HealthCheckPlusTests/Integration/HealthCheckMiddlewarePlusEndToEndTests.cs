@@ -59,7 +59,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysUnhealthyCheck>("Test1");
                 },
                 app => app.UseHealthChecksPlus("/health", new HealthCheckPlusOptions
@@ -86,7 +86,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysUnhealthyCheck>("Test1");
                 },
                 app => app.UseHealthChecksPlus("/health", new HealthCheckPlusOptions
@@ -123,7 +123,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                 },
                 app =>
@@ -157,7 +157,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                 },
                 app =>
@@ -201,7 +201,7 @@ namespace HealthCheckPlusTests.Integration
                 services =>
                 {
                     services.AddLogging();
-                    var ihb = services.AddHealthChecksPlus(["Native"]);
+                    var ihb = services.AddHealthChecksPlus();
                     // The native IHealthChecksBuilder.Add - as any developer would reach for by
                     // habit, without knowing AddCheckPlus/AddCheckLinkTo exist - deliberately
                     // skipped here instead of ihb.AddCheckPlus<AlwaysHealthyCheck>("Native").

@@ -60,6 +60,33 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("Test"));
         }
 
+        // Regression test: SwitchToUnhealthy/SwitchToDegraded used to update the check's own last
+        // result via Update() but never call UpdateStatusName() - so a named aggregate registered
+        // via AddStatusName (Status(name)) kept reporting the pre-override value until the next
+        // request or background cycle happened to call UpdateStatusName() on its own, however long
+        // that took. A consumer following the documented pattern (catch an exception,
+        // SwitchToUnhealthy, then gate traffic on Status("someName")) could see stale traffic
+        // decisions for an unbounded amount of time with no other symptom.
+        [Fact]
+        public void SwitchToUnhealthy_ShouldImmediatelyRefreshNamedStatus_WithoutAnExplicitUpdateStatusNameCall()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+
+            var options = new HealthCheckPlusOptions
+            {
+                HealthCheckName = "Named",
+                StatusHealthReport = report => report.Entries["Test1"].Status
+            };
+            _cacheHealthCheckPlus.AddStatusName(options);
+            _cacheHealthCheckPlus.UpdateStatusName();
+
+            Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("Named"));
+
+            _cacheHealthCheckPlus.SwitchToUnhealthy("Test1");
+
+            Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("Named"));
+        }
+
         [Fact]
         public void LastReport_ShouldReturnMaxDateRef()
         {

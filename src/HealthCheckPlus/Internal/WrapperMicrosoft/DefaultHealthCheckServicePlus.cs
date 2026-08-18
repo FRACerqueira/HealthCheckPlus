@@ -60,8 +60,6 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
 
             ValidateHealthyPolicies(_options.Value.Registrations, _policies);
-            ValidateCacheRegistrations(_options.Value.Registrations, _cacheStatus);
-            ValidateNoPhantomCacheEntries(_options.Value.Registrations, _cacheStatus);
             ValidatePolicyUniqueness(_policies);
         }
 
@@ -134,51 +132,6 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     "The following health checks have no HealthCheckPlus policy registered: " +
                     string.Join(", ", missing) +
                     ". Register them with AddCheckPlus or AddCheckLinkTo before building the service provider.");
-            }
-        }
-
-        // The opposite direction of the same misconfiguration ValidateHealthyPolicies guards
-        // against: a registration with a Healthy policy (as AddCheckPlus/AddCheckLinkTo always
-        // produce) but whose name was left out of the `names` list passed to AddHealthChecksPlus -
-        // that list is what seeds the cache (CacheHealthCheckPlus.InitCache), so a name missing
-        // from it has no cache entry. Left unchecked, every later request/cycle would hit
-        // CacheHealthCheckPlus.FullStatus's raw dictionary indexer for that name and crash with an
-        // unhandled KeyNotFoundException.
-        private static void ValidateCacheRegistrations(IEnumerable<HealthCheckRegistration> registrations, CacheHealthCheckPlus cacheStatus)
-        {
-            var missing = registrations
-                .Where(r => !cacheStatus.IsRegistered(r.Name))
-                .Select(r => r.Name)
-                .ToArray();
-
-            if (missing.Length > 0)
-            {
-                throw new InvalidOperationException(
-                    "The following health checks are registered but missing from the names list passed to AddHealthChecksPlus: " +
-                    string.Join(", ", missing) +
-                    ". Add them to that list before building the service provider.");
-            }
-        }
-
-        // The opposite direction of the same misconfiguration ValidateCacheRegistrations guards
-        // against: a name in the `names` list passed to AddHealthChecksPlus with no corresponding
-        // health check registration. Left unchecked, it would sit seeded Healthy in the cache
-        // forever - nothing ever updates it, since no registration ever runs for it - and could
-        // reach publishers/Status() as a permanently-Healthy phantom check.
-        private static void ValidateNoPhantomCacheEntries(IEnumerable<HealthCheckRegistration> registrations, CacheHealthCheckPlus cacheStatus)
-        {
-            var registeredNames = new HashSet<string>(registrations.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
-
-            var phantoms = cacheStatus.RegisteredNames
-                .Where(name => !registeredNames.Contains(name))
-                .ToArray();
-
-            if (phantoms.Length > 0)
-            {
-                throw new InvalidOperationException(
-                    "The following names were passed to AddHealthChecksPlus but have no matching health check registration: " +
-                    string.Join(", ", phantoms) +
-                    ". Register a matching check with AddCheckPlus/AddCheckLinkTo, or remove them from that list.");
             }
         }
 

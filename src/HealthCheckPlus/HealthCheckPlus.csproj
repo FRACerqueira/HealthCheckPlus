@@ -11,12 +11,6 @@
 		<Version>4.0.0</Version>
 	</PropertyGroup>
 
-	<Target DependsOnTargets="ResolveReferences" Name="CopyProjectReferencesToPackage">
-		<ItemGroup>
-			<BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
-		</ItemGroup>
-	</Target>
-	
 	<PropertyGroup>
 		<Authors>Fernando Cerqueira</Authors>
 		<Description>HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.</Description>
@@ -33,7 +27,6 @@
 		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
 		<IncludeSymbols>True</IncludeSymbols>
 		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
-		<TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -56,10 +49,19 @@
 	<ItemGroup>
 		<FrameworkReference Include="Microsoft.AspNetCore.App" />
 	</ItemGroup>
+	<!--
+		Plain ProjectReference, no special metadata: the previous CopyProjectReferencesToPackage
+		target embedded HealthCheckPlus.Abstractions.dll directly into this package's lib/ folder
+		while emitting an empty <dependencies> group in the nuspec - a consumer who also installed
+		the separately-documented HealthCheckPlus.Abstractions package (as the README instructs for
+		projects that only need the abstractions) ended up with two independent copies of the same
+		types, with no NuGet version constraint tying them together. Letting `dotnet pack` apply
+		its default behavior for a ProjectReference to another packable project instead declares a
+		real `<dependency>` on HealthCheckPlus.Abstractions at this project's own Version - the two
+		packages are versioned together in this repo, so that dependency is always satisfied by the
+		matching release.
+	-->
 	<ItemGroup>
-		<ProjectReference Include="..\HealthCheckPlus.Abstractions\HealthCheckPlus.Abstractions.csproj">
-			<ReferenceOutputAssembly>true</ReferenceOutputAssembly>
-			<IncludeAssets>HealthCheckPlus.Abstractions.dll</IncludeAssets>
-		</ProjectReference>
+		<ProjectReference Include="..\HealthCheckPlus.Abstractions\HealthCheckPlus.Abstractions.csproj" />
 	</ItemGroup>
 </Project>

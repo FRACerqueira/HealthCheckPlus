@@ -7,8 +7,6 @@ namespace HealthCheckPlusDemo
 {
     public class Program
     {
-        private static readonly string[] names = ["HcTest1", "HcTest2", "Redis"];
-
         public static void Main(string[] args)
         {
             IStateHealthChecksPlus? _stateHealthChecksPlus;
@@ -22,7 +20,7 @@ namespace HealthCheckPlusDemo
 
             builder.Services
                 //Add HealthCheckPlus
-                .AddHealthChecksPlus(names)
+                .AddHealthChecksPlus()
                 //your custom HC    
                 .AddCheckPlus<HcTeste1>("HcTest1")
                 //your custom HC    

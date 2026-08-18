@@ -272,24 +272,22 @@ namespace HealthCheckPlus.Internal
             }
             var itemres = new HealthCheckResult(status, item.LastResult.Description);
             Update(key, HealthCheckTrigger.SwitchTo, itemres, DateTime.UtcNow, TimeSpan.Zero);
+
+            // Update() alone only refreshes Status(null)'s live aggregate. A named aggregate
+            // registered via AddStatusName (Status(name)) is otherwise only refreshed by
+            // UpdateStatusName(), which the foreground/background execution paths call on every
+            // request/cycle - but a manual override happens entirely outside that flow, so without
+            // this call a consumer gating traffic on Status("someName") after catching an exception
+            // and calling SwitchToUnhealthy/SwitchToDegraded could keep seeing the pre-override
+            // status until the next request or background cycle happens to run, however long that
+            // takes.
+            UpdateStatusName();
         }
 
         public ItemCacheHealth FullStatus(string keydep)
         {
             return GetItemOrThrow(keydep);
         }
-
-        // Used by DefaultHealthCheckServicePlus's constructor-time validation to fail fast when a
-        // registration's name was left out of the `names` list passed to AddHealthChecksPlus,
-        // instead of throwing KeyNotFoundException from FullStatus's raw indexer above on every
-        // later request/background cycle.
-        public bool IsRegistered(string name) => _statusDeps.ContainsKey(name);
-
-        // Used by DefaultHealthCheckServicePlus's constructor-time validation to fail fast on the
-        // opposite misconfiguration: a name in the `names` list passed to AddHealthChecksPlus with
-        // no corresponding health check registration - it would otherwise sit seeded Healthy in
-        // the cache forever, with nothing ever updating it.
-        public IEnumerable<string> RegisteredNames => _statusDeps.Keys;
 
         // FullStatus/StatusResult/SwithState/ConvertToPlus used to hit ConcurrentDictionary's raw
         // indexer for an unknown check name, throwing an unhelpful KeyNotFoundException instead of

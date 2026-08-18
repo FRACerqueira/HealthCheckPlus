@@ -143,19 +143,17 @@ namespace Microsoft.Extensions.DependencyInjection
         }
 
         /// <summary>
-        /// Register HealthChecksPlus Service
+        /// Register HealthChecksPlus Service. The set of tracked health checks is taken directly
+        /// from whatever health checks end up registered (via <see cref="AddCheckPlus{T}"/>,
+        /// <see cref="AddCheckLinkTo"/>, or any native <see cref="IHealthChecksBuilder"/>
+        /// extension) by the time the service provider first resolves the check state - there is
+        /// no separate name list to pass in or keep in sync.
         /// </summary>
         /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
-        /// <param name="names">List of HealthChecks names</param>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
-        public static IHealthChecksBuilder AddHealthChecksPlus(this IServiceCollection sc,IEnumerable<string> names)
+        public static IHealthChecksBuilder AddHealthChecksPlus(this IServiceCollection sc)
         {
             ArgumentNullException.ThrowIfNull(sc);
-            ArgumentNullException.ThrowIfNull(names);
-            if (!names.Any())
-            {
-                throw new ArgumentException("Not any List of HealthChecks names");
-            }
             GetOrCreateState(sc).AddedHealthChecksPlus = true;
 
             IHealthChecksBuilder ihb = sc.AddHealthChecks();
@@ -173,8 +171,18 @@ namespace Microsoft.Extensions.DependencyInjection
             //add custom DefaultHealthCheckServicePlus
             sc.TryAddSingleton<IStateHealthChecksPlus>((sp) =>
             {
+                // IOptions<HealthCheckServiceOptions>.Value is only evaluated here, on first
+                // resolution of this singleton - by then every AddCheckPlus/AddCheckLinkTo/native
+                // AddCheck call made anywhere during startup has already run, so the full set of
+                // registered checks is already known. Seeding from it directly (instead of a
+                // separately user-supplied names list) makes it impossible for the cache to
+                // diverge from what was actually registered - the two constructor validations
+                // that used to exist purely to catch that divergence (a name with no matching
+                // registration, or vice versa) are gone because the failure mode they guarded
+                // against can no longer happen.
+                var registrations = sp.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations;
                 CacheHealthCheckPlus inst = new(sp.GetService<ILogger<CacheHealthCheckPlus>>());
-                inst.InitCache(names);
+                inst.InitCache(registrations.Select(r => r.Name));
                 return inst;
             });
             sc.TryAddSingleton<HealthCheckService, DefaultHealthCheckServicePlus>();

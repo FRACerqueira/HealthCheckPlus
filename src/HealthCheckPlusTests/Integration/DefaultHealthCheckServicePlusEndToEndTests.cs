@@ -39,7 +39,7 @@ namespace HealthCheckPlusTests.Integration
                 {
                     services.AddLogging();
                     services.AddSingleton(check);
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddDegradedPolicy("Test1", TimeSpan.FromSeconds(1));
                 },
@@ -78,7 +78,7 @@ namespace HealthCheckPlusTests.Integration
                 {
                     services.AddLogging();
                     services.AddSingleton(check);
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddUnhealthyPolicy("Test1", TimeSpan.FromSeconds(1));
                 },

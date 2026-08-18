@@ -122,72 +122,90 @@ namespace HealthCheckPlus.Internal
                     }
                     if (runpublish)
                     {
-                        var report = FilterReportByPredicate(_healthCheckService.CreateReport());
-                        if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
+                        // CreateReport()/FilterReportByPredicate (which invokes the consumer-
+                        // supplied Predicate) used to sit completely outside any try/catch in this
+                        // loop - unlike every other step here, which already has one (the dispatch
+                        // try/catch just below, and the check-execution try/catch above). A throw
+                        // here (e.g. a Predicate that itself throws) propagated out of this method
+                        // entirely, faulting the fire-and-forget Task this loop runs on with no log
+                        // and no metric: checks stopped running and publishers stopped firing
+                        // forever, with nothing showing the service was dead. The dispatch
+                        // try/catch below never rethrows, so this outer catch only ever triggers
+                        // for a failure in building/filtering the report itself.
+                        try
                         {
-                            runpublish = false;
-                            // The whole publish cycle is skipped here, before any per-publisher
-                            // dispatch, so record the "filtered by WhenReportChange" outcome for
-                            // each registered publisher rather than leaving it invisible.
-                            foreach (var publisher in _publishers)
+                            var report = FilterReportByPredicate(_healthCheckService.CreateReport());
+                            if (_optionsBackGround.Value.Publishing.WhenReportChange && SameReport(report))
                             {
-                                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.SkippedNoChange));
+                                runpublish = false;
+                                // The whole publish cycle is skipped here, before any per-publisher
+                                // dispatch, so record the "filtered by WhenReportChange" outcome for
+                                // each registered publisher rather than leaving it invisible.
+                                foreach (var publisher in _publishers)
+                                {
+                                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.SkippedNoChange));
+                                }
+                            }
+                            if (runpublish)
+                            {
+                                _countIdletopublish = 0;
+
+                                CancellationTokenSource? publishCancellation = null;
+                                try
+                                {
+                                    // Bound publisher dispatch by the same per-cycle Timeout that
+                                    // already bounds check execution above. Without this, a publisher
+                                    // with no timeout of its own (e.g. an HTTP call to an endpoint that
+                                    // never responds) blocked Task.WhenAll below indefinitely, freezing
+                                    // the entire background loop - checks included, not just
+                                    // publishing - since nothing else here ever cancelled it.
+                                    publishCancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
+                                    publishCancellation.CancelAfter(_optionsBackGround.Value.Timeout);
+                                    var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, publishCancellation.Token)).ToArray();
+                                    await Task.WhenAll(tasks).ConfigureAwait(false);
+
+                                    // Only commit the new hash once dispatch has actually succeeded.
+                                    // Committing it unconditionally (as before) meant a failed dispatch
+                                    // still marked this status as "already published" - the next cycle's
+                                    // SameReport check would then match and skip retrying, permanently
+                                    // losing the notification for that status change until it changed
+                                    // again.
+                                    _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
+                                }
+                                catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
+                                {
+                                    // Shutting down - let the loop's natural exit path (the Task.Delay
+                                    // below) observe the cancellation, same as the check execution
+                                    // block above.
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Each failing publisher already logged its own error/timeout and
+                                    // recorded the "error" metric inside RunPublisherAsync (with which
+                                    // publisher, duration, and exception) - this also covers a publisher
+                                    // that didn't finish within Timeout, since RunPublisherAsync's own
+                                    // timeout catch (observing this same linked token) logs/metrics it
+                                    // and rethrows. This log adds the signal that was otherwise missing:
+                                    // that the background loop is continuing despite the failure above,
+                                    // instead of leaving no operational trace of whether it's still
+                                    // alive or has silently died - without this try/catch (unlike the
+                                    // check-execution block above it, which already has one),
+                                    // Task.WhenAll's rethrown exception would fault the loop's
+                                    // fire-and-forget Task silently.
+                                    Log.HealthCheckPublisherCycleError(_logger, ex);
+
+                                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublisherCycleFailedButContinued));
+                                }
+                                finally
+                                {
+                                    publishCancellation?.Dispose();
+                                }
                             }
                         }
-                        if (runpublish)
+                        catch (Exception ex)
                         {
-                            _countIdletopublish = 0;
-
-                            CancellationTokenSource? publishCancellation = null;
-                            try
-                            {
-                                // Bound publisher dispatch by the same per-cycle Timeout that
-                                // already bounds check execution above. Without this, a publisher
-                                // with no timeout of its own (e.g. an HTTP call to an endpoint that
-                                // never responds) blocked Task.WhenAll below indefinitely, freezing
-                                // the entire background loop - checks included, not just
-                                // publishing - since nothing else here ever cancelled it.
-                                publishCancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
-                                publishCancellation.CancelAfter(_optionsBackGround.Value.Timeout);
-                                var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, publishCancellation.Token)).ToArray();
-                                await Task.WhenAll(tasks).ConfigureAwait(false);
-
-                                // Only commit the new hash once dispatch has actually succeeded.
-                                // Committing it unconditionally (as before) meant a failed dispatch
-                                // still marked this status as "already published" - the next cycle's
-                                // SameReport check would then match and skip retrying, permanently
-                                // losing the notification for that status change until it changed
-                                // again.
-                                _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
-                            }
-                            catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
-                            {
-                                // Shutting down - let the loop's natural exit path (the Task.Delay
-                                // below) observe the cancellation, same as the check execution
-                                // block above.
-                            }
-                            catch (Exception ex)
-                            {
-                                // Each failing publisher already logged its own error/timeout and
-                                // recorded the "error" metric inside RunPublisherAsync (with which
-                                // publisher, duration, and exception) - this also covers a publisher
-                                // that didn't finish within Timeout, since RunPublisherAsync's own
-                                // timeout catch (observing this same linked token) logs/metrics it
-                                // and rethrows. This log adds the signal that was otherwise missing:
-                                // that the background loop is continuing despite the failure above,
-                                // instead of leaving no operational trace of whether it's still
-                                // alive or has silently died - without this try/catch (unlike the
-                                // check-execution block above it, which already has one),
-                                // Task.WhenAll's rethrown exception would fault the loop's
-                                // fire-and-forget Task silently.
-                                Log.HealthCheckPublisherCycleError(_logger, ex);
-
-                                SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublisherCycleFailedButContinued));
-                            }
-                            finally
-                            {
-                                publishCancellation?.Dispose();
-                            }
+                            Log.PublishReportBuildError(_logger, ex);
+                            SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublishReportBuildFailed));
                         }
                     }
                 }
@@ -370,6 +388,7 @@ namespace HealthCheckPlus.Internal
             public const int HealthCheckPlusBackGroundErrorId = 104;
             public const int HealthCheckPlusBackGroundWarningId = 105;
             public const int HealthCheckPlusBackGroundStopCancellationErrorId = 106;
+            public const int HealthCheckPlusBackGroundPublishReportBuildErrorId = 107;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
             public const string HealthCheckProcessingBeginName = "HealthCheckPlusBackGroundProcessingBegin";
@@ -377,6 +396,7 @@ namespace HealthCheckPlus.Internal
             public const string HealthCheckErrorName = "HealthCheckPlusBackGroundError";
             public const string HealthCheckTimeoutName = "HealthCheckPlusBackGroundTimeout";
             public const string HealthCheckStopCancellationErrorName = "HealthCheckPlusBackGroundStopCancellationError";
+            public const string HealthCheckPublishReportBuildErrorName = "HealthCheckPlusBackGroundPublishReportBuildError";
 
         }
 
@@ -425,6 +445,11 @@ namespace HealthCheckPlus.Internal
                 "Cancelling the HealthCheckPlus Background-Service's stopping token threw; shutdown continues regardless.",
                 EventName = EventIds.HealthCheckStopCancellationErrorName)]
             public static partial void StopCancellationError(ILogger logger, Exception exception);
+
+            [LoggerMessage(EventIds.HealthCheckPlusBackGroundPublishReportBuildErrorId, LogLevel.Error,
+                "Building the report to publish this cycle failed (e.g. the configured Predicate threw); no publishers were invoked this cycle. HealthCheckPlus Background-Service will continue running.",
+                EventName = EventIds.HealthCheckPublishReportBuildErrorName)]
+            public static partial void PublishReportBuildError(ILogger logger, Exception exception);
         }
 #pragma warning restore IDE0079
 

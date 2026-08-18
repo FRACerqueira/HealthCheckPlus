@@ -79,7 +79,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddLogging();
                     services.AddSingleton<IHealthCheckPublisher, NoopPublisher>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -127,7 +127,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddSingleton<IHealthCheckPublisher, NoopPublisherA>();
                     services.AddSingleton<IHealthCheckPublisher, NoopPublisherB>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -168,7 +168,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddLogging();
                     services.AddSingleton<IHealthCheckPublisher, ConditionalPublisher>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -212,7 +212,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddSingleton(check);
                     services.AddSingleton<IHealthCheckPublisher, ThrowingPublisher>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -277,7 +277,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddLogging(builder => builder.AddProvider(loggerProvider));
                     services.AddSingleton<IHealthCheckPublisher, ThrowingPublisher>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -331,7 +331,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddSingleton(check);
                     services.AddSingleton<IHealthCheckPublisher, MetricsThrowingTestPublisher>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<CountingCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {
@@ -388,7 +388,7 @@ namespace HealthCheckPlusTests.Integration
                     services.AddSingleton<IHealthCheckPublisher, NamespaceOne.SameNamePublisher>();
                     services.AddSingleton<IHealthCheckPublisher, NamespaceTwo.SameNamePublisher>();
 
-                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    var ihb = services.AddHealthChecksPlus();
                     ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
                     ihb.AddBackgroundPolicy(opt =>
                     {

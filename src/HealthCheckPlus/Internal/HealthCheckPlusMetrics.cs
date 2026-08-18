@@ -35,7 +35,8 @@ namespace HealthCheckPlus.Internal
         AdoptedCheckDisposeFailed,
         PublisherCycleFailedButContinued,
         UpdateResultDropped,
-        CheckExecutionAborted
+        CheckExecutionAborted,
+        PublishReportBuildFailed
     }
 
     internal static class HealthCheckPlusMetrics
@@ -137,6 +138,7 @@ namespace HealthCheckPlus.Internal
                 AnomalyReason.PublisherCycleFailedButContinued => "publisher_cycle_failed_but_continued",
                 AnomalyReason.UpdateResultDropped => "update_result_dropped",
                 AnomalyReason.CheckExecutionAborted => "check_execution_aborted",
+                AnomalyReason.PublishReportBuildFailed => "publish_report_build_failed",
                 _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
             };
 
