@@ -18,7 +18,7 @@ public static class HealthChecksPlusExtension
 | static [AddCheckLinkTo](HealthChecksPlusExtension/AddCheckLinkTo.md)(…) | Register then external(package import) dependence health check to run. the health check must added in IHealthChecksBuilder. |
 | static [AddCheckPlus&lt;T&gt;](HealthChecksPlusExtension/AddCheckPlus.md)(…) | Register then dependence health check to run. |
 | static [AddDegradedPolicy](HealthChecksPlusExtension/AddDegradedPolicy.md)(…) | Register Degraded Policy for the health check |
-| static [AddHealthChecksPlus](HealthChecksPlusExtension/AddHealthChecksPlus.md)(…) | Register HealthChecksPlus Service |
+| static [AddHealthChecksPlus](HealthChecksPlusExtension/AddHealthChecksPlus.md)(…) | Register HealthChecksPlus Service. The set of tracked health checks is taken directly from whatever health checks end up registered (via [`AddCheckPlus`](./HealthChecksPlusExtension/AddCheckPlus.md), [`AddCheckLinkTo`](./HealthChecksPlusExtension/AddCheckLinkTo.md), or any native IHealthChecksBuilder extension) by the time the service provider first resolves the check state - there is no separate name list to pass in or keep in sync. |
 | static [AddUnhealthyPolicy](HealthChecksPlusExtension/AddUnhealthyPolicy.md)(…) | Register Unhealthy Policy for the health check |
 
 ### See Also

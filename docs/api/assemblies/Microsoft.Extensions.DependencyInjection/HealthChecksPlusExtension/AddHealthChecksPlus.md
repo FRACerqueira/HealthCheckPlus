@@ -4,17 +4,15 @@
 </br>
 
 
-#### Register HealthChecksPlus Service
+#### Register HealthChecksPlus Service. The set of tracked health checks is taken directly from whatever health checks end up registered (via [`AddCheckPlus`](./AddCheckPlus.md), [`AddCheckLinkTo`](./AddCheckLinkTo.md), or any native IHealthChecksBuilder extension) by the time the service provider first resolves the check state - there is no separate name list to pass in or keep in sync.
 
 ```csharp
-public static IHealthChecksBuilder AddHealthChecksPlus(this IServiceCollection sc, 
-    IEnumerable<string> names)
+public static IHealthChecksBuilder AddHealthChecksPlus(this IServiceCollection sc)
 ```
 
 | parameter | description |
 | --- | --- |
 | sc | The IServiceCollection. |
-| names | List of HealthChecks names |
 
 ### Return Value
 

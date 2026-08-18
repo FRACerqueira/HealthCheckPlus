@@ -12,7 +12,7 @@ public Func<HealthCheckRegistration, bool>? Predicate { get; set; }
 
 ### Remarks
 
-If `Predicate` is `null`, will run all registered health checks - this is the default behavior. To run a subset of health checks, provide a function that filters the set of checks.
+Defaults to a predicate that matches every registered health check. Explicitly setting `Predicate` to `null` is also treated as "run every check" everywhere it's consulted. To run a subset of health checks, provide a function that filters the set of checks.
 
 ### See Also
 
