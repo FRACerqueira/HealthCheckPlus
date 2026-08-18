@@ -258,6 +258,45 @@ namespace HealthCheckPlusTests.Integration
                 m.InstrumentName == "healthcheckplus.anomalies" && (string?)m.Tags["healthcheckplus.anomaly.reason"] == "publisher_cycle_failed_but_continued");
         }
 
+        // Regression test: _hashlaststatus used to be committed to the new report's hash *before*
+        // dispatching publishers, not after they actually succeeded. With WhenReportChange enabled,
+        // a publish attempt that failed still left the cache believing "this status was already
+        // published" - the very next cycle's SameReport check would then match (the report itself
+        // never changed) and skip retrying entirely, permanently losing the notification for that
+        // status until it changed again. This check's status never changes here, so the *only* way
+        // more than one publish attempt can happen with WhenReportChange = true is if a failed
+        // attempt is retried instead of being mistaken for "no change".
+        [Fact]
+        public async Task BackgroundService_ShouldRetryPublishing_WhenThePreviousAttemptFailed()
+        {
+            var loggerProvider = new CapturingLoggerProvider();
+
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging(builder => builder.AddProvider(loggerProvider));
+                    services.AddSingleton<IHealthCheckPublisher, ThrowingPublisher>();
+
+                    var ihb = services.AddHealthChecksPlus(["Test1"]);
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Test1");
+                    ihb.AddBackgroundPolicy(opt =>
+                    {
+                        opt.Delay = TimeSpan.FromMilliseconds(100);
+                        opt.Idle = TimeSpan.FromSeconds(1);
+                        opt.AllStatusPeriod(TimeSpan.FromSeconds(1));
+                        opt.Publishing = new PublishingOptions { AfterIdleCount = 1, WhenReportChange = true };
+                    });
+                },
+                _ => { });
+
+            await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            var errorLogCount = loggerProvider.Entries.Count(e => e.EventId.Name == "HealthCheckPublisherError");
+            Assert.True(errorLogCount > 1,
+                $"Expected more than one publish attempt despite WhenReportChange and an unchanging report (a failed attempt must be retried, not mistaken for 'no change'), got {errorLogCount}.");
+        }
+
         // Regression test: RecordPublisherInvocation's "published" call in RunPublisherAsync used
         // to be the last statement inside its own try block, with no guard of its own - a throwing
         // MeterListener there was caught by the *publisher-failure* catch below it, misattributing

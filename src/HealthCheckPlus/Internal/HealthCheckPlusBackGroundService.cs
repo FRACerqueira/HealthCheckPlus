@@ -69,8 +69,9 @@ namespace HealthCheckPlus.Internal
             }
             catch (OperationCanceledException)
             {
-                // This is a cancellation - if the app is shutting down we want to ignore it. Otherwise, it's
-                // a timeout and we want to log it.
+                // _stopping.Token is the only cancellation source for this initial delay - unlike
+                // the per-cycle waits below, there's no separate timeout token here, so this is
+                // always a shutdown, never a timeout to log.
             }
             while (!_stopping.IsCancellationRequested)
             {
@@ -135,7 +136,6 @@ namespace HealthCheckPlus.Internal
                         }
                         if (runpublish)
                         {
-                            _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
                             _countIdletopublish = 0;
 
                             CancellationTokenSource? publishCancellation = null;
@@ -151,6 +151,14 @@ namespace HealthCheckPlus.Internal
                                 publishCancellation.CancelAfter(_optionsBackGround.Value.Timeout);
                                 var tasks = _publishers.Select(publisher => RunPublisherAsync(publisher, report, publishCancellation.Token)).ToArray();
                                 await Task.WhenAll(tasks).ConfigureAwait(false);
+
+                                // Only commit the new hash once dispatch has actually succeeded.
+                                // Committing it unconditionally (as before) meant a failed dispatch
+                                // still marked this status as "already published" - the next cycle's
+                                // SameReport check would then match and skip retrying, permanently
+                                // losing the notification for that status change until it changed
+                                // again.
+                                _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
                             }
                             catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
                             {

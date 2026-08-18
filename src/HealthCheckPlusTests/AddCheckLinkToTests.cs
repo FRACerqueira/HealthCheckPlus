@@ -160,5 +160,45 @@ namespace HealthCheckPlusTests
 
             Assert.Equal(HealthStatus.Healthy, result.Status);
         }
+
+        private sealed class ScopedDisposalMarker : IDisposable
+        {
+            public bool Disposed { get; private set; }
+            public void Dispose() => Disposed = true;
+        }
+
+        // Regression test: the adoption factory creates its own scope (ownedScope) before invoking
+        // the original registration's factory inside it. If that original factory throws, the
+        // WrapperBaseHealthCheckPlus that would take ownership of ownedScope is never constructed,
+        // so nothing disposes it - leaking whatever it resolved (e.g. a scoped DbContext) for the
+        // rest of the process's life, once per failed construction attempt.
+        [Fact]
+        public void AddCheckLinkTo_ShouldNotLeakTheOwnedScope_WhenConstructingTheAdoptedCheckThrows()
+        {
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddScoped<ScopedDisposalMarker>();
+
+            ScopedDisposalMarker? capturedMarker = null;
+
+            var ihb = services.AddHealthChecksPlus(["Adopted"]);
+            ihb.Add(new HealthCheckRegistration("Original", sp =>
+            {
+                capturedMarker = sp.GetRequiredService<ScopedDisposalMarker>();
+                throw new InvalidOperationException("simulated construction failure");
+            }, null, null));
+            ihb.AddCheckLinkTo("Adopted", "Original");
+
+            using var provider = services.BuildServiceProvider();
+            var registration = provider.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations
+                .Single(r => r.Name == "Adopted");
+
+            using var callerScope = provider.CreateScope();
+            Assert.Throws<InvalidOperationException>(() => registration.Factory(callerScope.ServiceProvider));
+
+            Assert.NotNull(capturedMarker);
+            Assert.True(capturedMarker!.Disposed,
+                "The scope owned by the adoption factory was not disposed after constructing the adopted check failed, leaking it.");
+        }
     }
 }

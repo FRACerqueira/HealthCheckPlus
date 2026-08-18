@@ -29,7 +29,18 @@ namespace HealthCheckPlus.Internal
         public CacheHealthCheckPlus(ILogger<CacheHealthCheckPlus>? logger = null)
         {
             _logger = logger ?? NullLogger<CacheHealthCheckPlus>.Instance;
-            _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>();
+            // OrdinalIgnoreCase to match the other places a check name is compared case-insensitively
+            // - ValidateRegistrations/HealthReport.Entries (OrdinalIgnoreCase) and AddCheckLinkTo's
+            // own name matching (CurrentCultureIgnoreCase). Note this does NOT extend to policy
+            // lookup (FindPolicy/ValidateHealthyPolicies/ValidatePolicyUniqueness), which still
+            // compares names ordinally/case-sensitively - a pre-existing inconsistency, not fixed
+            // here, that can silently miss a policy for a check whose registered Name differs only in
+            // casing from the name passed to AddUnhealthyPolicy/AddDegradedPolicy. A case-sensitive
+            // cache here would additionally let a name in AddHealthChecksPlus's `names` list that
+            // differs only in casing from its registration's Name be rejected as a phantom/missing
+            // entry by the fail-fast validations, even though HealthReport.Entries and
+            // AddCheckLinkTo already treat them as the same check.
+            _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>(StringComparer.OrdinalIgnoreCase);
             _statusName = new ConcurrentDictionary<string, HealthStatus>();
             _statusFunction = [];
             _dateregister = DateTime.UtcNow;
@@ -93,6 +104,9 @@ namespace HealthCheckPlus.Internal
 
         public HealthReport CreateReport()
         {
+            // OrdinalIgnoreCase to match the equivalent dictionary DefaultHealthCheckServicePlus.
+            // CheckHealthPlusAsync builds for its own HealthReport - a HealthReport.Entries lookup
+            // should behave the same regardless of which code path produced the report.
             var entries = _statusDeps.ToDictionary(
                 kvp => kvp.Key,
                 kvp => new HealthReportEntry(
@@ -101,7 +115,8 @@ namespace HealthCheckPlus.Internal
                     kvp.Value.Duration,
                     kvp.Value.LastResult.Exception,
                     kvp.Value.LastResult.Data,
-                    kvp.Value.Tags)
+                    kvp.Value.Tags),
+                StringComparer.OrdinalIgnoreCase
             );
             return new HealthReport(entries, TimeSpan.Zero);
         }
@@ -152,6 +167,26 @@ namespace HealthCheckPlus.Internal
 
                 item.Running = true;
                 return true;
+            }
+        }
+
+        // Releases the Running flag TryBeginRun set, without touching the check's last known
+        // result - used when a scheduled execution never actually completed because the ambient
+        // cancellationToken fired (an HTTP client disconnected, or a background cycle timed out),
+        // NOT because the check itself failed - so every other reader (other requests, background
+        // publishers, IStateHealthChecksPlus.Status) keeps seeing the last real result instead of a
+        // synthetic one manufactured for an attempt that never ran. DateRef is still advanced to
+        // dateRef (normally "now"), exactly like a real Update() would: leaving it untouched would
+        // make the check immediately "due" again on every subsequent poll, and a check that keeps
+        // getting cancelled (e.g. one that's chronically slower than the background cycle Timeout)
+        // would pile up a fresh concurrent execution attempt every cycle with no backoff at all,
+        // instead of respecting its own policy period like every other outcome does.
+        public void ReleaseRunning(string key, DateTime dateRef)
+        {
+            if (_statusDeps.TryGetValue(key, out var item))
+            {
+                item.Running = false;
+                item.DateRef = dateRef;
             }
         }
 
@@ -240,6 +275,12 @@ namespace HealthCheckPlus.Internal
         // instead of throwing KeyNotFoundException from FullStatus's raw indexer above on every
         // later request/background cycle.
         public bool IsRegistered(string name) => _statusDeps.ContainsKey(name);
+
+        // Used by DefaultHealthCheckServicePlus's constructor-time validation to fail fast on the
+        // opposite misconfiguration: a name in the `names` list passed to AddHealthChecksPlus with
+        // no corresponding health check registration - it would otherwise sit seeded Healthy in
+        // the cache forever, with nothing ever updating it.
+        public IEnumerable<string> RegisteredNames => _statusDeps.Keys;
 
         // FullStatus/StatusResult/SwithState/ConvertToPlus used to hit ConcurrentDictionary's raw
         // indexer for an unknown check name, throwing an unhelpful KeyNotFoundException instead of

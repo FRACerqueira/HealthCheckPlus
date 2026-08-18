@@ -320,7 +320,23 @@ namespace Microsoft.Extensions.DependencyInjection
                             // first execution. This owned scope is disposed together with the
                             // wrapper in DefaultHealthCheckServicePlus.Dispose().
                             var ownedScope = sp.GetRequiredService<IServiceScopeFactory>().CreateScope();
-                            return new WrapperBaseHealthCheckPlus(original.Factory(ownedScope.ServiceProvider), ownedScope);
+                            try
+                            {
+                                return new WrapperBaseHealthCheckPlus(original.Factory(ownedScope.ServiceProvider), ownedScope);
+                            }
+                            catch
+                            {
+                                // original.Factory throwing must not leak the scope just created for
+                                // it - the wrapper that would otherwise own (and dispose) it was never
+                                // constructed. Known, accepted limitation: Lazy<T>'s default mode
+                                // (deliberately kept - see ExternalCheck's own comment) caches this
+                                // exception, so a failing construction disables this adopted check
+                                // until the process restarts; retrying safely would require giving up
+                                // the guarantee that two concurrent callers can never each construct a
+                                // real instance.
+                                ownedScope.Dispose();
+                                throw;
+                            }
                         })).Value,
                         original.FailureStatus,
                         original.Tags,

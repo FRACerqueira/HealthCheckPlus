@@ -173,16 +173,18 @@ namespace HealthCheckPlus.options
         /// The default value is 30 seconds.
         /// </summary>
         /// <remarks>
-        /// The <see cref="Timeout"/> cannot be set to a value lower than 1 second.
+        /// The <see cref="Timeout"/> cannot be set to a value lower than 1 second, except for
+        /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> itself, which disables the
+        /// timeout entirely.
         /// </remarks>
         public TimeSpan Timeout
         {
             get => _timeout;
             set
             {
-                if (value < TimeSpan.FromSeconds(1))
+                if (value != System.Threading.Timeout.InfiniteTimeSpan && value < TimeSpan.FromSeconds(1))
                 {
-                    throw new ArgumentException($"The {nameof(Timeout)} must be greater than or equal to one second.", nameof(value));
+                    throw new ArgumentException($"The {nameof(Timeout)} must be greater than or equal to one second, or Timeout.InfiniteTimeSpan for no timeout.", nameof(value));
                 }
                 _timeout = value;
             }
@@ -215,9 +217,10 @@ namespace HealthCheckPlus.options
         /// Gets or sets a predicate that is used to filter the set of health checks executed.
         /// </summary>
         /// <remarks>
-        /// If <see cref="Predicate"/> is <c>null</c>, will run all
-        /// registered health checks - this is the default behavior. To run a subset of health checks,
-        /// provide a function that filters the set of checks.
+        /// Defaults to a predicate that matches every registered health check. Explicitly setting
+        /// <see cref="Predicate"/> to <c>null</c> is also treated as "run every check" everywhere
+        /// it's consulted. To run a subset of health checks, provide a function that filters the
+        /// set of checks.
         /// </remarks>
         public Func<HealthCheckRegistration, bool>? Predicate { get; set; }
 

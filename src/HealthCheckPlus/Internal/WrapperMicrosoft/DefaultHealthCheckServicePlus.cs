@@ -61,6 +61,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             ValidateHealthyPolicies(_options.Value.Registrations, _policies);
             ValidateCacheRegistrations(_options.Value.Registrations, _cacheStatus);
+            ValidateNoPhantomCacheEntries(_options.Value.Registrations, _cacheStatus);
             ValidatePolicyUniqueness(_policies);
         }
 
@@ -96,19 +97,24 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     // anywhere that it happened.
                     Log.HealthCheckDisposeError(_logger, name, ex);
 
-                    try
-                    {
-                        HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.AdoptedCheckDisposeFailed);
-                    }
-                    catch (Exception metricsEx)
-                    {
-                        // Metrics must never be able to break Dispose() either (same MeterListener
-                        // risk as everywhere else metrics are recorded). Logged explicitly here
-                        // rather than swallowed, since the log above is about the dispose failure,
-                        // not about this separate metrics-recording failure.
-                        Log.HealthCheckMetricsRecordingError(_logger, metricsEx);
-                    }
+                    SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.AdoptedCheckDisposeFailed));
                 }
+            }
+        }
+
+        // A MeterListener callback (e.g. a third-party OTel exporter) runs synchronously on this
+        // thread, so a bug in it must never be allowed to break Dispose() or check execution either
+        // (same risk as everywhere else metrics are recorded). Every RecordAnomaly call in this
+        // class goes through here.
+        private void SafeRecordMetric(Action recordMetric)
+        {
+            try
+            {
+                recordMetric();
+            }
+            catch (Exception metricsEx)
+            {
+                Log.HealthCheckMetricsRecordingError(_logger, metricsEx);
             }
         }
 
@@ -151,6 +157,28 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     "The following health checks are registered but missing from the names list passed to AddHealthChecksPlus: " +
                     string.Join(", ", missing) +
                     ". Add them to that list before building the service provider.");
+            }
+        }
+
+        // The opposite direction of the same misconfiguration ValidateCacheRegistrations guards
+        // against: a name in the `names` list passed to AddHealthChecksPlus with no corresponding
+        // health check registration. Left unchecked, it would sit seeded Healthy in the cache
+        // forever - nothing ever updates it, since no registration ever runs for it - and could
+        // reach publishers/Status() as a permanently-Healthy phantom check.
+        private static void ValidateNoPhantomCacheEntries(IEnumerable<HealthCheckRegistration> registrations, CacheHealthCheckPlus cacheStatus)
+        {
+            var registeredNames = new HashSet<string>(registrations.Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+
+            var phantoms = cacheStatus.RegisteredNames
+                .Where(name => !registeredNames.Contains(name))
+                .ToArray();
+
+            if (phantoms.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "The following names were passed to AddHealthChecksPlus but have no matching health check registration: " +
+                    string.Join(", ", phantoms) +
+                    ". Register a matching check with AddCheckPlus/AddCheckLinkTo, or remove them from that list.");
             }
         }
 
@@ -309,32 +337,63 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 finally
                 {
                     // ScheduleIfDue/TryBeginRun already marked every one of these checks Running
-                    // before the tasks above were started, and Update() is the only thing that
-                    // clears it. That must still happen here even when Task.WhenAll faults - the
-                    // ambient cancellationToken firing mid-flight (e.g. httpContext.RequestAborted)
-                    // is deliberately not swallowed by RunCheckAsync - otherwise every check in
-                    // this batch would stay marked Running forever and never be scheduled again.
-                    // The exception, if any, still propagates normally once this finally block
-                    // completes, so callers see the same behavior as before.
+                    // before the tasks above were started, and Running must still be released here
+                    // even when Task.WhenAll faults - the ambient cancellationToken firing
+                    // mid-flight (e.g. httpContext.RequestAborted) is deliberately not swallowed by
+                    // RunCheckAsync - otherwise every check in this batch would stay marked Running
+                    // forever and never be scheduled again. The exception, if any, still propagates
+                    // normally once this finally block completes, so callers see the same behavior
+                    // as before.
+                    //
+                    // A task can end up here in two very different ways, and they must not be
+                    // treated the same:
+                    //  - Canceled: the ambient cancellationToken fired (e.g. httpContext.
+                    //    RequestAborted, or a background-cycle Timeout) while the check was still
+                    //    running - the check itself never actually failed, only the caller went
+                    //    away. Writing a synthetic result here would replace the check's last known
+                    //    real result with a manufactured one, visible to every other reader (other
+                    //    requests, background publishers, IStateHealthChecksPlus.Status) for up to a
+                    //    full policy period. ReleaseRunning clears the scheduling flag and advances
+                    //    DateRef to the actual release time (not dtref, the batch's *start* time -
+                    //    an ambient cancellation is only ever observed after however long the batch
+                    //    ran for, up to a full Timeout, so reusing dtref left DateRef stale by that
+                    //    same amount and defeated the whole point of advancing it) so the normal
+                    //    per-status period still throttles the retry instead of hot-looping, but
+                    //    leaves the last real result untouched.
+                    //  - Faulted (or Canceled by an OperationCanceledException that has nothing to
+                    //    do with cancellationToken actually being canceled - .NET's async machinery
+                    //    routes ANY OperationCanceledException to the Canceled task state,
+                    //    regardless of which token, if any, it's tied to): something outside
+                    //    RunCheckAsync's own try/catch threw - e.g. the registration's Factory
+                    //    itself failing to resolve the check instance. Unlike a genuine ambient
+                    //    cancellation, this really is the check failing, and must be reported as
+                    //    such via Update() - silently leaving the previous result in place (or
+                    //    worse, the InitCache seed of Healthy) would mean a check that can never
+                    //    even be constructed reports Healthy forever.
                     totalTime.Stop();
+                    var releasedAt = DateTime.UtcNow;
 
                     index = 0;
                     foreach (var registration in registrationstorun)
                     {
                         var task = tasks[index++];
-                        HealthCheckResult result;
-                        TimeSpan duration;
                         if (task.IsCompletedSuccessfully)
                         {
-                            result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
-                            duration = task.Result.Duration;
+                            var result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
+                            _cacheStatus.Update(registration.Name, resultHealthCheckFrom, result, dtref.Add(task.Result.Duration), task.Result.Duration);
+                        }
+                        else if (task.IsCanceled && cancellationToken.IsCancellationRequested)
+                        {
+                            Log.HealthCheckExecutionAborted(_logger, registration.Name);
+                            SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
+                            _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
                         }
                         else
                         {
-                            result = new HealthCheckResult(registration.FailureStatus, "The health check did not complete because the operation was cancelled.");
-                            duration = TimeSpan.Zero;
+                            var exception = task.Exception?.GetBaseException();
+                            var result = new HealthCheckResult(registration.FailureStatus, exception?.Message ?? "The health check threw an unhandled exception before it could run.", exception, null);
+                            _cacheStatus.Update(registration.Name, resultHealthCheckFrom, result, releasedAt, TimeSpan.Zero);
                         }
-                        _cacheStatus.Update(registration.Name, resultHealthCheckFrom, result, dtref.Add(duration), duration);
                     }
                 }
             }
@@ -404,30 +463,44 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
                 finally
                 {
-                    // See the matching comment in CheckHealthPlusAsync: Update() must run for
-                    // every check in this batch (releasing TryBeginRun's Running flag) even when
-                    // Task.WhenAll faults - here, typically the per-cycle Timeout cancelling this
-                    // call's linked token while a check is still in flight - otherwise it would
-                    // stay marked Running forever and never run again on any later cycle. The
-                    // exception still propagates afterward so HealthCheckPlusBackGroundService's
-                    // own timeout/shutdown handling around this call is unaffected.
+                    // See the matching comment in CheckHealthPlusAsync: Running must be released
+                    // for every check in this batch even when Task.WhenAll faults - here, typically
+                    // the per-cycle Timeout cancelling this call's linked token while a check is
+                    // still in flight - otherwise it would stay marked Running forever and never
+                    // run again on any later cycle. A genuine ambient cancellation (Canceled AND
+                    // cancellationToken actually requested - .NET routes ANY OperationCanceledException
+                    // to the Canceled task state regardless of which token, if any, it's tied to, so
+                    // both must hold) is not the check failing, so it only releases Running
+                    // (advancing DateRef to the release time - not dtref, the batch's stale start
+                    // time - so the normal period still throttles the retry) without touching the
+                    // last real result; anything else (Faulted, or a Canceled task that wasn't
+                    // really this token's doing) genuinely is the check failing and must be
+                    // reported via Update() like any other failure. The exception, if any, still
+                    // propagates afterward so HealthCheckPlusBackGroundService's own timeout/shutdown
+                    // handling around this call is unaffected.
+                    var releasedAt = DateTime.UtcNow;
+
                     index = 0;
                     foreach (var registration in registrationstorun)
                     {
                         var task = tasks[index++];
-                        HealthCheckResult result;
-                        TimeSpan duration;
                         if (task.IsCompletedSuccessfully)
                         {
-                            result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
-                            duration = task.Result.Duration;
+                            var result = new HealthCheckResult(task.Result.Status, task.Result.Description, task.Result.Exception, task.Result.Data);
+                            _cacheStatus.Update(registration.Name, HealthCheckTrigger.Background, result, dtref.Add(task.Result.Duration), task.Result.Duration);
+                        }
+                        else if (task.IsCanceled && cancellationToken.IsCancellationRequested)
+                        {
+                            Log.HealthCheckExecutionAborted(_logger, registration.Name);
+                            SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
+                            _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
                         }
                         else
                         {
-                            result = new HealthCheckResult(registration.FailureStatus, "The health check did not complete because the operation was cancelled.");
-                            duration = TimeSpan.Zero;
+                            var exception = task.Exception?.GetBaseException();
+                            var result = new HealthCheckResult(registration.FailureStatus, exception?.Message ?? "The health check threw an unhandled exception before it could run.", exception, null);
+                            _cacheStatus.Update(registration.Name, HealthCheckTrigger.Background, result, releasedAt, TimeSpan.Zero);
                         }
-                        _cacheStatus.Update(registration.Name, HealthCheckTrigger.Background, result, dtref.Add(duration), duration);
                     }
                     _cacheStatus.UpdateStatusName();
                 }
@@ -448,7 +521,31 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             cancellationToken.ThrowIfCancellationRequested();
 
             using var scope = _scopeFactory.CreateScope();
-            var healthCheck = registration.Factory(scope.ServiceProvider);
+            IHealthCheck healthCheck;
+            try
+            {
+                healthCheck = registration.Factory(scope.ServiceProvider);
+            }
+            catch (OperationCanceledException ex)
+            {
+                // registration.Factory is a Func<IServiceProvider, IHealthCheck> - it has no
+                // CancellationToken parameter at all, so it can never legitimately observe the
+                // ambient token. Any OperationCanceledException it throws is a genuine construction
+                // failure, not "the caller went away", and must never let this method's task end up
+                // in the Canceled state: the caller's finally block treats a Canceled task as
+                // ambient cancellation whenever cancellationToken.IsCancellationRequested happens to
+                // also be true by the time it checks - a batch-wide flag, not proof that THIS
+                // exception was caused by that token (e.g. a different, genuinely slow check in the
+                // same batch triggering the real cancellation). Wrapping it as Faulted routes it
+                // correctly regardless of what else is happening in the batch.
+                Log.HealthCheckError(_logger, registration, ex, TimeSpan.Zero);
+                throw new InvalidOperationException($"Health check '{registration.Name}' could not be constructed.", ex);
+            }
+            catch (Exception ex)
+            {
+                Log.HealthCheckError(_logger, registration, ex, TimeSpan.Zero);
+                throw;
+            }
 
             // If the health check does things like make Database queries using EF or backend HTTP calls,
             // it may be valuable to know that logs it generates are part of a health check. So we start a scope.
@@ -461,11 +558,11 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
                 HealthReportEntry entry;
                 CancellationTokenSource? timeoutCancellationTokenSource = null;
+                var checkCancellationToken = cancellationToken;
                 try
                 {
                     HealthCheckResult result;
 
-                    var checkCancellationToken = cancellationToken;
                     if (registration.Timeout > TimeSpan.Zero)
                     {
                         timeoutCancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -489,8 +586,17 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     Log.HealthCheckData(_logger, registration, entry);
 
                 }
-                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException ex) when (ex.CancellationToken != checkCancellationToken || !cancellationToken.IsCancellationRequested)
                 {
+                    // cancellationToken.IsCancellationRequested alone isn't proof that THIS
+                    // exception was caused by that token - it's a batch-wide flag, so a different,
+                    // genuinely slow check in the same batch tripping the ambient token would make
+                    // this guard wrongly defer to the propagate-uncaught path below for a completely
+                    // unrelated check's own OperationCanceledException (e.g. an HttpClient's internal
+                    // timeout that doesn't honor checkCancellationToken at all). Comparing the
+                    // exception's own CancellationToken against checkCancellationToken (the exact
+                    // token this call handed to CheckHealthAsync) is the only way to know whether
+                    // this specific exception is actually attributable to it.
                     var duration = stopwatch.Elapsed;
                     entry = new HealthReportEntry(
                         status: registration.FailureStatus,
@@ -615,9 +721,14 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             public static partial void HealthCheckDisposeError(ILogger logger, string HealthCheckName, Exception exception);
 
             [LoggerMessage(EventIds.HealthCheckMetricsRecordingErrorId, LogLevel.Warning,
-                "Recording the anomaly metric for a health check dispose failure also failed; the dispose failure itself was already logged above.",
+                "Recording an anomaly metric also failed; the anomaly itself was already logged separately above.",
                 EventName = EventIds.HealthCheckMetricsRecordingErrorName)]
             public static partial void HealthCheckMetricsRecordingError(ILogger logger, Exception exception);
+
+            [LoggerMessage(EventIds.HealthCheckExecutionAbortedId, LogLevel.Warning,
+                "Health check '{HealthCheckName}' did not complete because the operation was cancelled (e.g. the HTTP client disconnected, or the background cycle timed out); its last known result is unchanged and it remains eligible to run again.",
+                EventName = EventIds.HealthCheckExecutionAbortedName)]
+            public static partial void HealthCheckExecutionAborted(ILogger logger, string HealthCheckName);
 
             public static void HealthCheckData(ILogger logger, HealthCheckRegistration registration, HealthReportEntry entry)
             {
@@ -710,6 +821,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             public const int HealthCheckDataId = 105;
             public const int HealthCheckDisposeErrorId = 106;
             public const int HealthCheckMetricsRecordingErrorId = 107;
+            public const int HealthCheckExecutionAbortedId = 108;
 
             // Hard code the event names to avoid breaking changes. Even if the methods are renamed, these hard-coded names shouldn't change.
             public const string HealthCheckProcessingBeginName = "HealthCheckProcessingBegin";
@@ -720,6 +832,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             public const string HealthCheckDataName = "HealthCheckData";
             public const string HealthCheckMetricsRecordingErrorName = "HealthCheckPlusMetricsRecordingError";
             public const string HealthCheckDisposeErrorName = "HealthCheckDisposeError";
+            public const string HealthCheckExecutionAbortedName = "HealthCheckExecutionAborted";
 
             public static readonly EventId HealthCheckData = new(HealthCheckDataId, HealthCheckDataName);
         }
