@@ -52,7 +52,7 @@ Standard .NET conventions apply — see the [.NET Framework Design Guidelines](h
 
 ## Making a change
 
-- Branch off `main`.
+- Branch off `develop` — active development happens there; `main` tracks released versions.
 - Keep a pull request focused on one logical change — a large, mixed-purpose PR is harder to review and more likely to stall.
 - Avoid reformatting code you didn't otherwise need to touch; unrelated formatting changes make it harder to see what actually changed.
 - Make sure `dotnet build` is warning-free and `dotnet test` passes locally before opening the PR.
@@ -64,11 +64,12 @@ There's no formal SLA on review turnaround. If a PR goes quiet, a follow-up comm
 
 If a change affects public behavior, update the relevant doc alongside the code change, not as an afterthought:
 
+- **`docs/POINTS_OF_ATTENTION.md`** — a plain-language list, for consumers, of what to know before building on a given behavior. No implementation detail — if a change introduces (or removes) something a consumer should watch out for, add (or remove) it here.
 - **`docs/ARCHITECTURE.md`** — internal design, component responsibilities, and the reasoning behind non-obvious decisions. Aimed at maintainers/contributors.
 - **`docs/RUNBOOK.md`** — how to read a health check response, what each log/metric means operationally, and how to diagnose common problems. Aimed at operators.
 - **`README.md`** — public API usage and examples.
 
-Describe the current behavior and its trade-offs — the benefit it provides and any point of attention a maintainer or operator should know — rather than narrating how or when a change was made.
+Describe the current behavior and its trade-offs — the benefit it provides and any point of attention a maintainer or operator should know — rather than narrating how or when a change was made. If the same underlying fact is worth stating in more than one of these docs (e.g. a consumer-facing caveat in `POINTS_OF_ATTENTION.md` and its internal reasoning in `ARCHITECTURE.md`), verify each copy independently against the current code rather than copying prose between docs — the two audiences need different framing, and a stale copy is easy to miss if the docs are treated as one shared source.
 
 ## Reporting bugs and requesting features
 

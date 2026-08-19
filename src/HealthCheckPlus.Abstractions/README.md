@@ -89,6 +89,7 @@ public class MyPublisher : IHealthCheckPlusPublisher
 ## Documentation
 [**Top**](#table-of-contents)
 
+- [Points of attention](https://github.com/FRACerqueira/HealthCheckPlus/blob/main/docs/POINTS_OF_ATTENTION.md) - what to know before you build on HealthCheckPlus, in plain language. Start here.
 - [Architecture](https://github.com/FRACerqueira/HealthCheckPlus/blob/main/docs/ARCHITECTURE.md) - how HealthCheckPlus is put together internally, for maintainers and contributors.
 - [Operational runbook](https://github.com/FRACerqueira/HealthCheckPlus/blob/main/docs/RUNBOOK.md) - how to read a health check response and diagnose common problems, for operators.
 - [API reference](https://github.com/FRACerqueira/HealthCheckPlus/blob/main/docs/api/docindex.md) - generated from the XML doc comments.

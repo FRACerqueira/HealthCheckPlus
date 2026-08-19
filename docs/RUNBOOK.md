@@ -1,6 +1,6 @@
 # HealthCheckPlus Operational Runbook
 
-This is a reference for operators and on-call engineers running a service that uses HealthCheckPlus: what the health endpoint's response actually means, what happens when a check misbehaves, and which logs/metrics to check first when something looks wrong. For how the library is built internally, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+This is a reference for operators and on-call engineers running a service that uses HealthCheckPlus: what the health endpoint's response actually means, what happens when a check misbehaves, and which logs/metrics to check first when something looks wrong. For what to know before you integrate the library, see [`POINTS_OF_ATTENTION.md`](./POINTS_OF_ATTENTION.md). For how the library is built internally, see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ## Reading a health check response
 

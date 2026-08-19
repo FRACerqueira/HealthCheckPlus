@@ -465,7 +465,37 @@ namespace HealthCheckPlus.Internal
                 return;
             }
 
-            if (!item.Running)
+            // The Running check and the write below now share one lock acquisition, not two -
+            // TryBeginRun/SwithState only ever claim Running under _lock, so nothing outside this
+            // method can flip it between the check and the use in correct, protocol-following
+            // usage; this was previously a genuinely unlocked, TOCTOU-shaped read (no live race
+            // ever demonstrated - closed in practice by the happens-before edge a check's own
+            // Task completing already provides), closed for good the same way as a defense in
+            // depth, not because a real exploit was found.
+            HealthStatus previousStatus = default;
+            var wasRunning = false;
+            lock (_lock)
+            {
+                wasRunning = item.Running;
+                if (wasRunning)
+                {
+                    previousStatus = item.LastResult.Status;
+
+                    // SetResult, clearing Running, and bumping _stateVersion happen atomically
+                    // under _lock - not for Running's own sake (SetResult still happens before
+                    // Running is cleared either way, the exact ordering ReleaseRunning was
+                    // missing, so any later TryBeginRun only ever observes Running=false once this
+                    // fresh result is already published), but so UpdateStatusName()/Status(name)
+                    // capturing (version, report) together under the same lock (see their own
+                    // comments) can never have a real state change land in the middle of that
+                    // capture - closing the last piece of the race those methods were fixed for.
+                    item.SetResult(result, lastexecute, duration, healthCheckFrom);
+                    item.Running = false;
+                    _stateVersion++;
+                }
+            }
+
+            if (!wasRunning)
             {
                 // TryBeginRun (see DefaultHealthCheckServicePlus.ScheduleIfDue) and SwithState both
                 // claim Running under _lock, and only when it is currently false - so exactly one
@@ -482,25 +512,10 @@ namespace HealthCheckPlus.Internal
                 return;
             }
 
-            var previousStatus = item.LastResult.Status;
-
-            // SetResult, clearing Running, and bumping _stateVersion now happen atomically under
-            // _lock - not for Running's own sake (SetResult still happens before Running is
-            // cleared either way, the exact ordering ReleaseRunning was missing, so any later
-            // TryBeginRun only ever observes Running=false once this fresh result is already
-            // published), but so UpdateStatusName()/Status(name) capturing (version, report)
-            // together under the same lock (see their own comments) can never have a real state
-            // change land in the middle of that capture - closing the last piece of the race those
-            // methods were fixed for. SafeRecordMetric below stays outside the lock: a third-party
-            // MeterListener callback runs synchronously on this thread, and holding _lock across an
-            // exporter's own code would let a slow or blocking listener stall every other check's
-            // TryBeginRun/ReleaseRunning scheduling decision, not just this one's metrics.
-            lock (_lock)
-            {
-                item.SetResult(result, lastexecute, duration, healthCheckFrom);
-                item.Running = false;
-                _stateVersion++;
-            }
+            // SafeRecordMetric below stays outside the lock: a third-party MeterListener callback
+            // runs synchronously on this thread, and holding _lock across an exporter's own code
+            // would let a slow or blocking listener stall every other check's TryBeginRun/
+            // ReleaseRunning scheduling decision, not just this one's metrics.
 
             // This is the single point every execution path (foreground/HTTP and background)
             // and the manual SwitchTo override converge on, so it's the right place to emit

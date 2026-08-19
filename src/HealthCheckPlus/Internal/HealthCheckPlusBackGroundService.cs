@@ -28,7 +28,7 @@ namespace HealthCheckPlus.Internal
         private Task? _runningHealthCheckPlus;
         private readonly ILogger<HealthCheckPlusBackGroundService> _logger;
         private int _countIdletopublish = 0;
-        private int _hashlaststatus;
+        private string? _lastPublishedReportKey;
 
         public HealthCheckPlusBackGroundService(
             ILogger<HealthCheckPlusBackGroundService> logger,
@@ -218,7 +218,7 @@ namespace HealthCheckPlus.Internal
                                     // SameReport check would then match and skip retrying, permanently
                                     // losing the notification for that status change until it changed
                                     // again.
-                                    _hashlaststatus = HealthCheckPlusBackGroundService.HashReport(report);
+                                    _lastPublishedReportKey = HealthCheckPlusBackGroundService.BuildReportKey(report);
                                 }
                                 catch (OperationCanceledException) when (_stopping.IsCancellationRequested)
                                 {
@@ -582,12 +582,18 @@ namespace HealthCheckPlus.Internal
 
         private bool SameReport(HealthReport report)
         {
-            return _hashlaststatus == HealthCheckPlusBackGroundService.HashReport(report);
+            return _lastPublishedReportKey == HealthCheckPlusBackGroundService.BuildReportKey(report);
         }
 
-        internal static int HashReport(HealthReport report)
+        // Compares the actual per-entry key/status pairs, not a hash of them - a 32-bit hash
+        // (this method's previous implementation) has a real, if small, collision probability;
+        // colliding with the previous cycle's report would make WhenReportChange conclude nothing
+        // changed and permanently suppress a publish that should have happened, with no log or
+        // metric to reveal why. Comparing the built string directly costs the same O(checks) work
+        // this already did to build the string in the first place, just skips the lossy step.
+        internal static string BuildReportKey(HealthReport report)
         {
-            return string.Join("", report.Entries.Select(x => (x.Key + x.Value.Status))).GetHashCode(StringComparison.InvariantCulture);
+            return string.Join("", report.Entries.Select(x => x.Key + x.Value.Status));
         }
 
 #pragma warning disable IDE0079

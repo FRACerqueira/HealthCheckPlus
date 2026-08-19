@@ -12,6 +12,9 @@ If you're looking for AddHealthChecksPlus, UseHealthChecksPlus, AddBackgroundPol
 response-writer templates, those live in the main HealthCheckPlus package instead - installing it
 already brings this one in as a dependency.
 
+Before you build on it, see the plain-language points of attention:
+https://github.com/FRACerqueira/HealthCheckPlus/blob/main/docs/POINTS_OF_ATTENTION.md
+
 What's in this package
 ***********************
 
