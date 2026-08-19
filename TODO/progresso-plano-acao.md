@@ -744,4 +744,31 @@ Build/teste finais: 0 avisos, 188/188 nos 3 TFMs.
 
 Nada commitado ainda desta rodada — aguardando autorização explícita do usuário.
 
+## Introdução de ADRs via adrplus (2026-08-19, mesmo dia)
+
+Usuário observou que o projeto nunca teve controle de ADR e pediu para avaliar, com base no diff `main...develop`, quais decisões mereceriam uma ADR — usando o plugin `adrplus` já instalado (Claude Code) e a CLI `adrplus` (dotnet global tool, v1.0.0-rc4).
+
+**Revisão**: lancei o agente `adrplus:adr-decision-check` (read-only) contra `git diff main...develop` (39 commits, todo o ciclo de hardening pré-v4.0.0 ainda não mesclado em `main`). Achou **11 decisões** candidatas, todas `new` (repositório nunca teve nenhuma ADR). Rejeitou corretamente como não-ADR: o rename de namespace `options`→`Options` (correção de convenção, não decisão nova), a migração `.sln`→`.slnx` (tooling, não arquitetura), a remoção de `IHealthCheckPlusPolicyStatus` (limpeza de superfície interna), mudanças de infraestrutura de teste, e ajustes de CI/workflow.
+
+**Decisão do usuário**: criar 9 ADRs, fundindo 2 pares que o agente já tinha sinalizado como decisão de fronteira: (5+6) padrão de guarda `SafeLog`/`SafeRecordMetric` + isolamento de falha de publisher/predicate no loop de background → uma ADR de resiliência; (9+10) `Abstractions` sem `FrameworkReference` + pacote principal com dependência real via NuGet → uma ADR de empacotamento.
+
+**Achado real na ferramenta (rc4)**: `adrplus new --domain "X" --scope "Y"` aceita as flags sem erro, mas **não escreve Scope/Domain no cabeçalho da ADR** — confirmado tanto no arquivo gerado quanto no relatório do `adrplus explore`, reproduzido 2x (inclusive com um ADR de teste descartável). Isso contradiz a própria ajuda da CLI (`adrplus help new`), que marca ambas como obrigatórias fora do modo wizard. Não investigado a fundo (fora do escopo deste repositório - `adrplus` é outro projeto do próprio usuário), só contornado: cada ADR foi criada via `adrplus new` normalmente (preserva numeração/versão/status/data corretos), depois o Scope/Domain foram preenchidos manualmente no cabeçalho via edição direta - confirmado que `adrplus explore` passou a reportar os valores corretos depois do ajuste manual.
+
+**As 9 ADRs criadas** (`docs/adr/`, todas `Proposed`, conteúdo completo - contexto, decision drivers, opções consideradas, decisão, consequências positivas/negativas, prós/contras, links entre ADRs relacionadas):
+- ADR001 — Native `System.Diagnostics.Metrics` instrumentation (domínio Observability).
+- ADR002 — Conjunto de checks rastreados derivado das registrations, não de lista manual (PublicApi).
+- ADR003 — Estado de registro/cache isolado por host, não por processo (StateManagement).
+- ADR004 — Doutrina fail-fast na inicialização (Validation).
+- ADR005 — Guarda de logging/métricas/delegates de background (fundida 5+6, Resilience).
+- ADR006 — Catálogo único de EventId/EventName (LoggingConvention).
+- ADR007 — Snapshot imutável para estado concorrente (StateManagement).
+- ADR008 — Empacotamento: Abstractions sem FrameworkReference + dependência real via NuGet (fundida 9+10, Packaging).
+- ADR009 — Só depender de contratos públicos suportados na integração com o framework (IntegrationBoundary).
+
+**Setup do adrplus**: `adrplus init --path .` criou `adr-config.adrplus` (config default: pasta `docs/adr`, plugin `AdrIndexer` já ativo) e a pasta `docs/adr/`. O plugin `AdrIndexer` mantém `docs/adr/indexadrs.md` automaticamente a cada `new`/mudança de status - confirmado funcionando, e resincronizado via `adrplus sync --backfill` depois de remover 2 arquivos de teste descartáveis (`ADR002V01R01-test-domain-scope.md`, um relatório de `explore` usado só pra depurar o bug de scope/domain).
+
+**Slnx**: adicionada nova pasta `/docs/adr/` ao `HealthCheckPlus.slnx` (as 9 ADRs, `indexadrs.md`, `adr-config.adrplus`) - mesma lição aprendida horas antes com `docs/architecture/`, aplicada proativamente esta vez em vez de esperar o usuário notar. Build revalidado limpo depois.
+
+Nada commitado ainda — aguardando autorização explícita do usuário.
+
 **Verificação**: build limpo, 188/188 nos 3 TFMs (nenhuma mudança de comportamento de código nesta rodada, só documentação). `CHANGELOG.md` — 2 bullets novos.
