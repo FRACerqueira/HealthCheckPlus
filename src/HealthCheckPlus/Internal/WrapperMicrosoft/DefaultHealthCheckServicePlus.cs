@@ -75,9 +75,10 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         }
 
         // DefaultHealthCheckServicePlus is a container-constructed singleton (registered via
-        // TryAddSingleton<HealthCheckService, DefaultHealthCheckServicePlus>() — a factory
-        // registration, not a ready-made instance), so the container reliably disposes it at host
-        // shutdown. Piggybacking the adopted external check instances' disposal here matters
+        // TryAddSingleton<HealthCheckService, DefaultHealthCheckServicePlus>() — an
+        // implementation-type registration, not a ready-made instance), so the container reliably
+        // disposes it at host shutdown. Piggybacking the adopted external check instances'
+        // disposal here matters
         // because those instances live in HealthChecksPlusRegistrationState, which — unlike this
         // class — is registered as a ready-made instance and therefore is NOT disposed
         // automatically by the container (documented .NET DI behavior), so nothing else disposes

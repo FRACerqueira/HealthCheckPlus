@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 
 namespace HealthCheckPlus.Internal
 {
-    internal partial class HealthCheckPlusBackGroundService : IHostedService, IDisposable
+    internal partial class HealthCheckPlusBackGroundService : IHostedService, IDisposable, IAsyncDisposable
     {
         private readonly IOptions<HealthCheckPlusBackGroundOptions> _optionsBackGround;
         private readonly IOptions<HealthCheckServiceOptions> _healthcheckserviceOptions;
@@ -215,22 +215,15 @@ namespace HealthCheckPlus.Internal
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            try
-            {
-                _stopping.Cancel();
-            }
-            catch (Exception ex)
-            {
-                // _stopping.Cancel() can throw if any callback registered anywhere on the
-                // cancellation chain a background cycle's linked token belongs to (see
-                // CheckHealthAsync's `cancellation = CreateLinkedTokenSource(_stopping.Token)`)
-                // itself throws - not a scenario this class's own code creates, but reachable from
-                // outside it (e.g. a health check's own CancellationToken.Register callback).
-                // Shutdown must proceed regardless of what happens here (the rest of this method
-                // still needs to run), so this is deliberately swallowed rather than rethrown - but
-                // it must not vanish with zero signal.
-                Log.StopCancellationError(_logger, ex);
-            }
+            // _stopping.Cancel() can throw if any callback registered anywhere on the
+            // cancellation chain a background cycle's linked token belongs to (see
+            // CheckHealthAsync's `cancellation = CreateLinkedTokenSource(_stopping.Token)`)
+            // itself throws - not a scenario this class's own code creates, but reachable from
+            // outside it (e.g. a health check's own CancellationToken.Register callback).
+            // Shutdown must proceed regardless of what happens here (the rest of this method
+            // still needs to run), so CancelStopping() deliberately swallows it rather than
+            // rethrowing - but it must not vanish with zero signal.
+            CancelStopping();
 
             if (_healthcheckserviceOptions.Value.Registrations.Count == 0)
             {
@@ -274,14 +267,72 @@ namespace HealthCheckPlus.Internal
         }
 
         // AddBackgroundPolicy registers this class via AddHostedService, so the DI container
-        // already disposes it (like every other disposable singleton) when the host/service
-        // provider itself is disposed, strictly after StopAsync has run for every hosted service -
-        // by then _stopping has already done its one job (cancelling the loop) and nothing else
-        // still needs it. _runningHealthCheckPlus is disposed separately, inside StopAsync's own
-        // continuation, once the loop task it wraps has actually completed.
+        // disposes it like every other disposable singleton when the host/service provider
+        // itself is disposed - normally strictly after StopAsync has run for every hosted
+        // service, by which point _runningHealthCheckPlus is already complete (StopAsync's own
+        // continuation above already observed and disposed it).
+        //
+        // That "normally" isn't a guarantee, though: if a DIFFERENT IHostedService registered
+        // after this one throws from its own StartAsync, the generic host disposes the
+        // container without ever calling StopAsync on this one - confirmed empirically against
+        // Microsoft.Extensions.Hosting (a later service's StartAsync throwing does not trigger
+        // StopAsync on services that already started). In that case the loop is still running
+        // when disposal happens. Cancelling _stopping here - the same op StopAsync already does
+        // - lets the loop observe the same shutdown signal it always does, instead of only ever
+        // discovering the CancellationTokenSource underneath it got disposed out from under it.
+        // DisposeAsync (below) is the fully correct path for that scenario, since it can actually
+        // await the loop before disposing _stopping; this synchronous Dispose is a best-effort
+        // fallback for a container that disposes synchronously instead (confirmed this is really
+        // what happens for a synchronous host.Dispose() after a failed StartAsync) - it still
+        // can't guarantee the loop observes cancellation before _stopping.Dispose() runs a few
+        // lines down, since nothing here can synchronously wait for genuinely async work without
+        // risking a deadlock.
         public void Dispose()
         {
+            CancelStopping();
             _stopping.Dispose();
+        }
+
+        // Preferred over the synchronous Dispose() above by any container that disposes itself
+        // asynchronously (e.g. `await using var host = ...`, or ServiceProvider.DisposeAsync()) -
+        // unlike Dispose(), this can actually await the loop, so if StopAsync never got a chance
+        // to run first (see Dispose()'s comment), the loop is given a real chance to observe
+        // cancellation and exit before _stopping is disposed out from under it, instead of racing
+        // it. In the normal case (StopAsync already ran), _runningHealthCheckPlus is already
+        // complete, so awaiting it here resolves immediately with no behavior change.
+        public async ValueTask DisposeAsync()
+        {
+            CancelStopping();
+            if (_runningHealthCheckPlus != null)
+            {
+                try
+                {
+                    await _runningHealthCheckPlus.ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Observed via ObserveLoopCompletion next, not rethrown - disposal must not
+                    // throw. Harmless to call this a second time in the (rare, and itself
+                    // harmless) case StopAsync's own continuation already did.
+                }
+                ObserveLoopCompletion(_runningHealthCheckPlus, _logger);
+            }
+            _stopping.Dispose();
+        }
+
+        private void CancelStopping()
+        {
+            try
+            {
+                _stopping.Cancel();
+            }
+            catch (Exception ex)
+            {
+                // Same rationale as the identical try/catch in StopAsync - calling this a second
+                // time (StopAsync already having done it) is a safe no-op, so this only ever
+                // fires for the same reason it does there.
+                Log.StopCancellationError(_logger, ex);
+            }
         }
 
         private async Task RunPublisherAsync(IHealthCheckPublisher publisher, HealthReport report, CancellationToken cancellationToken)

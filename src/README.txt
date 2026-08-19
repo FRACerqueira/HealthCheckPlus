@@ -36,7 +36,7 @@ Features
         - Number of counts idle to publish.
         - Run publish only when the report has a status change in one of its entries.
         - Optional per-publisher custom condition via IHealthCheckPlusPublisher.PublisherCondition.
-- Response templates with small/full details in "application/json" ContentType
+- Response templates with small/full details in "application/json; charset=utf-8" ContentType
     - HealthCheckPlusOptions.WriteShortDetails
     - HealthCheckPlusOptions.WriteShortDetailsPlus (with extra fields : cache source and reference date of last run)
     - HealthCheckPlusOptions.WriteDetailsWithoutException
@@ -201,9 +201,9 @@ public class MyBussines
         { 
             //do something
         }
-        if (healthCheckApp.StatusResult("HcTeste2").Status == HealthStatus.Unhealthy)
-        { 
-            //do something. This dependency 'HcTeste2' is not available
+        if (healthCheckApp.StatusResult("HcTest2").Status == HealthStatus.Unhealthy)
+        {
+            //do something. This dependency 'HcTest2' is not available
         }
         try
         {

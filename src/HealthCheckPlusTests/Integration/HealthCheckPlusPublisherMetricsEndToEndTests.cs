@@ -100,18 +100,28 @@ namespace HealthCheckPlusTests.Integration
                 _ => { });
 
             // Status never changes (always Healthy): the first idle cycle publishes, subsequent
-            // ones are filtered by WhenReportChange.
-            await Task.Delay(TimeSpan.FromSeconds(4), TestContext.Current.CancellationToken);
-            await host.StopAsync(TestContext.Current.CancellationToken);
-
+            // ones are filtered by WhenReportChange. Poll for both outcomes actually showing up,
+            // rather than a fixed delay - see TestHost.WaitUntilAsync's own comment for why a
+            // fixed sleep here turned out not to be reliable under this project's own
+            // full-solution, 3-TFM-parallel test run.
+            //
             // The "HealthCheckPlus" Meter is process-wide, and xUnit runs test classes/methods
             // concurrently by default, so other tests' publishers can emit measurements while this
             // one is capturing. Filter by this test's own publisher type (a distinct concrete type
             // per test in this file) rather than asserting over every captured measurement.
-            var invocations = capture.Measurements
+            CapturedMeasurement[] Invocations() => capture.Measurements
                 .Where(m => m.InstrumentName == "healthcheckplus.publisher.invocations" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(NoopPublisher).FullName)
                 .ToArray();
 
+            await TestHost.WaitUntilAsync(
+                () => Invocations().Any(m => (string?)m.Tags["healthcheckplus.publisher.result"] == "published")
+                    && Invocations().Any(m => (string?)m.Tags["healthcheckplus.publisher.result"] == "skipped_no_change"),
+                TimeSpan.FromSeconds(30),
+                "Expected both a 'published' and a 'skipped_no_change' invocation measurement.",
+                TestContext.Current.CancellationToken);
+            await host.StopAsync(TestContext.Current.CancellationToken);
+
+            var invocations = Invocations();
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "published");
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "skipped_no_change");
 
@@ -340,10 +350,18 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            // Poll for the actual condition instead of a fixed delay - see TestHost.WaitUntilAsync's
+            // own comment for why a fixed sleep here turned out not to be reliable under this
+            // project's own full-solution, 3-TFM-parallel test run.
+            int ErrorLogCount() => loggerProvider.Entries.Count(e => e.EventId.Name == "HealthCheckPublisherError");
+            await TestHost.WaitUntilAsync(
+                () => ErrorLogCount() > 1,
+                TimeSpan.FromSeconds(30),
+                "Expected more than one publish attempt despite WhenReportChange and an unchanging report (a failed attempt must be retried, not mistaken for 'no change').",
+                TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
-            var errorLogCount = loggerProvider.Entries.Count(e => e.EventId.Name == "HealthCheckPublisherError");
+            var errorLogCount = ErrorLogCount();
             Assert.True(errorLogCount > 1,
                 $"Expected more than one publish attempt despite WhenReportChange and an unchanging report (a failed attempt must be retried, not mistaken for 'no change'), got {errorLogCount}.");
         }

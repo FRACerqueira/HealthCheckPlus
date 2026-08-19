@@ -375,12 +375,14 @@ namespace HealthCheckPlus.Internal
 
             if (!item.Running)
             {
-                // Reachable under overlapping executions of the same check (e.g. an HTTP request
-                // and a background cycle both deciding the check is "due" at the same time — a
-                // known, separately-tracked scheduling race in ScheduleIfDue, not fixed here): the
-                // first execution to finish clears Running and applies its result; a second,
-                // overlapping execution finishing afterwards finds Running already false and its
-                // result (and metrics) would previously be dropped with no trace at all.
+                // TryBeginRun (see DefaultHealthCheckServicePlus.ScheduleIfDue) already closes the
+                // scheduling-stage race this used to guard against - two callers can no longer
+                // both observe a check as "due" and both start it. This branch is the remaining
+                // safety net for a second, different kind of overlap TryBeginRun doesn't cover:
+                // a manually-triggered execution (SwithState) racing an already-scheduled one for
+                // the same check. Whichever finishes first clears Running and applies its result;
+                // the other finds Running already false and its result (and metrics) would
+                // previously be dropped with no trace at all.
                 _logger.LogWarning(UpdateDroppedEventId,
                     "The result for health check '{HealthCheckName}' was dropped: no execution was marked as running for it (likely an overlapping execution already applied its result).", key);
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.UpdateResultDropped), key);

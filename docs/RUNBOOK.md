@@ -73,6 +73,8 @@ These are defensive paths that were handled without failing a request or crashin
 
 A `HealthCheckPlusMetricsRecordingError` log with no matching `healthcheckplus.anomalies` measurement means the metrics pipeline itself failed to record something (e.g. a broken exporter/listener) — health evaluation and publishing are unaffected, but check whatever is consuming the `"HealthCheckPlus"` meter for its own errors.
 
+A `HealthCheckPlusBackGroundStopCancellationError` log, also with no matching `healthcheckplus.anomalies` measurement, means cancelling the background loop's own shutdown token itself threw while the host was already stopping (e.g. a health check's own `CancellationToken.Register` callback misbehaving) — shutdown still proceeds regardless, but investigate whatever registered that callback.
+
 ## Metrics quick reference
 
 See `ARCHITECTURE.md`'s [Metrics](./ARCHITECTURE.md#metrics) section for the full instrument list and tags. For alerting, the two worth watching by default are:

@@ -230,12 +230,11 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            await Task.Delay(TimeSpan.FromSeconds(9), TestContext.Current.CancellationToken);
-
-            Assert.True(publisher.InvocationCount >= 3,
-                $"Expected the hanging publisher to have been invoked at least 3 times as the loop recovered from each timeout, got {publisher.InvocationCount}.");
-            Assert.True(check.CallCount >= 3,
-                $"Expected the background service to keep rerunning checks across multiple cycles despite the hanging publisher, got {check.CallCount}.");
+            await TestHost.WaitUntilAsync(
+                () => publisher.InvocationCount >= 3 && check.CallCount >= 3,
+                TimeSpan.FromSeconds(30),
+                $"Expected the hanging publisher and the checks to each be invoked at least 3 times as the loop recovered from each timeout - got publisher={publisher.InvocationCount}, check={check.CallCount}.",
+                TestContext.Current.CancellationToken);
 
             await host.StopAsync(TestContext.Current.CancellationToken);
         }
@@ -286,13 +285,16 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            // A generous wait relative to the ~1s minimum cycle time - see the CI-timing note on
-            // the sibling "keep running" test above.
-            await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            // Poll for the actual condition instead of a fixed delay - see WaitUntilAsync's own
+            // comment for why a fixed sleep here turned out not to be reliable under this
+            // project's own full-solution, 3-TFM-parallel test run.
+            await TestHost.WaitUntilAsync(
+                () => check.CallCount >= 2,
+                TimeSpan.FromSeconds(30),
+                $"Expected the background service to keep rerunning checks across multiple cycles despite the Predicate throwing while building the report to publish - got {check.CallCount}.",
+                TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
-            Assert.True(check.CallCount >= 2,
-                $"Expected the background service to keep rerunning checks across multiple cycles despite the Predicate throwing while building the report to publish, got {check.CallCount}.");
             Assert.Equal(0, publisher.PublishCount);
         }
 

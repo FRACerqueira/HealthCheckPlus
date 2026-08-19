@@ -4,7 +4,7 @@
 </br>
 
 
-#### Creates a new instance of [`HealthCheckPlusBackGroundOptions`](../HealthCheckPlusBackGroundOptions.md). Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Predicate = All HealthCheck.
+#### Creates a new instance of [`HealthCheckPlusBackGroundOptions`](../HealthCheckPlusBackGroundOptions.md). Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Idle = 1 second.Predicate = All HealthCheck.
 
 ```csharp
 public HealthCheckPlusBackGroundOptions()

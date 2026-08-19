@@ -14,7 +14,7 @@ public class HealthCheckPlusBackGroundOptions
 
 | name | description |
 | --- | --- |
-| [HealthCheckPlusBackGroundOptions](HealthCheckPlusBackGroundOptions/HealthCheckPlusBackGroundOptions.md)() | Creates a new instance of [`HealthCheckPlusBackGroundOptions`](./HealthCheckPlusBackGroundOptions.md). Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Predicate = All HealthCheck. |
+| [HealthCheckPlusBackGroundOptions](HealthCheckPlusBackGroundOptions/HealthCheckPlusBackGroundOptions.md)() | Creates a new instance of [`HealthCheckPlusBackGroundOptions`](./HealthCheckPlusBackGroundOptions.md). Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Idle = 1 second.Predicate = All HealthCheck. |
 | [DegradedPeriod](HealthCheckPlusBackGroundOptions/DegradedPeriod.md) { get; set; } | Gets or sets the period when HealthCheck's period property is null and last status is of Degraded. The default value is 30 seconds. |
 | [Delay](HealthCheckPlusBackGroundOptions/Delay.md) { get; set; } | Gets or sets the initial delay applied after the application starts before executing HealthCheckPlus background service. The delay is applied once at startup, and does not apply to subsequent iterations. The default value is 5 seconds. |
 | [HealthyPeriod](HealthCheckPlusBackGroundOptions/HealthyPeriod.md) { get; set; } | Gets or sets the period when HealthCheck's period property is null and last status is of Healthy. The default value is 30 seconds. |

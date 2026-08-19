@@ -13,6 +13,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Reflection;
 
 namespace HealthCheckPlusTests
 {
@@ -143,6 +144,90 @@ namespace HealthCheckPlusTests
             await stopTask.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
             _ = Assert.Single(trackingScheduler.QueuedTasks);
+        }
+
+        // Regression test for a scenario a later independent audit round found: if a DIFFERENT
+        // IHostedService registered after this one throws from its own StartAsync, the generic
+        // host disposes the container without ever calling StopAsync on this one first -
+        // confirmed empirically against a real Microsoft.Extensions.Hosting host that a later
+        // service's StartAsync throwing does NOT trigger StopAsync on services that already
+        // started. Before DisposeAsync existed, disposal only ever called the synchronous
+        // Dispose(), which disposed _stopping immediately with the loop still running -
+        // surfacing as an ObjectDisposedException inside the loop, logged as an ordinary
+        // per-cycle failure (HealthCheckPlusBackGroundError) instead of a clean shutdown, since
+        // nothing ever cancelled _stopping first. DisposeAsync must cancel it and actually wait
+        // for the loop before disposing it - simulated here by calling DisposeAsync directly
+        // without ever calling StopAsync, the same shape the container's own async disposal path
+        // produces in that scenario.
+        [Fact]
+        public async Task DisposeAsync_ShouldStopTheLoopCleanly_WithoutObjectDisposedException_WhenStopAsyncNeverRan()
+        {
+            var loggerProvider = new CapturingLoggerProvider();
+            using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(loggerProvider));
+
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IStateHealthChecksPlus>(cache);
+            services.AddSingleton(new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test1"));
+            var provider = services.BuildServiceProvider();
+
+            var healthCheckService = new DefaultHealthCheckServicePlus(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                provider,
+                NullLogger<HealthCheckService>.Instance,
+                Options.Create(hcOptions),
+                new HealthChecksPlusRegistrationState());
+
+            var backgroundOptions = new HealthCheckPlusBackGroundOptions
+            {
+                Delay = TimeSpan.Zero,
+                Idle = TimeSpan.FromSeconds(1)
+            };
+
+            var backgroundService = new HealthCheckPlusBackGroundService(
+                loggerFactory.CreateLogger<HealthCheckPlusBackGroundService>(),
+                healthCheckService,
+                Options.Create(hcOptions),
+                Options.Create(backgroundOptions),
+                []);
+
+            await backgroundService.StartAsync(TestContext.Current.CancellationToken);
+            // Give the loop a moment to actually be mid-cycle (inside its first Idle wait)
+            // before disposing, instead of always happening to catch it during the startup
+            // delay - a disposed-but-not-cancelled CancellationTokenSource does not disrupt a
+            // Task.Delay already registered against its token (confirmed empirically), so the
+            // failure this test targets only ever surfaces once the loop reaches a *fresh*
+            // CreateLinkedTokenSource/Task.Delay call using it, on the following cycle.
+            await Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
+
+            // The loop Task is private - reflection is the only way to observe directly whether
+            // disposal actually let it finish, rather than inferring it indirectly from logs
+            // (which, for the exact bug this guards against, are emitted asynchronously well
+            // after DisposeAsync itself returns, and are easy to miss checking too early).
+            var loopField = typeof(HealthCheckPlusBackGroundService).GetField("_runningHealthCheckPlus", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var loopTask = (Task)loopField.GetValue(backgroundService)!;
+
+            // StopAsync deliberately never called - simulating the container disposing this
+            // service without ever having a chance to call it first.
+            var disposeTask = backgroundService.DisposeAsync().AsTask();
+            var disposeCompleted = await Task.WhenAny(disposeTask, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+            Assert.Same(disposeTask, disposeCompleted);
+            await disposeTask;
+
+            // DisposeAsync must not return until the loop itself has actually finished - if it
+            // returns first (the bug: dispose _stopping immediately, never wait for the loop),
+            // the loop is left to keep running against an already-disposed CancellationTokenSource,
+            // which resolves later as an unobserved fault rather than a clean, immediate exit.
+            Assert.True(loopTask.IsCompleted, "The loop task was still running after DisposeAsync completed.");
+            Assert.False(loopTask.IsFaulted, $"The loop task faulted: {(loopTask.IsFaulted ? loopTask.Exception : null)}");
+
+            Assert.DoesNotContain(loggerProvider.Entries, e => e.Exception is ObjectDisposedException);
+            Assert.DoesNotContain(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPlusBackGroundLoopFaulted");
         }
     }
 }

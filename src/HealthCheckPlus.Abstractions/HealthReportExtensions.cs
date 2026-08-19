@@ -13,7 +13,7 @@ namespace HealthCheckPlus.Abstractions
     public static class HealthReportExtensions
     {
         /// <summary>
-        /// The last <see cref="HealthCheckResult"/> data for HealthCheck. IF not found return Unhealthy.
+        /// The last <see cref="HealthStatus"/> for the named HealthCheck. If not found, returns Unhealthy.
         /// </summary>
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="keydep">The name dependence.</param>
@@ -27,7 +27,7 @@ namespace HealthCheckPlus.Abstractions
         }
 
         /// <summary>
-        /// The last <see cref="HealthCheckResult"/> data for HealthCheck.
+        /// The last <see cref="HealthStatus"/> for the named HealthCheck. If not found, returns Unhealthy.
         /// </summary>
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="keydep">

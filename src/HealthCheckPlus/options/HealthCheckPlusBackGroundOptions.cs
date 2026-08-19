@@ -28,6 +28,7 @@ namespace HealthCheckPlus.options
         /// <br>DegradedPeriod = 30 seconds.</br>
         /// <br>UnhealthyPeriod = 30 seconds.</br>
         /// <br>Timeout = 30 seconds.</br>
+        /// <br>Idle = 1 second.</br>
         /// <br>Predicate = All HealthCheck.</br>
         /// </summary>
         public HealthCheckPlusBackGroundOptions()

@@ -4,7 +4,7 @@
 </br>
 
 
-#### The last HealthCheckResult data for HealthCheck.
+#### The last HealthStatus for the named HealthCheck. If not found, returns Unhealthy.
 
 ```csharp
 public static HealthStatus StatusResult(this HealthReport report, Enum keydep)
@@ -24,7 +24,7 @@ public static HealthStatus StatusResult(this HealthReport report, Enum keydep)
 
 ### HealthReportExtensions.StatusResult method (2 of 2)
 
-#### The last HealthCheckResult data for HealthCheck. IF not found return Unhealthy.
+#### The last HealthStatus for the named HealthCheck. If not found, returns Unhealthy.
 
 ```csharp
 public static HealthStatus StatusResult(this HealthReport report, string keydep)

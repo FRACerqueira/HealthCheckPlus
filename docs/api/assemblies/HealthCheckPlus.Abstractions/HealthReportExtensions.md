@@ -14,7 +14,7 @@ public static class HealthReportExtensions
 
 | name | description |
 | --- | --- |
-| static [StatusResult](HealthReportExtensions/StatusResult.md)(…) | The last HealthCheckResult data for HealthCheck. IF not found return Unhealthy. (2 methods) |
+| static [StatusResult](HealthReportExtensions/StatusResult.md)(…) | The last HealthStatus for the named HealthCheck. If not found, returns Unhealthy. (2 methods) |
 | static [TryGetDegraded](HealthReportExtensions/TryGetDegraded.md)(…) | Try get all degraded status. |
 | static [TryGetHealthy](HealthReportExtensions/TryGetHealthy.md)(…) | Try get all healthy status. |
 | static [TryGetNotHealthy](HealthReportExtensions/TryGetNotHealthy.md)(…) | Try get all not healthy status. |

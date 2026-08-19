@@ -502,12 +502,23 @@ namespace HealthCheckPlusTests
             Assert.True(check1.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The check never started.");
             cts.Cancel();
 
-            await Assert.ThrowsAnyAsync<Exception>(() => callTask);
+            var ex = await Assert.ThrowsAnyAsync<Exception>(() => callTask);
 
             Assert.False(cache.FullStatus("Test1").Running,
                 "Test1 (whose AmbientCancellation log call threw) was left permanently marked Running.");
             Assert.False(cache.FullStatus("Test2").Running,
                 "Test2 (a later item in the same batch) was left permanently marked Running because Test1's logging failure aborted the loop before ever reaching it.");
+
+            // Two independent failures happen here: Task.WhenAll faults (Test1's task ends up
+            // Canceled from the ambient token), and ApplyBatchResults itself also fails (the
+            // throwing logger). Neither must silently replace the other - both must surface
+            // together, flattened, rather than one masking the other via ordinary CLR
+            // exception-in-finally semantics (see the comment on the ExceptionDispatchInfo
+            // rewrite in CheckHealthPlusAsync this guards).
+            var aggregate = Assert.IsType<AggregateException>(ex);
+            var leaves = aggregate.Flatten().InnerExceptions;
+            Assert.Contains(leaves, e => e is OperationCanceledException);
+            Assert.Contains(leaves, e => e is InvalidOperationException && e.Message.Contains("Simulated broken logging provider", StringComparison.Ordinal));
         }
 
         // BackGroudCheckHealthPlusAsync gets the same release-on-throw guard around StartBatch as

@@ -150,7 +150,14 @@ namespace HealthCheckPlusTests
                     if (Interlocked.Increment(ref callCount) == 1)
                     {
                         firstCallStarted.Set();
-                        releaseFirstCall.Wait();
+                        // Bounded, not an unbounded Wait(): if SwitchToUnhealthy below ever threw
+                        // before releasing this (it doesn't today, but shouldn't be relied on), an
+                        // unbounded wait here would hang this thread forever instead of just
+                        // failing this test.
+                        if (!releaseFirstCall.Wait(TimeSpan.FromSeconds(10)))
+                        {
+                            throw new TimeoutException("releaseFirstCall was never signaled.");
+                        }
                         return HealthStatus.Healthy; // stale - computed before the override below
                     }
                     return HealthStatus.Unhealthy; // the override's own, fresh computation
@@ -164,7 +171,27 @@ namespace HealthCheckPlusTests
             // to grow fast enough to hand out a worker for it within that window, which made an
             // earlier version of this test using Task.Run intermittently fail on thread-pool
             // starvation alone, with nothing actually wrong in CacheHealthCheckPlus.
-            var staleCall = new Thread(() => _cacheHealthCheckPlus.UpdateStatusName());
+            //
+            // Two hazards a bare Thread has that Task.Run didn't, both guarded against below:
+            // IsBackground = true, so this thread can never be what keeps the test host process
+            // alive past the end of the run if it somehow never reaches the Join() below; and the
+            // delegate itself is wrapped in try/catch, since an unhandled exception on a raw
+            // Thread (unlike a Task's, which is just observed by whoever awaits it) crashes the
+            // entire process rather than merely failing this one test - the exception is captured
+            // and rethrown after Join() instead, on the test's own thread.
+            Exception? staleCallException = null;
+            var staleCall = new Thread(() =>
+            {
+                try
+                {
+                    _cacheHealthCheckPlus.UpdateStatusName();
+                }
+                catch (Exception ex)
+                {
+                    staleCallException = ex;
+                }
+            })
+            { IsBackground = true };
             staleCall.Start();
             Assert.True(firstCallStarted.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
                 "The stale UpdateStatusName call's delegate never started.");
@@ -179,6 +206,10 @@ namespace HealthCheckPlusTests
             // Now let the stale call's delegate finally return its old value and try to write it.
             releaseFirstCall.Set();
             Assert.True(staleCall.Join(TimeSpan.FromSeconds(10)), "The stale UpdateStatusName call never completed.");
+            if (staleCallException != null)
+            {
+                throw staleCallException;
+            }
 
             Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("Named"));
         }

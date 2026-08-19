@@ -27,13 +27,15 @@ The IHealthChecksBuilder.
 
 | exception | condition |
 | --- | --- |
-| ArgumentNullException | *ihb* is `null`. |
-| ArgumentException | *namedep* or *name* is `null` or empty, *namedep* equals *name*, or *period* is provided and below one second. |
-| InvalidOperationException | `AddHealthChecksPlus` was never called first. |
+| ArgumentNullException | *ihb*, *namedep*, or *name* is `null`. |
+| ArgumentException | *namedep* or *name* is empty, *namedep* equals *name*, or *period* is provided and below one second. |
+| InvalidOperationException | `AddHealthChecksPlus` was never called first. Separately, resolving IOptions throws this same exception type if no check named *name* was ever registered. |
 
 ### Remarks
 
 The `AddCheckLinkTo` cannot be set to a period value lower than 1 second.
+
+Must be called after the check named *name* is itself registered (e.g. via a third-party package's own IHealthChecksBuilder extension such as `AddRedis`) - it adopts an existing registration rather than creating one. Calling it first throws at the point the options are resolved (typically at startup, when the service provider is built), not from this method itself.
 
 ### See Also
 
