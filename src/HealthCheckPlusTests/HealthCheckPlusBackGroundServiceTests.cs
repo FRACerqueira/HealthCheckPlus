@@ -252,6 +252,72 @@ namespace HealthCheckPlusTests
             Assert.DoesNotContain(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPlusBackGroundLoopFaulted");
         }
 
+        // Regression test: unlike DisposeAsync() above, the synchronous Dispose() cancels the
+        // loop and disposes _stopping immediately, with no way to await the loop first - so a
+        // fault that only happens AFTER Dispose() has already returned (the exact shape of the
+        // gap StopAsync's own continuation exists to close - reachable if StopAsync never ran,
+        // see the comment above this class's Dispose()) used to vanish with zero signal: no log,
+        // no metric, an UnobservedTaskException at finalization time in the worst case.
+        // Dispose() now attaches the same fire-and-forget continuation StopAsync's own Task
+        // result already carries, so the eventual fault - whenever it actually happens - still
+        // gets observed. The loop task is swapped for a manually-controlled one via reflection so
+        // the fault can be triggered deterministically *after* Dispose() returns, instead of
+        // trying to make CheckHealthAsync's own loop genuinely escape every one of its guards.
+        [Fact]
+        public async Task Dispose_ShouldEventuallyObserveAndLogALoopFault_WhenTheLoopFaultsAfterDisposeAlreadyReturned()
+        {
+            var loggerProvider = new CapturingLoggerProvider();
+            using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(loggerProvider));
+
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => new AlwaysHealthyCheck(), null, null));
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IStateHealthChecksPlus>(cache);
+            services.AddSingleton(new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test1"));
+            var provider = services.BuildServiceProvider();
+
+            var healthCheckService = new DefaultHealthCheckServicePlus(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                provider,
+                NullLogger<HealthCheckService>.Instance,
+                Options.Create(hcOptions),
+                new HealthChecksPlusRegistrationState());
+
+            var backgroundOptions = new HealthCheckPlusBackGroundOptions
+            {
+                Delay = TimeSpan.Zero,
+                Idle = TimeSpan.FromSeconds(1)
+            };
+
+            var backgroundService = new HealthCheckPlusBackGroundService(
+                loggerFactory.CreateLogger<HealthCheckPlusBackGroundService>(),
+                healthCheckService,
+                Options.Create(hcOptions),
+                Options.Create(backgroundOptions),
+                [],
+                provider);
+
+            var tcs = new TaskCompletionSource();
+            var loopField = typeof(HealthCheckPlusBackGroundService).GetField("_runningHealthCheckPlus", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            loopField.SetValue(backgroundService, tcs.Task);
+
+            // StopAsync deliberately never called.
+            backgroundService.Dispose();
+
+            // The fault happens only now - strictly after Dispose() has already returned.
+            tcs.SetException(new InvalidOperationException("simulated loop fault"));
+
+            await PollUntilAsync(
+                () => loggerProvider.Entries.Any(e => e.EventId.Name == "HealthCheckPlusBackGroundLoopFaulted"),
+                TimeSpan.FromSeconds(10),
+                "Expected the loop fault to eventually be observed and logged by Dispose()'s own continuation.",
+                TestContext.Current.CancellationToken);
+        }
+
         // A logging provider that throws on every call - simulates a broken third-party sink for
         // this class's own ILogger.
         private sealed class ThrowingLogger : ILogger<HealthCheckPlusBackGroundService>

@@ -612,6 +612,47 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Unhealthy, cache.Status("agg"));
         }
 
+        // Regression test: the fix above (running UpdateStatusName() before the rethrow) moved the
+        // call earlier, but left it OUTSIDE the try/catch that combines a batch failure with a
+        // second, independent failure - so a throwing StatusHealthReport delegate propagated
+        // directly from UpdateStatusName(), bypassing whenAllFailure?.Throw() entirely and silently
+        // discarding the real ambient-cancellation failure it was capturing. BackGroudCheckHealthPlusAsync
+        // never had this gap (its own UpdateStatusName() call already sat inside the guarded try).
+        // Found by a ninth independent audit round applying the same equivalence-test discipline
+        // (Gate 2) that caught the original asymmetry this fix was for - confirmed red against the
+        // version with UpdateStatusName() outside the try (it surfaced only InvalidOperationException,
+        // silently losing the OperationCanceledException), green with it moved inside.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldCombineBothFailures_WhenTheBatchFaultsAndUpdateStatusNameAlsoThrows()
+        {
+            var check1 = new CancelableCheck();
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+            cache.AddStatusName(new HealthCheckPlusOptions
+            {
+                HealthCheckName = "agg",
+                StatusHealthReport = _ => throw new InvalidOperationException("BOOM")
+            }, includeName: null);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => check1, null, null));
+
+            var healthyPolicy1 = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test1");
+
+            var service = BuildService(cache, hcOptions, healthyPolicy1);
+
+            using var cts = new CancellationTokenSource();
+            var callTask = service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, cts.Token);
+
+            Assert.True(check1.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "Test1 never started.");
+            cts.Cancel();
+
+            var ex = await Assert.ThrowsAsync<AggregateException>(() => callTask);
+            var inner = ex.Flatten().InnerExceptions;
+            Assert.Contains(inner, e => e is OperationCanceledException);
+            Assert.Contains(inner, e => e is InvalidOperationException && e.Message == "BOOM");
+        }
+
         // BackGroudCheckHealthPlusAsync gets the same release-on-throw guard around StartBatch as
         // CheckHealthPlusAsync above, for consistency, but it has no realistic trigger today:
         // BackGroudCheckHealthPlusAsync never logs directly in that span, and Task.Run itself does

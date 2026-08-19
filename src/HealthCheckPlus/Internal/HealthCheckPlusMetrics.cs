@@ -156,5 +156,22 @@ namespace HealthCheckPlus.Internal
 
             Anomalies.Add(1, new TagList { { "healthcheckplus.anomaly.reason", reasonTag } });
         }
+
+        // Shared by CacheHealthCheckPlus/DefaultHealthCheckServicePlus/HealthCheckPlusBackGroundService,
+        // each of which keeps its own private SafeLog(Action) wrapper delegating to this one -
+        // call sites stay unchanged (SafeLog(() => ...)), but the guard body itself, which never
+        // referenced any instance state to begin with, now lives in exactly one place instead of
+        // three verbatim copies that could individually drift.
+        public static void SafeLog(Action logCall)
+        {
+            try
+            {
+                logCall();
+            }
+            catch (Exception)
+            {
+                RecordAnomaly(AnomalyReason.LoggingSinkFailed);
+            }
+        }
     }
 }

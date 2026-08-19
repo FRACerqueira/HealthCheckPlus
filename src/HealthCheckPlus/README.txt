@@ -43,6 +43,7 @@ Features
     - HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus (with extra fields : cache source and reference date of last run)
     - HealthCheckPlusOptions.WriteDetailsWithException
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
+    - The ...Plus writers take an extra IStateHealthChecksPlus parameter, so ResponseWriter needs a small lambda rather than a direct method reference: ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithExceptionPlus(ctx, report, stateHealthChecksPlus) (see the Samples for a full working example)
 - Simple and clear fluent syntax extending the native features of healt check
 - Native metrics via System.Diagnostics.Metrics (check executions, status transitions, publisher invocations) - no extra package dependency, consumable by any exporter (OpenTelemetry, Prometheus, App Insights, ...)
 
@@ -104,9 +105,12 @@ builder.Services
         opt.HealthyPeriod = TimeSpan.FromSeconds(30);
         opt.DegradedPeriod = TimeSpan.FromSeconds(30);
         opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
-        opt.Publishing = new PublishingOptions() 
-        { 
-            //default values
+        //Publishing.Enabled defaults to false - assigning a new PublishingOptions() (as below) is
+        //what turns it on. AfterIdleCount/WhenReportChange below happen to match its own defaults,
+        //but the assignment itself is not redundant boilerplate: deleting this block silently
+        //disables all publishing, with no log or metric signal.
+        opt.Publishing = new PublishingOptions()
+        {
             AfterIdleCount = 1,
             WhenReportChange = true
         };

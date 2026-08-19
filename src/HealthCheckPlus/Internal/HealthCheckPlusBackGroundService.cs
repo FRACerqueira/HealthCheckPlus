@@ -23,6 +23,7 @@ namespace HealthCheckPlus.Internal
         private readonly CancellationTokenSource _stopping;
         private readonly IHealthCheckPublisher[] _publishers;
         private readonly bool _haspublishers;
+        private readonly bool _anyPublisherRegistered;
         private readonly IServiceProvider _serviceProvider;
         private Task? _runningHealthCheckPlus;
         private readonly ILogger<HealthCheckPlusBackGroundService> _logger;
@@ -39,7 +40,14 @@ namespace HealthCheckPlus.Internal
         {
             _optionsBackGround = options;
             _publishers = [];
-            if (_optionsBackGround.Value.Publishing.Enabled && publishers.Any())
+            // Captured regardless of Publishing.Enabled - StartAsync's native-hosted-service guard
+            // below needs to know whether ANY publisher exists at all, not just whether THIS class
+            // would drive it. A resurrected native service invokes every registered
+            // IHealthCheckPublisher on its own schedule independent of Publishing.Enabled, so that
+            // flag alone would let the guard miss the one configuration (Publishing disabled, a
+            // publisher registered anyway) where the native service coming back is real harm.
+            _anyPublisherRegistered = publishers.Any();
+            if (_optionsBackGround.Value.Publishing.Enabled && _anyPublisherRegistered)
             {
                 _publishers = publishers.ToArray();
                 _haspublishers = true;
@@ -56,26 +64,29 @@ namespace HealthCheckPlus.Internal
             // AddBackgroundPolicy() removes the native HealthCheckPublisherHostedService from the
             // IServiceCollection at registration time so publishers aren't driven twice - but that
             // removal is order-dependent: if anything calls IServiceCollection.AddHealthChecks()
-            // again afterward (the app itself by mistake, or a third-party IHealthChecksBuilder
-            // extension that calls it defensively before adding its own check - a common pattern),
+            // again afterward (typically the app's own startup code, e.g. a second AddHealthChecks()
+            // call or a check-registration helper written before AddBackgroundPolicy() existed),
             // .NET's TryAddEnumerable silently re-adds it, since nothing of that type is registered
-            // at that later point anymore. Left undetected, this produces one of two silent bad
-            // outcomes depending on Publishing.Enabled: the native service drives publishers on its
-            // own schedule, bypassing AfterIdleCount/WhenReportChange/PublisherCondition entirely,
-            // or both it and this service drive them, duplicating every dispatch. By the time
+            // at that later point anymore. A resurrected native service invokes every registered
+            // IHealthCheckPublisher on its own schedule - bypassing AfterIdleCount/WhenReportChange/
+            // PublisherCondition entirely - or duplicates every dispatch alongside this service,
+            // independent of Publishing.Enabled (that flag only governs whether THIS class drives
+            // publishers, not whether the native one does). Only checked when at least one publisher
+            // is actually registered - with none, a resurrected native service has nothing to invoke
+            // and is harmless, so failing the whole host over it would be a false positive for a
+            // background-polling-only setup with no IHealthCheckPublisher at all. By the time
             // StartAsync runs, the generic host has already resolved the full IHostedService list
             // to start every service in it (including this one) - resolving it again here returns
             // that same cached singleton list, it does not trigger a fresh or circular construction.
-            if (_serviceProvider.GetServices<IHostedService>().Any(s =>
-                s.GetType().FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService"))
+            if (_anyPublisherRegistered && _serviceProvider.GetServices<IHostedService>().Any(s =>
+                s.GetType().FullName == NativeHostedServiceNames.HealthCheckPublisherHostedService))
             {
                 throw new InvalidOperationException(
                     $"Invalid configuration. The native HealthCheckPublisherHostedService was re-registered after " +
                     $"{nameof(HealthCheckPlusBackGroundService)} was added, which means something called " +
-                    $"IServiceCollection.AddHealthChecks() (directly, or through a third-party IHealthChecksBuilder " +
-                    $"extension that calls it internally) after AddBackgroundPolicy(). Call AddBackgroundPolicy() " +
-                    $"after every health check registration to avoid publishers being driven twice or bypassing " +
-                    $"this library's own publishing policy.");
+                    $"IServiceCollection.AddHealthChecks() again after AddBackgroundPolicy(). With at least one " +
+                    $"IHealthCheckPublisher registered, this would drive it twice or bypass this library's own " +
+                    $"publishing policy. Call AddBackgroundPolicy() after every health check registration to avoid this.");
             }
 
             if (_healthcheckserviceOptions.Value.Registrations.Count == 0)
@@ -355,6 +366,33 @@ namespace HealthCheckPlus.Internal
             try
             {
                 CancelStopping();
+
+                // Fire-and-forget, mirroring StopAsync's own continuation - Dispose() is
+                // synchronous and can't await the loop the way DisposeAsync() below does, so
+                // without this, a loop that faults sometime AFTER this method already returned
+                // (only reachable if StopAsync never ran first - see the comment above this
+                // class's DisposeAsync) would never be observed at all: no log, no metric, an
+                // UnobservedTaskException at finalization time in the worst case. This doesn't
+                // block Dispose() - it just guarantees the eventual fault, whenever it happens,
+                // still gets logged/recorded instead of vanishing silently. Harmless to attach a
+                // second one in the normal case where StopAsync's own continuation already ran:
+                // the antecedent is already complete, ObserveLoopCompletion is a cheap no-op
+                // check, and disposing an already-disposed Task is a documented no-op.
+                if (_runningHealthCheckPlus != null)
+                {
+                    var loopTask = _runningHealthCheckPlus;
+                    _ = loopTask.ContinueWith(task =>
+                    {
+                        try
+                        {
+                            ObserveLoopCompletion(task, _logger);
+                        }
+                        finally
+                        {
+                            loopTask.Dispose();
+                        }
+                    }, TaskScheduler.Default);
+                }
             }
             finally
             {
@@ -505,20 +543,10 @@ namespace HealthCheckPlus.Internal
         // none of which may throw. Closing that fully would need a nested empty catch here, which
         // this codebase's own no-silent-catch doctrine treats as a decision requiring explicit
         // sign-off, not something to add unasked - left as a known gap, not an oversight.
-        private void SafeLog(Action logCall)
-        {
-            try
-            {
-                logCall();
-            }
-            catch (Exception)
-            {
-                HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
-            }
-        }
+        private void SafeLog(Action logCall) => HealthCheckPlusMetrics.SafeLog(logCall);
 
         // Two independent reasons a cache entry must not reach publishers or the WhenReportChange
-        // hash, both enforced by DefaultHealthCheckServicePlus.CreateReport(includeName)'s single
+        // hash, both enforced by CacheHealthCheckPlus.CreateReport(includeName)'s single
         // per-entry snapshot read:
         //
         // 1. HealthCheckPlusBackGroundOptions.Predicate decides which checks this background

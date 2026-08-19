@@ -52,9 +52,10 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <remarks>
         /// Call this after every health check registration (native, third-party, or via <see cref="AddCheckPlus{T}"/>/<see cref="AddCheckLinkTo"/>).
         /// This method removes the native <c>HealthCheckPublisherHostedService</c> so publishers aren't driven twice, but that removal only
-        /// affects whatever is registered at the moment it runs - a later call to <c>IServiceCollection.AddHealthChecks()</c> (the app itself, or
-        /// a third-party <see cref="IHealthChecksBuilder"/> extension that calls it defensively) silently re-adds it. If that happens, the host
-        /// fails fast with an <see cref="InvalidOperationException"/> when it starts, instead of publishers being driven twice or by the wrong service with no signal.
+        /// affects whatever is registered at the moment it runs - a later call to <c>IServiceCollection.AddHealthChecks()</c> (typically the
+        /// app's own startup code) silently re-adds it. If that happens and at least one <see cref="IHealthCheckPublisher"/> is registered, the
+        /// host fails fast with an <see cref="InvalidOperationException"/> when it starts, instead of publishers being driven twice or by the
+        /// wrong service with no signal; with no publisher registered, a resurrected native service has nothing to invoke and is harmless.
         /// </remarks>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="option">The options for HealthChecksPlus Background service. See <see cref="HealthCheckPlusBackGroundOptions"/>.</param>
@@ -93,9 +94,12 @@ namespace Microsoft.Extensions.DependencyInjection
             // (not just the short name) is the narrowest correct option available. If a future .NET
             // version renames/moves this type, this silently stops matching — the native and
             // HealthCheckPlus background services would then both run and both invoke publishers.
-            // Known residual risk; no public replacement exists, unlike the HealthCheckService case.
+            // Known residual risk; no public replacement exists, unlike the HealthCheckService
+            // case - and the same rename would simultaneously disable HealthCheckPlusBackGroundService's
+            // own fail-fast check for this exact service coming back later (see NativeHostedServiceNames,
+            // the single shared constant both this removal and that check depend on).
             ServiceDescriptor? hcs = ihb.Services.FirstOrDefault(x =>
-                x.ImplementationType?.FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService");
+                x.ImplementationType?.FullName == NativeHostedServiceNames.HealthCheckPublisherHostedService);
             if (hcs != null)
             {
                 ihb.Services.Remove(hcs!);

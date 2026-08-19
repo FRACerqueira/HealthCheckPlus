@@ -123,6 +123,72 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("live"));
         }
 
+        // Regression test: a mix of unfiltered names (includeName: null) and a genuinely filtered
+        // name, all updated in the same UpdateStatusName() call, must each compute independently
+        // and correctly - a tempting optimization (sharing one built HealthReport instance across
+        // every unfiltered name, since they'd read identical content) was tried and reverted: that
+        // report's Entries is, at runtime, the same mutable Dictionary its constructor was handed
+        // (HealthReport.Entries is only IReadOnlyDictionary at compile time), so sharing it would
+        // let one misbehaving StatusHealthReport delegate (one that downcasts and writes to it)
+        // silently corrupt every other unfiltered name sharing that instance - exactly the
+        // cross-aggregate leak includeName's own isolation exists to prevent. This test doesn't
+        // exercise that failure mode directly (each name still gets its own report instance); it
+        // exists to keep the mixed-name case covered now that it was considered.
+        [Fact]
+        public void UpdateStatusName_ShouldComputeEachNameIndependently_WhenMixingFilteredAndUnfilteredNames()
+        {
+            _cacheHealthCheckPlus.InitCache(["Included", "Excluded"]);
+            _cacheHealthCheckPlus.Running("Excluded", true);
+            _cacheHealthCheckPlus.Update("Excluded", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Unhealthy), DateTime.UtcNow, TimeSpan.Zero);
+
+            _cacheHealthCheckPlus.AddStatusName(new HealthCheckPlusOptions
+            {
+                HealthCheckName = "default1",
+                StatusHealthReport = report => report.Entries.ContainsKey("Excluded") ? HealthStatus.Unhealthy : HealthStatus.Healthy
+            }, includeName: null);
+            _cacheHealthCheckPlus.AddStatusName(new HealthCheckPlusOptions
+            {
+                HealthCheckName = "default2",
+                StatusHealthReport = report => report.Entries.ContainsKey("Excluded") ? HealthStatus.Unhealthy : HealthStatus.Healthy
+            }, includeName: null);
+            _cacheHealthCheckPlus.AddStatusName(new HealthCheckPlusOptions
+            {
+                HealthCheckName = "scoped",
+                StatusHealthReport = report => report.Entries.ContainsKey("Excluded") ? HealthStatus.Unhealthy : HealthStatus.Healthy
+            }, includeName: name => name == "Included");
+
+            _cacheHealthCheckPlus.UpdateStatusName();
+
+            Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("default1"));
+            Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("default2"));
+            Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("scoped"));
+        }
+
+        // Regression test: a StatusHealthReport delegate that calls SwitchToUnhealthy/
+        // SwitchToDegraded re-enters UpdateStatusName() through SwithState's own call to it -
+        // and again, and again, since the same delegate runs every time - which would otherwise
+        // recurse until an uncatchable StackOverflowException kills the process, with no log, no
+        // metric, and no way for any try/catch to intervene. Found by a ninth independent audit
+        // round. A same-thread reentrancy guard now converts this into a clear, catchable
+        // InvalidOperationException instead.
+        [Fact]
+        public void UpdateStatusName_ShouldThrowClearException_RatherThanRecurseForever_WhenStatusHealthReportCallsSwitchTo()
+        {
+            _cacheHealthCheckPlus.InitCache(["Test1"]);
+            _cacheHealthCheckPlus.AddStatusName(new HealthCheckPlusOptions
+            {
+                HealthCheckName = "agg",
+                StatusHealthReport = _ =>
+                {
+                    _cacheHealthCheckPlus.SwitchToUnhealthy("Test1");
+                    return HealthStatus.Healthy;
+                }
+            }, includeName: null);
+
+            var ex = Assert.Throws<InvalidOperationException>(() => _cacheHealthCheckPlus.UpdateStatusName());
+            Assert.Contains("StatusHealthReport", ex.Message, StringComparison.Ordinal);
+        }
+
         // Same regression as above, for Status(name)'s own cold-compute path (the first-ever call
         // for a name, before any UpdateStatusName() cycle has populated _statusName for it) -
         // Update() alone (unlike SwithState) never calls UpdateStatusName(), so this reaches

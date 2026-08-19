@@ -133,9 +133,12 @@ builder.Services
         opt.HealthyPeriod = TimeSpan.FromSeconds(30);
         opt.DegradedPeriod = TimeSpan.FromSeconds(30);
         opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
+        //Publishing.Enabled defaults to false - assigning a new PublishingOptions() (as below) is
+        //what turns it on. AfterIdleCount/WhenReportChange below happen to match its own defaults,
+        //but the assignment itself is not redundant boilerplate: deleting this block silently
+        //disables all publishing, with no log or metric signal.
         opt.Publishing = new PublishingOptions() 
         { 
-            //default values
             AfterIdleCount = 1,
             WhenReportChange = true
         };

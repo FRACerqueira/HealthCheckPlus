@@ -36,7 +36,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Content Include="..\README.txt">
+		<Content Include="README.txt">
 			<Pack>true</Pack>
 			<PackagePath>README.txt</PackagePath>
 		</Content>
@@ -44,9 +44,30 @@
 
 	<ItemGroup>
 		<None Include="..\..\icon.png" Pack="true" PackagePath="\" />
-		<None Include="..\..\README.md" Pack="true" PackagePath="\" />
+		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
-	<ItemGroup>
-		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	<!--
+		This project's own source only ever uses Microsoft.Extensions.Diagnostics.HealthChecks
+		types (HealthCheckResult, HealthStatus, IHealthCheck, ...) - never anything ASP.NET-Core
+		specific (HttpContext, IApplicationBuilder, ...). A FrameworkReference to
+		Microsoft.AspNetCore.App (the shared ASP.NET Core runtime) previously pulled that
+		requirement into every consumer's runtimeconfig.json regardless, so an abstractions-only
+		consumer (a domain library, a worker service, a slim container on
+		mcr.microsoft.com/dotnet/runtime) could not host this package without also carrying the
+		full ASP.NET Core shared framework - contradicting the README's own positioning of this
+		package for "projects that only need the abstractions". The standalone
+		Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions package ships the same types
+		without that requirement; verified these five source files compile against it with 0
+		warnings/errors, and a consumer of the resulting package gets a runtimeconfig listing only
+		Microsoft.NETCore.App.
+	-->
+	<ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="8.0.0" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="9.0.0" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="10.0.0" />
 	</ItemGroup>
 </Project>

@@ -141,17 +141,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // of SafeLog and, transitively, out of whatever called it. Closing that fully would need a
         // nested empty catch here, which this codebase's own no-silent-catch doctrine treats as a
         // decision requiring explicit sign-off, not something to add unasked - left as a known gap.
-        private void SafeLog(Action logCall)
-        {
-            try
-            {
-                logCall();
-            }
-            catch (Exception)
-            {
-                HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
-            }
-        }
+        private void SafeLog(Action logCall) => HealthCheckPlusMetrics.SafeLog(logCall);
 
         // A health check with no matching Healthy policy (i.e. registered without going through
         // AddCheckPlus/AddCheckLinkTo) must fail early and clearly, instead of throwing a
@@ -488,23 +478,32 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 try
                 {
                     ApplyBatchResults(registrationstorun, tasks, dtref, resultHealthCheckFrom, cancellationToken);
+
+                    // UpdateStatusName() before the rethrow below, not after: ApplyBatchResults
+                    // above already committed every completed check's result via Update()
+                    // regardless of whether the batch as a whole is about to be reported as
+                    // faulted (e.g. the ambient token firing mid-flight while most checks still
+                    // completed normally) - a named aggregate (Status(name)) must reflect those
+                    // committed results the same cycle they landed, not stay stale until whatever
+                    // next cycle happens not to fault. This used to only run once whenAllFailure
+                    // had already been checked (rethrowing here first), so a faulted batch's
+                    // Update() calls never made it into any named aggregate at all - an asymmetry
+                    // with BackGroudCheckHealthPlusAsync below, which already calls
+                    // UpdateStatusName() before its own equivalent rethrow.
+                    //
+                    // Deliberately still inside this same try, not just moved above it and left
+                    // unguarded - UpdateStatusName() invokes every registered StatusHealthReport
+                    // delegate (CacheHealthCheckPlus.UpdateStatusName), and a throwing delegate
+                    // used to propagate directly from here, bypassing whenAllFailure?.Throw()
+                    // below entirely and silently discarding the real batch failure it was
+                    // capturing - the exact class of masking this same method's own
+                    // ApplyBatchResults guard above exists to prevent, just one line lower.
+                    _cacheStatus.UpdateStatusName();
                 }
                 catch (Exception ex) when (whenAllFailure != null)
                 {
                     throw new AggregateException(whenAllFailure.SourceException, ex);
                 }
-
-                // UpdateStatusName() before the rethrow below, not after: ApplyBatchResults above
-                // already committed every completed check's result via Update() regardless of
-                // whether the batch as a whole is about to be reported as faulted (e.g. the ambient
-                // token firing mid-flight while most checks still completed normally) - a named
-                // aggregate (Status(name)) must reflect those committed results the same cycle they
-                // landed, not stay stale until whatever next cycle happens not to fault. This used
-                // to only run once whenAllFailure had already been checked (rethrowing here first),
-                // so a faulted batch's Update() calls never made it into any named aggregate at all
-                // - an asymmetry with BackGroudCheckHealthPlusAsync below, which already calls
-                // UpdateStatusName() before its own equivalent rethrow.
-                _cacheStatus.UpdateStatusName();
                 whenAllFailure?.Throw();
             }
             else

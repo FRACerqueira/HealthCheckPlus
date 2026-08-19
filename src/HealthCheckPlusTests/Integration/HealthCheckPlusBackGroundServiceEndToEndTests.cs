@@ -143,7 +143,7 @@ namespace HealthCheckPlusTests.Integration
 
             var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
 
-            Assert.DoesNotContain(hostedServices, s => s.GetType().FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService");
+            Assert.DoesNotContain(hostedServices, s => s.GetType().FullName == NativeHostedServiceNames.HealthCheckPublisherHostedService);
             Assert.Contains(hostedServices, s => s is HealthCheckPlusBackGroundService);
 
             await host.StopAsync(TestContext.Current.CancellationToken);
@@ -152,15 +152,15 @@ namespace HealthCheckPlusTests.Integration
         // Regression test: AddBackgroundPolicy()'s removal of the native
         // HealthCheckPublisherHostedService is order-dependent - it only removes whatever is
         // registered at that exact moment. If anything calls IServiceCollection.AddHealthChecks()
-        // again afterward (here simulating a third-party IHealthChecksBuilder extension that does
-        // this defensively before adding its own check, a common real-world pattern), .NET's
+        // again afterward (here simulating the app's own startup code doing this), .NET's
         // TryAddEnumerable silently re-adds it, since nothing of that type is registered at that
-        // later point anymore. Left undetected, the native service would then drive publishers on
-        // its own schedule - bypassing AfterIdleCount/WhenReportChange/PublisherCondition entirely
-        // - or duplicate every dispatch alongside HealthCheckPlusBackGroundService, with zero log
-        // or metric signal either way. StartAsync now fails fast instead.
+        // later point anymore. With a publisher registered, the resurrected native service would
+        // drive it on its own schedule - bypassing AfterIdleCount/WhenReportChange/
+        // PublisherCondition entirely - or duplicate every dispatch alongside
+        // HealthCheckPlusBackGroundService, with zero log or metric signal either way. StartAsync
+        // now fails fast instead.
         [Fact]
-        public async Task AddBackgroundPolicy_ShouldFailFast_WhenNativePublisherHostedServiceIsReRegisteredAfterward()
+        public async Task AddBackgroundPolicy_ShouldFailFast_WhenNativePublisherHostedServiceIsReRegisteredAfterward_AndAPublisherIsRegistered()
         {
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             {
@@ -168,6 +168,7 @@ namespace HealthCheckPlusTests.Integration
                     services =>
                     {
                         services.AddLogging();
+                        services.AddSingleton<IHealthCheckPublisher, RecordingPublisher>();
                         var ihb = services.AddHealthChecksPlus();
                         ihb.AddCheckPlus<CountingCheck>("Test1");
                         ihb.AddBackgroundPolicy();
@@ -181,6 +182,34 @@ namespace HealthCheckPlusTests.Integration
 
             Assert.Contains("HealthCheckPublisherHostedService", ex.Message, StringComparison.Ordinal);
             Assert.Contains("AddBackgroundPolicy", ex.Message, StringComparison.Ordinal);
+        }
+
+        // Regression test: a ninth independent audit round found this guard, as originally
+        // written, threw regardless of whether any IHealthCheckPublisher was even registered - a
+        // resurrected native service with nothing to publish is provably harmless (confirmed
+        // empirically: 0 checks/0 publishes from the native service alone in that configuration),
+        // so failing the whole host over it was a false positive for a background-polling-only
+        // setup with no publisher - the default shape, since PublishingOptions.Enabled defaults to
+        // false. The guard must only fire when there is actual harm to prevent.
+        [Fact]
+        public async Task AddBackgroundPolicy_ShouldNotFailFast_WhenNativePublisherHostedServiceIsReRegisteredAfterward_AndNoPublisherIsRegistered()
+        {
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus();
+                    ihb.AddCheckPlus<CountingCheck>("Test1");
+                    ihb.AddBackgroundPolicy();
+                    services.AddHealthChecks();
+                },
+                _ => { });
+
+            var hostedServices = host.Services.GetServices<IHostedService>().ToArray();
+            Assert.Contains(hostedServices, s => s.GetType().FullName == NativeHostedServiceNames.HealthCheckPublisherHostedService);
+            Assert.Contains(hostedServices, s => s is HealthCheckPlusBackGroundService);
+
+            await host.StopAsync(TestContext.Current.CancellationToken);
         }
 
         // healthcheckplus.check.executions/duration must carry check.origin=Background when the

@@ -159,22 +159,62 @@ namespace HealthCheckPlus.Internal
         // each other's filtered view. All of them are still built inside the same lock as version,
         // so every name's report and the version it's stored against describe the exact same
         // instant, the same guarantee as when this built one shared report for every name.
+        // Set for the duration of the delegate-invocation loop below, on whichever thread is
+        // running it - not a lock, just a same-thread reentrancy detector. A StatusHealthReport
+        // delegate that calls SwitchToUnhealthy/SwitchToDegraded (directly, or indirectly through
+        // its own code) would otherwise recurse straight back into this method through SwithState
+        // - and again, and again - until an uncatchable StackOverflowException kills the process,
+        // with no log, no metric, and no way for any try/catch anywhere to intervene. [ThreadStatic]
+        // rather than an instance field deliberately does not block two independent top-level
+        // calls to UpdateStatusName() on different threads (e.g. an HTTP request racing a
+        // background cycle) - only a call stack genuinely re-entering itself.
+        [ThreadStatic]
+        private static bool _isUpdatingStatusNames;
+
         public void UpdateStatusName()
         {
+            if (_isUpdatingStatusNames)
+            {
+                throw new InvalidOperationException(
+                    "Invalid usage. A StatusHealthReport delegate (registered via AddStatusName) called " +
+                    "SwitchToUnhealthy/SwitchToDegraded, which re-entered UpdateStatusName() on the same " +
+                    "call stack - continuing would recurse until a StackOverflowException crashes the " +
+                    "process. A StatusHealthReport delegate must not call SwitchToUnhealthy/SwitchToDegraded.");
+            }
+
             long version;
             var reportsByName = new List<(string Name, StatusNameRegistration Registration, HealthReport Report)>();
             lock (_lock)
             {
                 version = _stateVersion;
+                // Deliberately one BuildReport call per name, even for names that share the same
+                // (null) IncludeName - a shared HealthReport instance was tried and reverted.
+                // HealthReport.Entries is typed IReadOnlyDictionary<...> but is, at runtime, the
+                // exact same mutable Dictionary<...> passed to its constructor - confirmed
+                // empirically, no defensive copy. A StatusHealthReport delegate that downcasts and
+                // writes to it (even accidentally, e.g. code that assumes it owns a private copy)
+                // would silently corrupt every OTHER unfiltered name sharing that same instance -
+                // exactly the kind of cross-aggregate leak includeName's own isolation was added to
+                // prevent. Each name's own O(checks) report build is the accepted cost instead, on
+                // the same "dozens of checks, not thousands" scale already accepted for
+                // BuildDueRegistrations' own O(registrations) baseline (see its own comment).
                 foreach (var item in _statusFunction)
                 {
                     reportsByName.Add((item.Key, item.Value, BuildReport(item.Value.IncludeName, excludeNeverRun: false)));
                 }
             }
-            foreach (var (name, registration, report) in reportsByName)
+            _isUpdatingStatusNames = true;
+            try
             {
-                var status = registration.StatusHealthReport.Invoke(report);
-                TryStoreStatusName(name, status, version);
+                foreach (var (name, registration, report) in reportsByName)
+                {
+                    var status = registration.StatusHealthReport.Invoke(report);
+                    TryStoreStatusName(name, status, version);
+                }
+            }
+            finally
+            {
+                _isUpdatingStatusNames = false;
             }
         }
 
@@ -501,17 +541,7 @@ namespace HealthCheckPlus.Internal
         // of SafeLog and, transitively, out of Update()/SwithState(). Closing that fully would need
         // a nested empty catch here, which this codebase's own no-silent-catch doctrine treats as a
         // decision requiring explicit sign-off, not something to add unasked - left as a known gap.
-        private void SafeLog(Action logCall)
-        {
-            try
-            {
-                logCall();
-            }
-            catch (Exception)
-            {
-                HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
-            }
-        }
+        private void SafeLog(Action logCall) => HealthCheckPlusMetrics.SafeLog(logCall);
 
         public void SwithState(string key, HealthStatus status)
         {

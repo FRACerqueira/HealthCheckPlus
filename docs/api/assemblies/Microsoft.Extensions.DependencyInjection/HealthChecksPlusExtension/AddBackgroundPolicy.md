@@ -29,7 +29,7 @@ The IHealthChecksBuilder.
 
 ### Remarks
 
-Call this after every health check registration (native, third-party, or via [`AddCheckPlus`](./AddCheckPlus.md)/[`AddCheckLinkTo`](./AddCheckLinkTo.md)). This method removes the native `HealthCheckPublisherHostedService` so publishers aren't driven twice, but that removal only affects whatever is registered at the moment it runs - a later call to `IServiceCollection.AddHealthChecks()` (the app itself, or a third-party IHealthChecksBuilder extension that calls it defensively) silently re-adds it. If that happens, the host fails fast with an InvalidOperationException when it starts, instead of publishers being driven twice or by the wrong service with no signal.
+Call this after every health check registration (native, third-party, or via [`AddCheckPlus`](./AddCheckPlus.md)/[`AddCheckLinkTo`](./AddCheckLinkTo.md)). This method removes the native `HealthCheckPublisherHostedService` so publishers aren't driven twice, but that removal only affects whatever is registered at the moment it runs - a later call to `IServiceCollection.AddHealthChecks()` (typically the app's own startup code) silently re-adds it. If that happens and at least one IHealthCheckPublisher is registered, the host fails fast with an InvalidOperationException when it starts, instead of publishers being driven twice or by the wrong service with no signal; with no publisher registered, a resurrected native service has nothing to invoke and is harmless.
 
 ### See Also
 
