@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 
 namespace HealthCheckPlus.Internal
 {
-    internal partial class HealthCheckPlusBackGroundService : IHostedService
+    internal partial class HealthCheckPlusBackGroundService : IHostedService, IDisposable
     {
         private readonly IOptions<HealthCheckPlusBackGroundOptions> _optionsBackGround;
         private readonly IOptions<HealthCheckServiceOptions> _healthcheckserviceOptions;
@@ -271,6 +271,17 @@ namespace HealthCheckPlus.Internal
             {
                 Log.BackgroundLoopFaulted(logger, loopTask.Exception!);
             }
+        }
+
+        // AddBackgroundPolicy registers this class via AddHostedService, so the DI container
+        // already disposes it (like every other disposable singleton) when the host/service
+        // provider itself is disposed, strictly after StopAsync has run for every hosted service -
+        // by then _stopping has already done its one job (cancelling the loop) and nothing else
+        // still needs it. _runningHealthCheckPlus is disposed separately, inside StopAsync's own
+        // continuation, once the loop task it wraps has actually completed.
+        public void Dispose()
+        {
+            _stopping.Dispose();
         }
 
         private async Task RunPublisherAsync(IHealthCheckPublisher publisher, HealthReport report, CancellationToken cancellationToken)

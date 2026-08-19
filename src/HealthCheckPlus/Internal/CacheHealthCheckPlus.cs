@@ -70,6 +70,19 @@ namespace HealthCheckPlus.Internal
             // AddStatusName is only ever called sequentially during app startup configuration
             // today, so this TOCTOU was never actually reachable concurrently, but it's no more
             // code to just make it atomic.
+            //
+            // Scope note on the default delegate (`_ => AggregateStatus()`, used when
+            // StatusHealthReport is omitted): it ignores the HealthReport that UpdateStatusName()/
+            // Status(name) pass it and reads live _statusDeps instead, so it can never be staler than the
+            // (version, report) pair TryStoreStatusName compares it against - a live read is always
+            // at least as fresh as any snapshot. That also means the version-based staleness
+            // rejection below is never exercised for this default delegate specifically: a fresher
+            // live read can, in principle, still lose to an older stored value that carries a
+            // higher version number, and only self-heals on the next UpdateStatusName()/Status(name)
+            // call. This is a scope limitation of the versioning scheme, not a live bug - the
+            // scenario it exists to fix (SwitchToUnhealthy's own override reverting to a stale
+            // value) only applies to a caller-supplied StatusHealthReport that actually derives its
+            // result from the report it's given.
             if (!_statusFunction.TryAdd(options.HealthCheckName, options.StatusHealthReport ?? (_ => AggregateStatus())))
             {
                 throw new ArgumentException("HealthCheckName already exists");

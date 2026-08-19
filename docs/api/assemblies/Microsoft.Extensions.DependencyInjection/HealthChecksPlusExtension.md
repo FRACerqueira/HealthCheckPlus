@@ -14,7 +14,7 @@ public static class HealthChecksPlusExtension
 
 | name | description |
 | --- | --- |
-| static [AddBackgroundPolicy](HealthChecksPlusExtension/AddBackgroundPolicy.md)(…) | Register HealthChecksPlus Background service with [`HealthCheckPlusBackGroundOptions`](../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) options. Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Predicate = All HealthCheck. |
+| static [AddBackgroundPolicy](HealthChecksPlusExtension/AddBackgroundPolicy.md)(…) | Register HealthChecksPlus Background service with [`HealthCheckPlusBackGroundOptions`](../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) options. Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Idle = 1 second.Predicate = All HealthCheck. |
 | static [AddCheckLinkTo](HealthChecksPlusExtension/AddCheckLinkTo.md)(…) | Register then external(package import) dependence health check to run. the health check must added in IHealthChecksBuilder. |
 | static [AddCheckPlus&lt;T&gt;](HealthChecksPlusExtension/AddCheckPlus.md)(…) | Register then dependence health check to run. |
 | static [AddDegradedPolicy](HealthChecksPlusExtension/AddDegradedPolicy.md)(…) | Register Degraded Policy for the health check |

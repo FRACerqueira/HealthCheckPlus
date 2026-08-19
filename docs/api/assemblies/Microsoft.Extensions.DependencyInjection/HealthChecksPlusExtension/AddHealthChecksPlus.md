@@ -18,6 +18,12 @@ public static IHealthChecksBuilder AddHealthChecksPlus(this IServiceCollection s
 
 The IHealthChecksBuilder.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *sc* is `null`. |
+
 ### See Also
 
 * class [HealthChecksPlusExtension](../HealthChecksPlusExtension.md)

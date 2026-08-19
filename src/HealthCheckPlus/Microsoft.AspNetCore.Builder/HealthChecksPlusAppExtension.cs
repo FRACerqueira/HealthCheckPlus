@@ -39,6 +39,8 @@ namespace Microsoft.AspNetCore.Builder
         /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckOptions}"/>.
         /// </para>
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path)
         {
             ArgumentNullException.ThrowIfNull(app);
@@ -65,6 +67,8 @@ namespace Microsoft.AspNetCore.Builder
         /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckOptions}"/>.
         /// </para>
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, int port)
         {
             ArgumentNullException.ThrowIfNull(app);
@@ -76,16 +80,19 @@ namespace Microsoft.AspNetCore.Builder
         /// Adds a middleware that provides health check status.
         /// </summary>
         /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
-        /// <param name="path">The The path on which to provide health check status.</param>
+        /// <param name="path">The path on which to provide health check status.</param>
         /// <param name="options">The <see cref="HealthCheckPlusOptions"/> used to configure.</param>
-        /// If path is set to null or the empty string then the health check middleware will
         /// <remarks>
+        /// If path is set to null or the empty string then the health check middleware will
         /// ignore the URL path and process all requests. If path is set to a non-empty value,
         /// the health check middleware will process requests with a URL that matches the
         /// provided value of path case-insensitively, allowing for an extra trailing slash
         ///('/') character.
         /// </remarks>
         /// <returns>The <see cref="IApplicationBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> or <paramref name="options"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="options"/>' <see cref="HealthCheckPlusOptions.HealthCheckName"/> was already registered by an earlier call.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called - or the registered <see cref="IStateHealthChecksPlus"/> is not the type <c>AddHealthChecksPlus()</c> registers.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, HealthCheckPlusOptions options)
         {
             ArgumentNullException.ThrowIfNull(app);
@@ -104,17 +111,20 @@ namespace Microsoft.AspNetCore.Builder
         /// Adds a middleware that provides health check status.
         /// </summary>
         /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
-        /// <param name="path">The The path on which to provide health check status.</param>
+        /// <param name="path">The path on which to provide health check status.</param>
         /// <param name="port">The port to listen on. Must be a local port on which the server is listening.</param>
         /// <param name="options">The <see cref="HealthCheckPlusOptions"/> used to configure.</param>
-        /// If path is set to null or the empty string then the health check middleware will
         /// <remarks>
+        /// If path is set to null or the empty string then the health check middleware will
         /// ignore the URL path and process all requests. If path is set to a non-empty value,
         /// the health check middleware will process requests with a URL that matches the
         /// provided value of path case-insensitively, allowing for an extra trailing slash
         ///('/') character.
         /// </remarks>
         /// <returns>The <see cref="IApplicationBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> or <paramref name="options"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="options"/>' <see cref="HealthCheckPlusOptions.HealthCheckName"/> was already registered by an earlier call.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called - or the registered <see cref="IStateHealthChecksPlus"/> is not the type <c>AddHealthChecksPlus()</c> registers.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, int port, HealthCheckPlusOptions options)
         {
             ArgumentNullException.ThrowIfNull(app);

@@ -134,7 +134,7 @@ namespace HealthCheckPlusTests
         // The delegate below blocks on its first invocation (simulating the slow, stale call) and
         // returns immediately on every later one (simulating the override's own fresh call).
         [Fact]
-        public async Task UpdateStatusName_ShouldNotLetAStaleConcurrentCall_OverwriteAFresherOverride()
+        public void UpdateStatusName_ShouldNotLetAStaleConcurrentCall_OverwriteAFresherOverride()
         {
             _cacheHealthCheckPlus.InitCache(["Test1"]);
 
@@ -158,7 +158,14 @@ namespace HealthCheckPlusTests
             };
             _cacheHealthCheckPlus.AddStatusName(options);
 
-            var staleCall = Task.Run(() => _cacheHealthCheckPlus.UpdateStatusName(), TestContext.Current.CancellationToken);
+            // A dedicated Thread, not Task.Run: this call blocks synchronously for up to 10s
+            // inside the delegate above, and the shared thread pool - already under pressure
+            // from every other test running concurrently in the same process - isn't guaranteed
+            // to grow fast enough to hand out a worker for it within that window, which made an
+            // earlier version of this test using Task.Run intermittently fail on thread-pool
+            // starvation alone, with nothing actually wrong in CacheHealthCheckPlus.
+            var staleCall = new Thread(() => _cacheHealthCheckPlus.UpdateStatusName());
+            staleCall.Start();
             Assert.True(firstCallStarted.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
                 "The stale UpdateStatusName call's delegate never started.");
 
@@ -171,8 +178,7 @@ namespace HealthCheckPlusTests
 
             // Now let the stale call's delegate finally return its old value and try to write it.
             releaseFirstCall.Set();
-            var completed = await Task.WhenAny(staleCall, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
-            Assert.Same(staleCall, completed);
+            Assert.True(staleCall.Join(TimeSpan.FromSeconds(10)), "The stale UpdateStatusName call never completed.");
 
             Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.Status("Named"));
         }

@@ -46,12 +46,14 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <br>DegradedPeriod = 30 seconds.</br>
         /// <br>UnhealthyPeriod = 30 seconds.</br>
         /// <br>Timeout = 30 seconds.</br>
+        /// <br>Idle = 1 second.</br>
         /// <br>Predicate = All HealthCheck.</br>
         /// </summary>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="option">The options for HealthChecksPlus Background service. See <see cref="HealthCheckPlusBackGroundOptions"/>.</param>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
-        /// <exception cref="InvalidOperationException"><see cref="AddBackgroundPolicy"/> was already called once for this <see cref="IHealthChecksBuilder"/>, or <c>AddHealthChecksPlus</c> was never called first.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="ihb"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException"><see cref="AddBackgroundPolicy"/> was already called once for the same <see cref="IServiceCollection"/>, or <c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddBackgroundPolicy(this IHealthChecksBuilder ihb, Action<HealthCheckPlusBackGroundOptions>? option = null)
         {
             ArgumentNullException.ThrowIfNull(ihb);
@@ -114,6 +116,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// The <see cref="AddUnhealthyPolicy"/> cannot be set to a value lower than 1 second.
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="ihb"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> is <c>null</c> or empty, or <paramref name="period"/> is below one second.</exception>
         /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddUnhealthyPolicy(this IHealthChecksBuilder ihb, string namedep, TimeSpan period)
@@ -143,6 +146,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// The <see cref="AddDegradedPolicy"/> cannot be set to a value lower than 1 second.
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="ihb"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> is <c>null</c> or empty, or <paramref name="period"/> is below one second.</exception>
         /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddDegradedPolicy(this IHealthChecksBuilder ihb, string namedep, TimeSpan period)
@@ -170,6 +174,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </summary>
         /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="sc"/> is <c>null</c>.</exception>
         public static IHealthChecksBuilder AddHealthChecksPlus(this IServiceCollection sc)
         {
             ArgumentNullException.ThrowIfNull(sc);
@@ -236,6 +241,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// The <see cref="AddCheckPlus{T}"/> cannot be set to a period value lower than 1 second.
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="ihb"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> is <c>null</c> or empty, or <paramref name="period"/> is provided and below one second.</exception>
         /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddCheckPlus<T>(this IHealthChecksBuilder ihb, string namedep, TimeSpan? delay = null, TimeSpan? period = null, IEnumerable<string>? tags = null, HealthStatus? failureStatus = null, TimeSpan? timeout = null) where T : IHealthCheck
@@ -297,6 +303,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// The <see cref="AddCheckLinkTo"/> cannot be set to a period value lower than 1 second.
         /// </remarks>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="ihb"/> is <c>null</c>.</exception>
         /// <exception cref="ArgumentException"><paramref name="namedep"/> or <paramref name="name"/> is <c>null</c> or empty, <paramref name="namedep"/> equals <paramref name="name"/>, or <paramref name="period"/> is provided and below one second.</exception>
         /// <exception cref="InvalidOperationException"><c>AddHealthChecksPlus</c> was never called first.</exception>
         public static IHealthChecksBuilder AddCheckLinkTo(this IHealthChecksBuilder ihb, string namedep, string name, TimeSpan? delay = null, TimeSpan? period = null)

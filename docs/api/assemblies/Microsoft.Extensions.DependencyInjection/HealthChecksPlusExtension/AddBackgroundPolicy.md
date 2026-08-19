@@ -4,7 +4,7 @@
 </br>
 
 
-#### Register HealthChecksPlus Background service with [`HealthCheckPlusBackGroundOptions`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) options. Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Predicate = All HealthCheck.
+#### Register HealthChecksPlus Background service with [`HealthCheckPlusBackGroundOptions`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) options. Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Idle = 1 second.Predicate = All HealthCheck.
 
 ```csharp
 public static IHealthChecksBuilder AddBackgroundPolicy(this IHealthChecksBuilder ihb, 
@@ -24,7 +24,8 @@ The IHealthChecksBuilder.
 
 | exception | condition |
 | --- | --- |
-| InvalidOperationException | `AddBackgroundPolicy` was already called once for this IHealthChecksBuilder, or `AddHealthChecksPlus` was never called first. |
+| ArgumentNullException | *ihb* is `null`. |
+| InvalidOperationException | `AddBackgroundPolicy` was already called once for the same IServiceCollection, or `AddHealthChecksPlus` was never called first. |
 
 ### See Also
 

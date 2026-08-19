@@ -19,6 +19,13 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 
 A reference to the *app* after the operation has completed.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *app* is `null`. |
+| InvalidOperationException | No HealthCheckService is registered - `AddHealthChecksPlus` was never called. |
+
 ### Remarks
 
 If *path* is set to `null` or the empty string then the health check middleware will ignore the URL path and process all requests. If *path* is set to a non-empty value, the health check middleware will process requests with a URL that matches the provided value of *path* case-insensitively, allowing for an extra trailing slash ('/') character.
@@ -44,16 +51,24 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 | parameter | description |
 | --- | --- |
 | app | The IApplicationBuilder. |
-| path | The The path on which to provide health check status. |
+| path | The path on which to provide health check status. |
 | options | The [`HealthCheckPlusOptions`](../../HealthCheckPlus.options/HealthCheckPlusOptions.md) used to configure. |
 
 ### Return Value
 
 The IApplicationBuilder.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *app* or *options* is `null`. |
+| ArgumentException | *options*' [`HealthCheckName`](../../HealthCheckPlus.options/HealthCheckPlusOptions/HealthCheckName.md) was already registered by an earlier call. |
+| InvalidOperationException | No HealthCheckService is registered - `AddHealthChecksPlus` was never called - or the registered IStateHealthChecksPlus is not the type `AddHealthChecksPlus()` registers. |
+
 ### Remarks
 
-ignore the URL path and process all requests. If path is set to a non-empty value, the health check middleware will process requests with a URL that matches the provided value of path case-insensitively, allowing for an extra trailing slash ('/') character.
+If path is set to null or the empty string then the health check middleware will ignore the URL path and process all requests. If path is set to a non-empty value, the health check middleware will process requests with a URL that matches the provided value of path case-insensitively, allowing for an extra trailing slash ('/') character.
 
 ### See Also
 
@@ -82,6 +97,13 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 
 A reference to the *app* after the operation has completed.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *app* is `null`. |
+| InvalidOperationException | No HealthCheckService is registered - `AddHealthChecksPlus` was never called. |
+
 ### Remarks
 
 If *path* is set to `null` or the empty string then the health check middleware will ignore the URL path and process all requests on the specified port. If *path* is set to a non-empty value, the health check middleware will process requests with a URL that matches the provided value of *path* case-insensitively, allowing for an extra trailing slash ('/') character.
@@ -107,7 +129,7 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 | parameter | description |
 | --- | --- |
 | app | The IApplicationBuilder. |
-| path | The The path on which to provide health check status. |
+| path | The path on which to provide health check status. |
 | port | The port to listen on. Must be a local port on which the server is listening. |
 | options | The [`HealthCheckPlusOptions`](../../HealthCheckPlus.options/HealthCheckPlusOptions.md) used to configure. |
 
@@ -115,9 +137,17 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 
 The IApplicationBuilder.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *app* or *options* is `null`. |
+| ArgumentException | *options*' [`HealthCheckName`](../../HealthCheckPlus.options/HealthCheckPlusOptions/HealthCheckName.md) was already registered by an earlier call. |
+| InvalidOperationException | No HealthCheckService is registered - `AddHealthChecksPlus` was never called - or the registered IStateHealthChecksPlus is not the type `AddHealthChecksPlus()` registers. |
+
 ### Remarks
 
-ignore the URL path and process all requests. If path is set to a non-empty value, the health check middleware will process requests with a URL that matches the provided value of path case-insensitively, allowing for an extra trailing slash ('/') character.
+If path is set to null or the empty string then the health check middleware will ignore the URL path and process all requests. If path is set to a non-empty value, the health check middleware will process requests with a URL that matches the provided value of path case-insensitively, allowing for an extra trailing slash ('/') character.
 
 ### See Also
 

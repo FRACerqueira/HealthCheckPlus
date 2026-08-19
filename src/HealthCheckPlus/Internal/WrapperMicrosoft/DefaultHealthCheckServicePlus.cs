@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Collections;
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace HealthCheckPlus.Internal.WrapperMicrosoft
@@ -334,6 +335,18 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // Shared by both execution paths: fans every due registration out to its own
         // RunCheckAsync task. Awaiting and classifying the results is the caller's
         // responsibility (see ApplyBatchResults) - this only starts them.
+        //
+        // Considered and consciously not fixed: if Task.Run itself throws synchronously partway
+        // through this loop (in practice, only reachable via an OutOfMemoryException while
+        // scheduling - RunCheckAsync's own body never runs synchronously here), the caller's
+        // catch block releases Running for every registration in the batch, including the ones
+        // whose tasks are already running in the background from earlier loop iterations - those
+        // tasks can't be un-scheduled, so releasing their Running flag could in principle let
+        // TryBeginRun schedule the same check again while the orphaned task is still executing.
+        // Correctly handling this would mean threading a partial-success/partial-orphan result out
+        // of this method instead of a plain array-or-throw, solely to cover a condition that only
+        // arises when the process is already failing to allocate memory - not worth the extra
+        // surface area on this hot path for that.
         private Task<HealthReportEntry>[] StartBatch(List<HealthCheckRegistration> registrationstorun, CancellationToken cancellationToken)
         {
             var tasks = new Task<HealthReportEntry>[registrationstorun.Count];
@@ -399,24 +412,40 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     throw;
                 }
 
+                // Running must still be released here even when Task.WhenAll faults - the ambient
+                // cancellationToken firing mid-flight (e.g. httpContext.RequestAborted) is
+                // deliberately not swallowed by RunCheckAsync - otherwise every check in this batch
+                // would stay marked Running forever and never be scheduled again. ApplyBatchResults
+                // below is what actually releases it, and must run whether or not Task.WhenAll
+                // faulted - previously via a `finally`, which meant a second, independent failure
+                // inside ApplyBatchResults itself (e.g. a throwing ILogger sink on one item) would
+                // silently replace whatever exception Task.WhenAll raised, per ordinary CLR
+                // exception-in-finally semantics. Capturing it explicitly instead lets both surface
+                // together if both happen, and preserves the original stack trace via
+                // ExceptionDispatchInfo in the (normal) single-failure case, instead of a bare
+                // `throw ex;` resetting it to this catch block. See ApplyBatchResults for how each
+                // task's outcome is classified and applied - shared with BackGroudCheckHealthPlusAsync
+                // so there is exactly one place that decides this, instead of two copies that can
+                // drift apart.
+                ExceptionDispatchInfo? whenAllFailure = null;
                 try
                 {
                     await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                finally
+                catch (Exception ex)
                 {
-                    // Running must still be released here even when Task.WhenAll faults - the
-                    // ambient cancellationToken firing mid-flight (e.g. httpContext.RequestAborted)
-                    // is deliberately not swallowed by RunCheckAsync - otherwise every check in this
-                    // batch would stay marked Running forever and never be scheduled again. The
-                    // exception, if any, still propagates normally once this finally block
-                    // completes, so callers see the same behavior as before. See ApplyBatchResults
-                    // for how each task's outcome is classified and applied - shared with
-                    // BackGroudCheckHealthPlusAsync so there is exactly one place that decides this,
-                    // instead of two copies that can drift apart.
-                    totalTime.Stop();
+                    whenAllFailure = ExceptionDispatchInfo.Capture(ex);
+                }
+                totalTime.Stop();
+                try
+                {
                     ApplyBatchResults(registrationstorun, tasks, dtref, resultHealthCheckFrom, cancellationToken);
                 }
+                catch (Exception ex) when (whenAllFailure != null)
+                {
+                    throw new AggregateException(whenAllFailure.SourceException, ex);
+                }
+                whenAllFailure?.Throw();
             }
 
             foreach (var registration in registrations)
@@ -479,24 +508,41 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     throw;
                 }
 
+                // Running must be released for every check in this batch even when Task.WhenAll
+                // faults - here, typically the per-cycle Timeout cancelling this call's linked
+                // token while a check is still in flight - otherwise it would stay marked Running
+                // forever and never run again on any later cycle. ApplyBatchResults below is what
+                // actually releases it, and must run whether or not Task.WhenAll faulted -
+                // previously via a `finally`, which meant a second, independent failure inside
+                // ApplyBatchResults itself (e.g. a throwing ILogger sink on one item) would silently
+                // replace whatever exception Task.WhenAll raised, per ordinary CLR
+                // exception-in-finally semantics. Capturing it explicitly instead lets both surface
+                // together if both happen, and preserves the original stack trace via
+                // ExceptionDispatchInfo in the (normal) single-failure case. The exception, if any,
+                // still propagates afterward so HealthCheckPlusBackGroundService's own
+                // timeout/shutdown handling around this call is unaffected. See ApplyBatchResults
+                // for how each task's outcome is classified and applied - shared with
+                // CheckHealthPlusAsync so there is exactly one place that decides this, instead
+                // of two copies that can drift apart.
+                ExceptionDispatchInfo? whenAllFailure = null;
                 try
                 {
                     await Task.WhenAll(tasks).ConfigureAwait(false);
                 }
-                finally
+                catch (Exception ex)
                 {
-                    // Running must be released for every check in this batch even when Task.WhenAll
-                    // faults - here, typically the per-cycle Timeout cancelling this call's linked
-                    // token while a check is still in flight - otherwise it would stay marked
-                    // Running forever and never run again on any later cycle. The exception, if any,
-                    // still propagates afterward so HealthCheckPlusBackGroundService's own
-                    // timeout/shutdown handling around this call is unaffected. See ApplyBatchResults
-                    // for how each task's outcome is classified and applied - shared with
-                    // CheckHealthPlusAsync so there is exactly one place that decides this, instead
-                    // of two copies that can drift apart.
+                    whenAllFailure = ExceptionDispatchInfo.Capture(ex);
+                }
+                try
+                {
                     ApplyBatchResults(registrationstorun, tasks, dtref, HealthCheckTrigger.Background, cancellationToken);
                     _cacheStatus.UpdateStatusName();
                 }
+                catch (Exception ex) when (whenAllFailure != null)
+                {
+                    throw new AggregateException(whenAllFailure.SourceException, ex);
+                }
+                whenAllFailure?.Throw();
             }
         }
 
