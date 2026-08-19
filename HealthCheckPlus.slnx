@@ -4,6 +4,7 @@
     <File Path="docs/api/docindex.md" />
     <File Path="docs/ARCHITECTURE.md" />
     <File Path="docs/POINTS_OF_ATTENTION.md" />
+    <File Path="docs/RELEASE_METHODOLOGY.md" />
     <File Path="docs/RUNBOOK.md" />
     <File Path="README.md" />
   </Folder>

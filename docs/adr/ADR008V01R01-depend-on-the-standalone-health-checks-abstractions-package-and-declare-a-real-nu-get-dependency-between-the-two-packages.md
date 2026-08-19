@@ -7,7 +7,7 @@
 |Scope|HealthCheckPlus;HealthCheckPlus.Abstractions|
 |Domain|Packaging|
 |Created|Proposed (2026-08-19)|
-|Changed||
+|Changed|Accepted (2026-08-19)|
 |Superseded||
 <!-- Do not remove this comment, lines and table (1-12) -->
 ---

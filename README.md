@@ -266,6 +266,8 @@ public class SamplePublishHealth : IHealthCheckPlusPublisher
 - [Architecture](./docs/ARCHITECTURE.md) — how HealthCheckPlus is put together internally, for maintainers and contributors.
 - [Operational runbook](./docs/RUNBOOK.md) — how to read a health check response and diagnose common problems, for operators.
 - [API reference](./docs/api/docindex.md) — generated from the XML doc comments.
+- [Release methodology](./docs/RELEASE_METHODOLOGY.md) — how a release's quality is verified before it ships.
+- [Architecture decisions](./docs/adr/) — the load-bearing design decisions behind this library, with context and alternatives considered.
 
 ## Changelog
 [**Top**](#table-of-contents)
