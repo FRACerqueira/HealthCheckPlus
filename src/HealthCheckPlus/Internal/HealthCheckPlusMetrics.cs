@@ -26,10 +26,13 @@ namespace HealthCheckPlus.Internal
         Error
     }
 
-    // Closed set of "healthcheckplus.anomalies" tag values. These are internal defensive paths
-    // that were handled without failing the caller — logged as Warning at the point they happen
-    // (with the specific exception/check name) *and* counted here, so an operator can alert on
-    // rate/trend instead of only discovering them by reading logs after the fact.
+    // Closed set of "healthcheckplus.anomalies" tag values. Every reason except LoggingSinkFailed
+    // is an internal defensive path that was handled without failing the caller - logged as
+    // Warning at the point it happens (with the specific exception/check name) *and* counted
+    // here, so an operator can alert on rate/trend instead of only discovering it by reading logs
+    // after the fact. LoggingSinkFailed is the deliberate exception to that pairing: it exists
+    // precisely because the log call itself is what failed, so it is metric-only by design - see
+    // RecordAnomaly's own comment below.
     internal enum AnomalyReason
     {
         AdoptedCheckDisposeFailed,
@@ -37,7 +40,8 @@ namespace HealthCheckPlus.Internal
         UpdateResultDropped,
         CheckExecutionAborted,
         PublishReportBuildFailed,
-        SwitchToDroppedWhileRunning
+        SwitchToDroppedWhileRunning,
+        LoggingSinkFailed
     }
 
     internal static class HealthCheckPlusMetrics
@@ -131,6 +135,11 @@ namespace HealthCheckPlus.Internal
         // it to report that failure would be circular, and could throw again for the same reason.
         // That path stays log-only. Every other anomaly here is unrelated to the metrics pipeline
         // itself, so recording is safe.
+        //
+        // LoggingSinkFailed is the mirror image: every class with a SafeLog helper (search that
+        // name) routes its log calls through it, and its catch reports LoggingSinkFailed via this
+        // method instead of trying to log the logging failure - the same circularity risk as above,
+        // in the other direction. This is the one place that failure becomes observable.
         public static void RecordAnomaly(AnomalyReason reason)
         {
             var reasonTag = reason switch
@@ -141,6 +150,7 @@ namespace HealthCheckPlus.Internal
                 AnomalyReason.CheckExecutionAborted => "check_execution_aborted",
                 AnomalyReason.PublishReportBuildFailed => "publish_report_build_failed",
                 AnomalyReason.SwitchToDroppedWhileRunning => "switchto_dropped_while_running",
+                AnomalyReason.LoggingSinkFailed => "logging_sink_failed",
                 _ => throw new ArgumentOutOfRangeException(nameof(reason), reason, null)
             };
 

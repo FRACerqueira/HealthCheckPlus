@@ -4,7 +4,7 @@
 </br>
 
 
-#### Register then external(package import) dependence health check to run. the health check must added in IHealthChecksBuilder.
+#### Adopts an already-registered health check (e.g. one added by an external package's own IHealthChecksBuilder extension) so it can carry a HealthCheckPlus policy.
 
 ```csharp
 public static IHealthChecksBuilder AddCheckLinkTo(this IHealthChecksBuilder ihb, string namedep, 
@@ -14,10 +14,10 @@ public static IHealthChecksBuilder AddCheckLinkTo(this IHealthChecksBuilder ihb,
 | parameter | description |
 | --- | --- |
 | ihb | The IHealthChecksBuilder. |
-| namedep | The name health check list to run. |
-| name | The name health check registered. This param is case insensitive |
-| delay | An optional TimeSpan for the adopted check's own `Healthy` policy - the initial delay before it is first eligible to run, not a delay of any IHealthCheckPublisher. When omitted, the check has no delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back to [`Delay`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/Delay.md) for that check's very first run only. |
-| period | An optional TimeSpan for the adopted check's own `Healthy` policy - how often it reruns, not a period of any IHealthCheckPublisher. On the HTTP path this also applies whenever the check's current status (Degraded/Unhealthy) has no explicit policy of its own registered via [`AddDegradedPolicy`](./AddDegradedPolicy.md)/ [`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) - not only while the check is genuinely `Healthy`. When omitted, the check reruns on every request on the HTTP path; on the background path, this period (or, if omitted, [`HealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/HealthyPeriod.md)) is only ever consulted while the check is currently `Healthy` - a check currently Degraded/Unhealthy uses [`DegradedPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/DegradedPeriod.md)/[`UnhealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/UnhealthyPeriod.md) instead, unless an explicit [`AddDegradedPolicy`](./AddDegradedPolicy.md)/[`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) period was registered for it. |
+| namedep | The name to register the adopted health check under. |
+| name | The name of the already-registered health check to adopt. This parameter is case-insensitive. |
+| delay | An optional TimeSpan for the adopted check's own `Healthy` policy - the initial delay before it is first eligible to run, not a delay of any IHealthCheckPublisher. When omitted, the check has no delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back to [`Delay`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/Delay.md) for that check's very first run only. |
+| period | An optional TimeSpan for the adopted check's own `Healthy` policy - how often it reruns, not a period of any IHealthCheckPublisher. On the HTTP path this also applies whenever the check's current status (Degraded/Unhealthy) has no explicit policy of its own registered via [`AddDegradedPolicy`](./AddDegradedPolicy.md)/ [`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) - not only while the check is genuinely `Healthy`. When omitted, the check reruns on every request on the HTTP path; on the background path, this period (or, if omitted, [`HealthyPeriod`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/HealthyPeriod.md)) is only ever consulted while the check is currently `Healthy` - a check currently Degraded/Unhealthy uses [`DegradedPeriod`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/DegradedPeriod.md)/[`UnhealthyPeriod`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/UnhealthyPeriod.md) instead, unless an explicit [`AddDegradedPolicy`](./AddDegradedPolicy.md)/[`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) period was registered for it. |
 
 ### Return Value
 

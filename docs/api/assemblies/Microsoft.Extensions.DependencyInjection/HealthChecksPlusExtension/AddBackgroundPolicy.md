@@ -4,7 +4,7 @@
 </br>
 
 
-#### Register HealthChecksPlus Background service with [`HealthCheckPlusBackGroundOptions`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) options. Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Idle = 1 second.Predicate = All HealthCheck.
+#### Register HealthChecksPlus Background service with [`HealthCheckPlusBackGroundOptions`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions.md) options. Default Values:Delay = 5 seconds.HealthyPeriod = 30 seconds.DegradedPeriod = 30 seconds.UnhealthyPeriod = 30 seconds.Timeout = 30 seconds.Idle = 1 second.Predicate = All HealthCheck.
 
 ```csharp
 public static IHealthChecksBuilder AddBackgroundPolicy(this IHealthChecksBuilder ihb, 
@@ -14,7 +14,7 @@ public static IHealthChecksBuilder AddBackgroundPolicy(this IHealthChecksBuilder
 | parameter | description |
 | --- | --- |
 | ihb | The IHealthChecksBuilder. |
-| option | The options for HealthChecksPlus Background service. See [`HealthCheckPlusBackGroundOptions`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md). |
+| option | The options for HealthChecksPlus Background service. See [`HealthCheckPlusBackGroundOptions`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions.md). |
 
 ### Return Value
 
@@ -27,9 +27,13 @@ The IHealthChecksBuilder.
 | ArgumentNullException | *ihb* is `null`. |
 | InvalidOperationException | `AddBackgroundPolicy` was already called once for the same IServiceCollection, or `AddHealthChecksPlus` was never called first. |
 
+### Remarks
+
+Call this after every health check registration (native, third-party, or via [`AddCheckPlus`](./AddCheckPlus.md)/[`AddCheckLinkTo`](./AddCheckLinkTo.md)). This method removes the native `HealthCheckPublisherHostedService` so publishers aren't driven twice, but that removal only affects whatever is registered at the moment it runs - a later call to `IServiceCollection.AddHealthChecks()` (the app itself, or a third-party IHealthChecksBuilder extension that calls it defensively) silently re-adds it. If that happens, the host fails fast with an InvalidOperationException when it starts, instead of publishers being driven twice or by the wrong service with no signal.
+
 ### See Also
 
-* class [HealthCheckPlusBackGroundOptions](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md)
+* class [HealthCheckPlusBackGroundOptions](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions.md)
 * class [HealthChecksPlusExtension](../HealthChecksPlusExtension.md)
 * namespace [Microsoft.Extensions.DependencyInjection](../../HealthCheckPlus.md)
 

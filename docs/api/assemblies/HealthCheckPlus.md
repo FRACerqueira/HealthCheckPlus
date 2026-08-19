@@ -3,13 +3,13 @@
 ### HealthCheckPlus assembly
 </br>
 
-### HealthCheckPlus.options namespace
+### HealthCheckPlus.Options namespace
 
 | public type | description |
 | --- | --- |
-| class [HealthCheckPlusBackGroundOptions](./HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) | Options for the HealthCheckPlus background service instance. |
-| class [HealthCheckPlusOptions](./HealthCheckPlus.options/HealthCheckPlusOptions.md) | Contains optionsSerilz for the HealthCheckMiddleware. |
-| class [PublishingOptions](./HealthCheckPlus.options/PublishingOptions.md) | Usage for publishers registered |
+| class [HealthCheckPlusBackGroundOptions](./HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions.md) | Options for the HealthCheckPlus background service instance. |
+| class [HealthCheckPlusOptions](./HealthCheckPlus.Options/HealthCheckPlusOptions.md) | Contains options for the HealthCheckMiddleware. |
+| class [PublishingOptions](./HealthCheckPlus.Options/PublishingOptions.md) | Usage for publishers registered |
 
 ### Microsoft.AspNetCore.Builder namespace
 

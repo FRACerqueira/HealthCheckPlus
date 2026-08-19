@@ -7,7 +7,7 @@ using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.Policies;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -24,6 +24,30 @@ namespace HealthCheckPlusTests
             public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
             {
                 return Task.FromResult(HealthCheckResult.Healthy());
+            }
+        }
+
+        private sealed class AlwaysUnhealthyCheck : IHealthCheck
+        {
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(HealthCheckResult.Unhealthy());
+            }
+        }
+
+        // Signals once it has actually returned its (real, completed) result - used to guarantee
+        // this check's own Update() has already landed before an ambient token is cancelled,
+        // instead of racing it (a plain AlwaysUnhealthyCheck could otherwise be swept into
+        // AmbientCancellation too, if the shared token happens to be cancelled before its task
+        // even starts running on the thread pool).
+        private sealed class SignalingUnhealthyCheck : IHealthCheck
+        {
+            public readonly ManualResetEventSlim Completed = new(false);
+
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                Completed.Set();
+                return Task.FromResult(HealthCheckResult.Unhealthy());
             }
         }
 
@@ -445,13 +469,18 @@ namespace HealthCheckPlusTests
             Assert.Equal(HealthStatus.Healthy, status.LastResult.Status);
         }
 
-        // Regression test: Log.HealthCheckProcessingBegin used to run completely unguarded, after
-        // BuildDueRegistrations/TryBeginRun already marked the due check Running - a throwing
-        // logger (a broken third-party sink) propagated before the try/finally that normally
-        // releases Running (via ApplyBatchResults) ever got a chance to open, leaving the check
-        // marked Running forever: TryBeginRun would never schedule it again on any later request.
+        // Regression test: Log.HealthCheckProcessingBegin (and every other Log.* call in this
+        // class) now goes through SafeLog, so a broken logging provider must not stop checks from
+        // running at all - previously it propagated before the try/finally that normally releases
+        // Running (via ApplyBatchResults) ever got a chance to open, leaving the check marked
+        // Running forever and turning a purely-diagnostic failure into a 500 on /health. The check
+        // must run to completion and be reported normally; only a metric records the logging
+        // failure. "Every log call" here means every Log.* call specifically - ThrowingLogger's
+        // BeginScope returns null rather than throwing, so RunCheckAsync's own
+        // `_logger.BeginScope(...)` (the one logger interaction not behind SafeLog, deliberately
+        // out of scope for this fix - see its own comment) is not exercised by this test.
         [Fact]
-        public async Task CheckHealthPlusAsync_ShouldReleaseRunning_WhenLoggingThrowsBeforeTheBatchIsAwaited()
+        public async Task CheckHealthPlusAsync_ShouldRunNormally_WhenEveryGuardedLogCallThrows()
         {
             var cache = new CacheHealthCheckPlus();
             cache.InitCache(["Test1"]);
@@ -463,24 +492,34 @@ namespace HealthCheckPlusTests
 
             var service = BuildService(cache, hcOptions, new ThrowingLogger(), healthyPolicy);
 
-            await Assert.ThrowsAsync<InvalidOperationException>(
-                () => service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, CancellationToken.None));
+            using var capture = new MetricsCapture();
+            var report = await service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, CancellationToken.None);
 
+            Assert.Equal(HealthStatus.Healthy, report.Entries["Test1"].Status);
             Assert.False(cache.FullStatus("Test1").Running,
-                "The check was left permanently marked Running because the logging call that threw ran outside the release try/finally.");
+                "The check was left marked Running even though it ran to completion.");
+            // Origin=UrlRequest (not the InitCache seed's None) proves Update() actually ran for
+            // this request, rather than the seeded value merely happening to already be Healthy.
+            Assert.Equal(HealthCheckTrigger.UrlRequest, cache.FullStatus("Test1").Origin);
+
+            // Not swallowed with zero signal: SafeLog's catch must actually record the
+            // logging_sink_failed anomaly for at least one of the several log calls this request
+            // made, not just avoid throwing.
+            Assert.Contains(capture.Measurements, m =>
+                m.InstrumentName == "healthcheckplus.anomalies" &&
+                m.Tags.TryGetValue("healthcheckplus.anomaly.reason", out var reason) &&
+                Equals(reason, "logging_sink_failed"));
         }
 
-        // Regression test for a fifth-audit finding: ApplyBatchResults's AmbientCancellation
-        // branch logs (Log.HealthCheckExecutionAborted) before calling ReleaseRunning, with
-        // neither step guarded - the same class of bug as the test above, at a different site
-        // that fix missed. Worse here: since ApplyBatchResults processes the whole batch in one
-        // loop, a throwing logger on the FIRST item used to abort the loop before it ever reached
-        // any LATER item, leaving every item from that point on stuck Running forever too - not
-        // just the one whose log call actually threw. Test1 is the one that hits
-        // AmbientCancellation (and the throwing logger); Test2 completes normally and is only
-        // ever reached if the loop survives Test1's failure.
+        // Regression test: ApplyBatchResults's AmbientCancellation branch logs
+        // (Log.HealthCheckExecutionAborted) before calling ReleaseRunning - now through SafeLog, so
+        // a throwing logger on the FIRST item in the batch must not abort the loop before it ever
+        // reaches a LATER item, and must not turn a legitimate ambient cancellation into a
+        // fabricated AggregateException that mixes it with the logging provider's own exception.
+        // Test1 is the one that hits AmbientCancellation (and the throwing logger); Test2
+        // completes normally and is only ever reached if the loop survives Test1's log failure.
         [Fact]
-        public async Task CheckHealthPlusAsync_ShouldReleaseRunning_ForEveryCheckInTheBatch_WhenLoggingThrowsInsideApplyBatchResults()
+        public async Task CheckHealthPlusAsync_ShouldContinueTheBatch_WhenTheExecutionAbortedLogThrows()
         {
             var check1 = new CancelableCheck();
             var check2 = new AlwaysHealthyCheck();
@@ -502,23 +541,75 @@ namespace HealthCheckPlusTests
             Assert.True(check1.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "The check never started.");
             cts.Cancel();
 
-            var ex = await Assert.ThrowsAnyAsync<Exception>(() => callTask);
+            // Only the real ambient cancellation surfaces - not an AggregateException mixing it
+            // with the logging provider's own exception, which SafeLog now swallows (recording a
+            // metric instead).
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callTask);
 
+            // Both items must be released - if the loop had aborted at Test1 (the old bug),
+            // Test2's iteration in ApplyBatchResults's per-item loop would never run at all,
+            // leaving it stuck Running=true forever regardless of what its own task's outcome
+            // was. (Test2 is also cancelled by the shared ambient token by the time its turn
+            // comes up, so it takes the same AmbientCancellation - and same throwing-logger -
+            // path as Test1; the point is that path completes for it too instead of the loop
+            // dying on Test1's first log failure.)
             Assert.False(cache.FullStatus("Test1").Running,
                 "Test1 (whose AmbientCancellation log call threw) was left permanently marked Running.");
             Assert.False(cache.FullStatus("Test2").Running,
                 "Test2 (a later item in the same batch) was left permanently marked Running because Test1's logging failure aborted the loop before ever reaching it.");
+        }
 
-            // Two independent failures happen here: Task.WhenAll faults (Test1's task ends up
-            // Canceled from the ambient token), and ApplyBatchResults itself also fails (the
-            // throwing logger). Neither must silently replace the other - both must surface
-            // together, flattened, rather than one masking the other via ordinary CLR
-            // exception-in-finally semantics (see the comment on the ExceptionDispatchInfo
-            // rewrite in CheckHealthPlusAsync this guards).
-            var aggregate = Assert.IsType<AggregateException>(ex);
-            var leaves = aggregate.Flatten().InnerExceptions;
-            Assert.Contains(leaves, e => e is OperationCanceledException);
-            Assert.Contains(leaves, e => e is InvalidOperationException && e.Message.Contains("Simulated broken logging provider", StringComparison.Ordinal));
+        // Equivalence regression test: a named status aggregate (AddStatusName/Status(name)) must
+        // reflect a check's result the same cycle Update() commits it, regardless of whether the
+        // overall batch is about to be reported as faulted to THIS caller - the same guarantee
+        // BackGroudCheckHealthPlusAsync already gave (it calls UpdateStatusName() before its own
+        // equivalent rethrow). Test1 is ambiently cancelled (this request's caller went away);
+        // Test2 completes normally, genuinely Unhealthy, before the cancellation even happens.
+        // Confirmed this used to diverge: CheckHealthPlusAsync rethrew whenAllFailure BEFORE ever
+        // reaching UpdateStatusName(), so Test2's already-committed Unhealthy result never made it
+        // into any named aggregate this cycle - Status("agg") stayed stuck at whatever it was
+        // before this (failed) request, even though the cache itself was already up to date.
+        [Fact]
+        public async Task CheckHealthPlusAsync_ShouldRefreshNamedAggregate_EvenWhenTheBatchIsReportedAsFaulted()
+        {
+            var check1 = new CancelableCheck();
+            var check2 = new SignalingUnhealthyCheck();
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1", "Test2"]);
+            cache.AddStatusName(new HealthCheckPlusOptions
+            {
+                HealthCheckName = "agg",
+                StatusHealthReport = report => report.Entries.TryGetValue("Test2", out var entry) ? entry.Status : HealthStatus.Healthy
+            }, includeName: null);
+
+            // Warm _statusName["agg"] with the current (Healthy) state BEFORE the faulted request
+            // below - Status(name) recomputes on its own the very first time a name is ever read
+            // (see Status(name)'s own cold-compute path), which would mask this exact bug: with
+            // "agg" never cached at all, Status("agg") would independently recompute from the live
+            // cache regardless of whether UpdateStatusName() itself ran during the request below.
+            // Only a name that's already cached can actually go stale.
+            cache.UpdateStatusName();
+            Assert.Equal(HealthStatus.Healthy, cache.Status("agg"));
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => check1, null, null));
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test2", _ => check2, null, null));
+
+            var healthyPolicy1 = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test1");
+            var healthyPolicy2 = new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromSeconds(1000), "Test2");
+
+            var service = BuildService(cache, hcOptions, healthyPolicy1, healthyPolicy2);
+
+            using var cts = new CancellationTokenSource();
+            var callTask = service.CheckHealthPlusAsync(null, null, HealthCheckTrigger.UrlRequest, cts.Token);
+
+            Assert.True(check1.Started.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "Test1 never started.");
+            Assert.True(check2.Completed.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken), "Test2 never completed.");
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => callTask);
+
+            Assert.Equal(HealthStatus.Unhealthy, cache.Status("agg"));
         }
 
         // BackGroudCheckHealthPlusAsync gets the same release-on-throw guard around StartBatch as

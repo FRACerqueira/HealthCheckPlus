@@ -52,7 +52,7 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 | --- | --- |
 | app | The IApplicationBuilder. |
 | path | The path on which to provide health check status. |
-| options | The [`HealthCheckPlusOptions`](../../HealthCheckPlus.options/HealthCheckPlusOptions.md) used to configure. |
+| options | The [`HealthCheckPlusOptions`](../../HealthCheckPlus.Options/HealthCheckPlusOptions.md) used to configure. |
 
 ### Return Value
 
@@ -63,7 +63,7 @@ The IApplicationBuilder.
 | exception | condition |
 | --- | --- |
 | ArgumentNullException | *app* or *options* is `null`. |
-| ArgumentException | *options*' [`HealthCheckName`](../../HealthCheckPlus.options/HealthCheckPlusOptions/HealthCheckName.md) was already registered by an earlier call. |
+| ArgumentException | *options*' [`HealthCheckName`](../../HealthCheckPlus.Options/HealthCheckPlusOptions/HealthCheckName.md) was already registered by an earlier call. |
 | InvalidOperationException | No HealthCheckService is registered - `AddHealthChecksPlus` was never called - or the registered IStateHealthChecksPlus is not the type `AddHealthChecksPlus()` registers. |
 
 ### Remarks
@@ -72,7 +72,7 @@ If path is set to null or the empty string then the health check middleware will
 
 ### See Also
 
-* class [HealthCheckPlusOptions](../../HealthCheckPlus.options/HealthCheckPlusOptions.md)
+* class [HealthCheckPlusOptions](../../HealthCheckPlus.Options/HealthCheckPlusOptions.md)
 * class [HealthChecksPlusAppExtension](../HealthChecksPlusAppExtension.md)
 * namespace [Microsoft.AspNetCore.Builder](../../HealthCheckPlus.md)
 
@@ -131,7 +131,7 @@ public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder a
 | app | The IApplicationBuilder. |
 | path | The path on which to provide health check status. |
 | port | The port to listen on. Must be a local port on which the server is listening. |
-| options | The [`HealthCheckPlusOptions`](../../HealthCheckPlus.options/HealthCheckPlusOptions.md) used to configure. |
+| options | The [`HealthCheckPlusOptions`](../../HealthCheckPlus.Options/HealthCheckPlusOptions.md) used to configure. |
 
 ### Return Value
 
@@ -142,7 +142,7 @@ The IApplicationBuilder.
 | exception | condition |
 | --- | --- |
 | ArgumentNullException | *app* or *options* is `null`. |
-| ArgumentException | *options*' [`HealthCheckName`](../../HealthCheckPlus.options/HealthCheckPlusOptions/HealthCheckName.md) was already registered by an earlier call. |
+| ArgumentException | *options*' [`HealthCheckName`](../../HealthCheckPlus.Options/HealthCheckPlusOptions/HealthCheckName.md) was already registered by an earlier call. |
 | InvalidOperationException | No HealthCheckService is registered - `AddHealthChecksPlus` was never called - or the registered IStateHealthChecksPlus is not the type `AddHealthChecksPlus()` registers. |
 
 ### Remarks
@@ -151,7 +151,7 @@ If path is set to null or the empty string then the health check middleware will
 
 ### See Also
 
-* class [HealthCheckPlusOptions](../../HealthCheckPlus.options/HealthCheckPlusOptions.md)
+* class [HealthCheckPlusOptions](../../HealthCheckPlus.Options/HealthCheckPlusOptions.md)
 * class [HealthChecksPlusAppExtension](../HealthChecksPlusAppExtension.md)
 * namespace [Microsoft.AspNetCore.Builder](../../HealthCheckPlus.md)
 

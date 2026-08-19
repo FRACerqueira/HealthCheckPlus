@@ -3,13 +3,13 @@
 ### HealthCheckPlus Documentation 
 </br>
 
-### HealthCheckPlus.options namespace
+### HealthCheckPlus.Options namespace
 
 | public type | description |
 | --- | --- |
-| class [HealthCheckPlusBackGroundOptions](./assemblies/HealthCheckPlus.options/HealthCheckPlusBackGroundOptions.md) | Options for the HealthCheckPlus background service instance. |
-| class [HealthCheckPlusOptions](./assemblies/HealthCheckPlus.options/HealthCheckPlusOptions.md) | Contains optionsSerilz for the HealthCheckMiddleware. |
-| class [PublishingOptions](./assemblies/HealthCheckPlus.options/PublishingOptions.md) | Usage for publishers registered |
+| class [HealthCheckPlusBackGroundOptions](./assemblies/HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions.md) | Options for the HealthCheckPlus background service instance. |
+| class [HealthCheckPlusOptions](./assemblies/HealthCheckPlus.Options/HealthCheckPlusOptions.md) | Contains options for the HealthCheckMiddleware. |
+| class [PublishingOptions](./assemblies/HealthCheckPlus.Options/PublishingOptions.md) | Usage for publishers registered |
 
 ### HealthCheckPlus.Abstractions namespace
 

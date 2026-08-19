@@ -7,7 +7,7 @@ using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.Policies;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -52,6 +52,26 @@ namespace HealthCheckPlusTests
             HealthCheckPlusBackGroundService.ObserveLoopCompletion(Task.CompletedTask, logger);
 
             Assert.Empty(loggerProvider.Entries);
+        }
+
+        // Regression test for the other half of the same defect Log.ProcessingBegin/ProcessingEnd
+        // had: this method is called from both StopAsync's continuation and DisposeAsync, the
+        // latter of which must not throw. A throwing ILogger sink here used to propagate straight
+        // out, breaking shutdown itself. Also asserts the failure isn't swallowed with zero signal
+        // (the no-throw assertion alone would still pass against an empty `catch { }`) - the
+        // logging_sink_failed anomaly must actually fire.
+        [Fact]
+        public void ObserveLoopCompletion_ShouldNotThrow_ButShouldRecordLoggingSinkFailedAnomaly_WhenLoopTaskFaulted_AndLoggingThrows()
+        {
+            using var capture = new MetricsCapture();
+            var faultedTask = Task.FromException(new InvalidOperationException("simulated background loop failure"));
+
+            HealthCheckPlusBackGroundService.ObserveLoopCompletion(faultedTask, new ThrowingLogger());
+
+            Assert.Contains(capture.Measurements, m =>
+                m.InstrumentName == "healthcheckplus.anomalies" &&
+                m.Tags.TryGetValue("healthcheckplus.anomaly.reason", out var reason) &&
+                Equals(reason, "logging_sink_failed"));
         }
 
         private sealed class AlwaysHealthyCheck : IHealthCheck
@@ -128,7 +148,8 @@ namespace HealthCheckPlusTests
                 healthCheckService,
                 Options.Create(hcOptions),
                 Options.Create(backgroundOptions),
-                []);
+                [],
+                provider);
 
             await backgroundService.StartAsync(TestContext.Current.CancellationToken);
 
@@ -194,7 +215,8 @@ namespace HealthCheckPlusTests
                 healthCheckService,
                 Options.Create(hcOptions),
                 Options.Create(backgroundOptions),
-                []);
+                [],
+                provider);
 
             await backgroundService.StartAsync(TestContext.Current.CancellationToken);
             // Give the loop a moment to actually be mid-cycle (inside its first Idle wait)
@@ -228,6 +250,120 @@ namespace HealthCheckPlusTests
 
             Assert.DoesNotContain(loggerProvider.Entries, e => e.Exception is ObjectDisposedException);
             Assert.DoesNotContain(loggerProvider.Entries, e => e.EventId.Name == "HealthCheckPlusBackGroundLoopFaulted");
+        }
+
+        // A logging provider that throws on every call - simulates a broken third-party sink for
+        // this class's own ILogger.
+        private sealed class ThrowingLogger : ILogger<HealthCheckPlusBackGroundService>
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                throw new InvalidOperationException("Simulated broken logging provider.");
+            }
+        }
+
+        private sealed class CountingCheck : IHealthCheck
+        {
+            public int CallCount;
+
+            public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+            {
+                Interlocked.Increment(ref CallCount);
+                return Task.FromResult(HealthCheckResult.Healthy());
+            }
+        }
+
+        // Polls a condition instead of sleeping a fixed duration - fast when the condition is
+        // already true, and tolerant of a loaded machine instead of a timing budget that's only
+        // ever exactly enough on a quiet one.
+        private static async Task PollUntilAsync(Func<bool> condition, TimeSpan ceiling, string timeoutMessage, CancellationToken cancellationToken)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(ceiling);
+            try
+            {
+                while (!condition())
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25), cts.Token);
+                }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(timeoutMessage);
+            }
+        }
+
+        // Regression test: Log.ProcessingBegin/Log.ProcessingEnd used to run completely unguarded
+        // in this loop - outside any try/catch - so a throwing ILogger sink faulted the whole
+        // loop's Task on cycle one, permanently: no further cycle would ever run again short of a
+        // host restart, with the loss itself invisible (ObserveLoopCompletion's own log call would
+        // hit the same broken sink). Every Log.* call in this class now goes through SafeLog, so
+        // the loop must keep running - and checks must keep executing - despite it.
+        [Fact]
+        public async Task CheckHealthAsync_ShouldKeepRunningAndExecutingChecks_WhenEveryLogCallThrows()
+        {
+            var check = new CountingCheck();
+            var cache = new CacheHealthCheckPlus();
+            cache.InitCache(["Test1"]);
+
+            var hcOptions = new HealthCheckServiceOptions();
+            hcOptions.Registrations.Add(new HealthCheckRegistration("Test1", _ => check, null, null));
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IStateHealthChecksPlus>(cache);
+            services.AddSingleton(new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, TimeSpan.Zero, TimeSpan.FromMilliseconds(1), "Test1"));
+            var provider = services.BuildServiceProvider();
+
+            var healthCheckService = new DefaultHealthCheckServicePlus(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                provider,
+                NullLogger<HealthCheckService>.Instance,
+                Options.Create(hcOptions),
+                new HealthChecksPlusRegistrationState());
+
+            var backgroundOptions = new HealthCheckPlusBackGroundOptions
+            {
+                Delay = TimeSpan.Zero,
+                // The validated minimum - a poll ceiling below covers however many of these
+                // actually elapse instead of assuming a fixed count within a fixed sleep.
+                Idle = TimeSpan.FromSeconds(1)
+            };
+
+            var backgroundService = new HealthCheckPlusBackGroundService(
+                new ThrowingLogger(),
+                healthCheckService,
+                Options.Create(hcOptions),
+                Options.Create(backgroundOptions),
+                [],
+                provider);
+
+            await backgroundService.StartAsync(TestContext.Current.CancellationToken);
+
+            try
+            {
+                // At least two executions proves the loop survived past its first cycle, not just
+                // that it happened to run once before anything could have killed it.
+                await PollUntilAsync(() => check.CallCount >= 2, TimeSpan.FromSeconds(30),
+                    $"Expected at least 2 executions; got {check.CallCount}. The loop likely died after its first cycle.",
+                    TestContext.Current.CancellationToken);
+
+                var loopField = typeof(HealthCheckPlusBackGroundService).GetField("_runningHealthCheckPlus", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                var loopTask = (Task)loopField.GetValue(backgroundService)!;
+
+                Assert.False(loopTask.IsCompleted, "The loop died instead of continuing to run across multiple cycles.");
+
+                // Origin=Background (not the InitCache seed's None) proves the check actually
+                // executed at least once, not just that the loop task happens to still be alive.
+                Assert.Equal(HealthCheckTrigger.Background, cache.FullStatus("Test1").Origin);
+            }
+            finally
+            {
+                await backgroundService.StopAsync(TestContext.Current.CancellationToken);
+            }
         }
     }
 }

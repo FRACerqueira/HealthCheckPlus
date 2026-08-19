@@ -15,7 +15,7 @@ public static IHealthChecksBuilder AddDegradedPolicy(this IHealthChecksBuilder i
 | --- | --- |
 | ihb | The IHealthChecksBuilder. |
 | namedep | The name health check to run. |
-| period | Requeried TimeSpan. The period of execution when status is Degraded. |
+| period | Required TimeSpan. The period of execution when status is Degraded. |
 
 ### Return Value
 

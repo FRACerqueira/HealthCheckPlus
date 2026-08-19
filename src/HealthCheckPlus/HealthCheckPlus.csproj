@@ -15,7 +15,7 @@
 		<Authors>Fernando Cerqueira</Authors>
 		<Description>HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.</Description>
 		<PackageReleaseNotes>https://github.com/FRACerqueira/HealthCheckPlus/releases</PackageReleaseNotes>
-		<PackageTags>HealthCheck;c#;</PackageTags>
+		<PackageTags>HealthCheck;healthchecks;aspnetcore;monitoring;observability;csharp</PackageTags>
 		<RepositoryUrl>https://github.com/FRACerqueira/HealthCheckPlus</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageId>HealthCheckPlus</PackageId>
@@ -24,7 +24,7 @@
 		<Copyright>© 2023 - Fernando Cerqueira</Copyright>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
-		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+		<PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
 		<IncludeSymbols>True</IncludeSymbols>
 		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
 	</PropertyGroup>

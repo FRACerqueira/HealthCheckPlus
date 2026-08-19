@@ -3,7 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 
 namespace HealthCheckPlusTests
 {

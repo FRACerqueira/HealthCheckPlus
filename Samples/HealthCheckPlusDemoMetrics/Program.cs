@@ -1,4 +1,4 @@
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using HealthCheckPlusDemoMetrics;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 

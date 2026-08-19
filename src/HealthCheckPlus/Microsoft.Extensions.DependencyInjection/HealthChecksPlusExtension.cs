@@ -7,7 +7,7 @@ using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.Policies;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -49,6 +49,13 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <br>Idle = 1 second.</br>
         /// <br>Predicate = All HealthCheck.</br>
         /// </summary>
+        /// <remarks>
+        /// Call this after every health check registration (native, third-party, or via <see cref="AddCheckPlus{T}"/>/<see cref="AddCheckLinkTo"/>).
+        /// This method removes the native <c>HealthCheckPublisherHostedService</c> so publishers aren't driven twice, but that removal only
+        /// affects whatever is registered at the moment it runs - a later call to <c>IServiceCollection.AddHealthChecks()</c> (the app itself, or
+        /// a third-party <see cref="IHealthChecksBuilder"/> extension that calls it defensively) silently re-adds it. If that happens, the host
+        /// fails fast with an <see cref="InvalidOperationException"/> when it starts, instead of publishers being driven twice or by the wrong service with no signal.
+        /// </remarks>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="option">The options for HealthChecksPlus Background service. See <see cref="HealthCheckPlusBackGroundOptions"/>.</param>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
@@ -110,7 +117,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="namedep">The name health check to run.</param>
         /// <param name="period">
-        /// Requeried <see cref="TimeSpan"/> The period of execution when status is Unhealthy.
+        /// Required <see cref="TimeSpan"/> The period of execution when status is Unhealthy.
         /// </param>
         /// <remarks>
         /// The <see cref="AddUnhealthyPolicy"/> cannot be set to a value lower than 1 second.
@@ -141,7 +148,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// </summary>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
         /// <param name="namedep">The name health check to run.</param>
-        /// <param name="period">Requeried <see cref="TimeSpan"/>. The period of execution when status is Degraded.</param>
+        /// <param name="period">Required <see cref="TimeSpan"/>. The period of execution when status is Degraded.</param>
         /// <remarks>
         /// The <see cref="AddDegradedPolicy"/> cannot be set to a value lower than 1 second.
         /// </remarks>
@@ -170,7 +177,9 @@ namespace Microsoft.Extensions.DependencyInjection
         /// from whatever health checks end up registered (via <see cref="AddCheckPlus{T}"/>,
         /// <see cref="AddCheckLinkTo"/>, or any native <see cref="IHealthChecksBuilder"/>
         /// extension) by the time the service provider first resolves the check state - there is
-        /// no separate name list to pass in or keep in sync.
+        /// no separate name list to pass in or keep in sync. A check registered only through a
+        /// native extension, with no <see cref="AddCheckPlus{T}"/>/<see cref="AddCheckLinkTo"/>
+        /// Healthy policy of its own, still fails fast at startup with a clear error naming it.
         /// </summary>
         /// <param name="sc">The <see cref="IServiceCollection"/>.</param>
         /// <returns>The <see cref="IHealthChecksBuilder"/>.</returns>
@@ -215,10 +224,10 @@ namespace Microsoft.Extensions.DependencyInjection
 
 #pragma warning disable CS0419 // Ambiguous reference in cref attribute
         /// <summary>
-        /// Register then dependence health check to run.
+        /// Registers a new health check to run.
         /// </summary>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
-        /// <param name="namedep">The name health check list to run.</param>
+        /// <param name="namedep">The name to register the health check under.</param>
         /// <param name="delay">An optional <see cref="TimeSpan"/> for this check's own <c>Healthy</c> policy - the initial delay before
         /// the check is first eligible to run, not a delay of any <see cref="IHealthCheckPublisher"/>. When omitted, the check has no
         /// delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back
@@ -282,11 +291,11 @@ namespace Microsoft.Extensions.DependencyInjection
 
 #pragma warning disable CS0419 // Ambiguous reference in cref attribute
         /// <summary>
-        /// Register then external(package import) dependence health check to run. the health check must added in <see cref="IHealthChecksBuilder"/>.
+        /// Adopts an already-registered health check (e.g. one added by an external package's own <see cref="IHealthChecksBuilder"/> extension) so it can carry a HealthCheckPlus policy.
         /// </summary>
         /// <param name="ihb">The <see cref="IHealthChecksBuilder"/>.</param>
-        /// <param name="namedep">The name health check list to run.</param>
-        /// <param name="name">The name health check registered. This param is case insensitive</param>
+        /// <param name="namedep">The name to register the adopted health check under.</param>
+        /// <param name="name">The name of the already-registered health check to adopt. This parameter is case-insensitive.</param>
         /// <param name="delay">An optional <see cref="TimeSpan"/> for the adopted check's own <c>Healthy</c> policy - the initial delay
         /// before it is first eligible to run, not a delay of any <see cref="IHealthCheckPublisher"/>. When omitted, the check has no
         /// delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back
@@ -331,7 +340,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 PeriodValidation.EnsureAtLeastOneSecond(period.Value, nameof(period), nameof(period));
             }
 
-            if (namedep.Equals(name, StringComparison.CurrentCultureIgnoreCase))
+            if (namedep.Equals(name, StringComparison.OrdinalIgnoreCase))
             {
                 throw new ArgumentException($"'{namedep}' cannot be the same as the registered check name '{name}'.");
             }
@@ -355,7 +364,7 @@ namespace Microsoft.Extensions.DependencyInjection
             ihb.Services.Configure<HealthCheckServiceOptions>(options =>
             {
                 HealthCheckRegistration? original = options.Registrations
-                    .FirstOrDefault(x => x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase));
+                    .FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
                 if (original is null)
                 {

@@ -5,7 +5,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using HealthCheckPlus.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Diagnostics.HealthChecks;

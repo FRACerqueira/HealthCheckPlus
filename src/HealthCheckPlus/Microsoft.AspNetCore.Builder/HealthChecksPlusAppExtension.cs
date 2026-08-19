@@ -6,11 +6,12 @@
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using System.Linq;
 
 #pragma warning disable IDE0130 // Namespace does not match folder structure
 namespace Microsoft.AspNetCore.Builder
@@ -36,7 +37,7 @@ namespace Microsoft.AspNetCore.Builder
         /// of <paramref name="path"/> case-insensitively, allowing for an extra trailing slash ('/') character.
         /// </para>
         /// <para>
-        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckOptions}"/>.
+        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckPlusOptions}"/>.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="app"/> is <c>null</c>.</exception>
@@ -64,7 +65,7 @@ namespace Microsoft.AspNetCore.Builder
         /// character.
         /// </para>
         /// <para>
-        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckOptions}"/>.
+        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckPlusOptions}"/>.
         /// </para>
         /// </remarks>
         /// <exception cref="ArgumentNullException"><paramref name="app"/> is <c>null</c>.</exception>
@@ -100,7 +101,7 @@ namespace Microsoft.AspNetCore.Builder
             ArgumentNullException.ThrowIfNull(options);
 
             var cacheStatus = InternalCast.To<CacheHealthCheckPlus>(app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!, "the registered IStateHealthChecksPlus");
-            cacheStatus.AddStatusName(options);
+            cacheStatus.AddStatusName(options, BuildIncludeName(options.Predicate, app.ApplicationServices));
 
             object[] args = [Options.Create(options)];
             UseHealthChecksCore(app, path, null, args);
@@ -132,7 +133,7 @@ namespace Microsoft.AspNetCore.Builder
             ArgumentNullException.ThrowIfNull(options);
 
             var cacheStatus = InternalCast.To<CacheHealthCheckPlus>(app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!, "the registered IStateHealthChecksPlus");
-            cacheStatus.AddStatusName(options);
+            cacheStatus.AddStatusName(options, BuildIncludeName(options.Predicate, app.ApplicationServices));
 
             object[] args = [Options.Create(options)];
             UseHealthChecksCore(app, path, port, args);
@@ -178,6 +179,22 @@ namespace Microsoft.AspNetCore.Builder
             app.MapWhen(predicate, b => b.UseMiddleware<HealthCheckMiddlewarePlus>(args));
         }
 
-
+        // HealthCheckMiddlewarePlus evaluates this same Predicate to filter the report it builds
+        // for its own endpoint's HTTP response (see DefaultHealthCheckServicePlus.
+        // CheckHealthPlusAsync's own predicate parameter) - AddStatusName's registered aggregate
+        // must see the same filtered set of checks, or the two can disagree about what "this
+        // endpoint's status" means. CacheHealthCheckPlus only ever tracks check names, not the
+        // real HealthCheckRegistration list a Predicate is evaluated against, so this translation
+        // happens here, where that list is actually available.
+        private static Func<string, bool>? BuildIncludeName(Func<HealthCheckRegistration, bool>? predicate, IServiceProvider services)
+        {
+            if (predicate == null)
+            {
+                return null;
+            }
+            var registrations = services.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations;
+            var eligibleNames = new HashSet<string>(registrations.Where(predicate).Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+            return eligibleNames.Contains;
+        }
     }
 }

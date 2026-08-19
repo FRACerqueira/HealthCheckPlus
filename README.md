@@ -45,6 +45,7 @@
     - HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus (with extra fields : cache source and reference date of last run)
     - HealthCheckPlusOptions.WriteDetailsWithException
     - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
+    - The `...Plus` writers take an extra `IStateHealthChecksPlus` parameter, so `ResponseWriter` needs a small lambda rather than a direct method reference: `ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithExceptionPlus(ctx, report, stateHealthChecksPlus)` (see the Samples for a full working example)
 - Simple and clear fluent syntax extending the native features of healt check
 - Native metrics via `System.Diagnostics.Metrics` (check executions, status transitions, publisher invocations) — no extra package dependency, consumable by any exporter (OpenTelemetry, Prometheus, App Insights, ...)
 
@@ -89,7 +90,9 @@ The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose d
 //At Statup / Program (without background services policies)
 builder.Services
     //Add HealthCheckPlus - the set of tracked checks comes from whatever ends up registered
-    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync
+    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync.
+    //A check added only via a native extension still needs AddCheckPlus/AddCheckLinkTo for
+    //its own Healthy policy below, or the host fails fast at startup naming it.
     .AddHealthChecksPlus()
     //your custom HC    
     .AddCheckPlus<HcTeste1>("HcTest1")

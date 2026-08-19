@@ -23,9 +23,9 @@ namespace HealthCheckPlus.Abstractions
         /// <summary>
         /// Gets a <see cref="HealthStatus"/> representing the aggregate status of all the health checks.
         /// </summary>
-        /// <param name="name">The name for the URL request.</param>
+        /// <param name="name">The named aggregate to look up - the value passed as <c>HealthCheckName</c> to a <c>HealthCheckPlusOptions</c> used with <c>UseHealthChecksPlus(path, options)</c> - or <c>null</c>/empty for the default aggregate over every tracked check.</param>
         /// <returns>The aggregate <see cref="HealthStatus"/>.</returns>
-        /// <exception cref="ArgumentException"><paramref name="name"/> is a non-empty string that was never registered via <c>AddStatusName</c>. A <c>null</c> or empty <paramref name="name"/> never throws - both return the same aggregate as the parameterless call.</exception>
+        /// <exception cref="ArgumentException"><paramref name="name"/> is a non-empty string that was never registered as a <c>HealthCheckPlusOptions.HealthCheckName</c>. A <c>null</c> or empty <paramref name="name"/> never throws - both return the same aggregate as the parameterless call.</exception>
         HealthStatus Status(string? name = null);
 
         /// <summary>

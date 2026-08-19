@@ -20,6 +20,12 @@ public static bool TryGetNotHealthy(this HealthReport report,
 
 True if found, otherwise false.
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *report* is `null`. |
+
 ### See Also
 
 * class [HealthReportExtensions](../HealthReportExtensions.md)

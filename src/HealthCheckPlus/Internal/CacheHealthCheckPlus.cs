@@ -5,7 +5,7 @@
 
 using HealthCheckPlus.Abstractions;
 using System.Collections.Concurrent;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,7 +30,7 @@ namespace HealthCheckPlus.Internal
         // safe for concurrent reads with zero concurrent writes, and a plain Dictionary sitting
         // right next to two ConcurrentDictionary fields for the same class's other shared state
         // reads as an oversight, not a deliberate choice.
-        private readonly ConcurrentDictionary<string, Func<HealthReport, HealthStatus>?> _statusFunction;
+        private readonly ConcurrentDictionary<string, StatusNameRegistration> _statusFunction;
         private readonly DateTime _dateregister;
         private readonly ILogger<CacheHealthCheckPlus> _logger;
 #pragma warning disable IDE0330
@@ -54,13 +54,32 @@ namespace HealthCheckPlus.Internal
             // AddUnhealthyPolicy/AddDegradedPolicy.
             _statusDeps = new ConcurrentDictionary<string, ItemCacheHealth>(StringComparer.OrdinalIgnoreCase);
             _statusName = new ConcurrentDictionary<string, (HealthStatus Status, long Version)>(StringComparer.OrdinalIgnoreCase);
-            _statusFunction = new ConcurrentDictionary<string, Func<HealthReport, HealthStatus>?>(StringComparer.OrdinalIgnoreCase);
+            _statusFunction = new ConcurrentDictionary<string, StatusNameRegistration>(StringComparer.OrdinalIgnoreCase);
             _dateregister = DateTime.UtcNow;
         }
 
         public DateTime DateRegister => _dateregister;
 
-        public void AddStatusName(HealthCheckPlusOptions options)
+        // The delegate a name was registered with, plus the name-inclusion test derived from
+        // whatever Predicate accompanied it (null = no filtering, every registered check is
+        // eligible) - see AddStatusName's own comment for why both need to travel together.
+        private sealed record StatusNameRegistration(Func<HealthReport, HealthStatus> StatusHealthReport, Func<string, bool>? IncludeName);
+
+        // includeName is the name-based translation of whatever HealthCheckOptions.Predicate
+        // accompanied this registration (see HealthChecksPlusAppExtension.UseHealthChecksPlus,
+        // its only caller) - CacheHealthCheckPlus itself only ever tracks check names, never the
+        // real HealthCheckRegistration list a Predicate is evaluated against, so the caller that
+        // does hold that list must do the translation and hand over the result.
+        //
+        // Without this, a Predicate-filtered endpoint (UseHealthChecksPlus(path, options) with
+        // options.Predicate set) and Status(options.HealthCheckName) for that same registration
+        // could disagree: HealthCheckMiddlewarePlus evaluates options.StatusHealthReport against
+        // the Predicate-filtered report it builds for the HTTP response, but UpdateStatusName()/
+        // Status(name) used to always feed it the full, unfiltered cache instead - confirmed
+        // empirically (a real WebApplication with a Predicate excluding one Unhealthy check: the
+        // endpoint reported Healthy, Status(name) for the same registered name reported
+        // Unhealthy). includeName closes that gap by scoping the report the SAME way for both.
+        public void AddStatusName(HealthCheckPlusOptions options, Func<string, bool>? includeName)
         {
             if (string.IsNullOrEmpty(options.HealthCheckName))
             {
@@ -71,7 +90,7 @@ namespace HealthCheckPlus.Internal
             // today, so this TOCTOU was never actually reachable concurrently, but it's no more
             // code to just make it atomic.
             //
-            // Scope note on the default delegate (`_ => AggregateStatus()`, used when
+            // Scope note on the default delegate (`_ => AggregateStatus(includeName)`, used when
             // StatusHealthReport is omitted): it ignores the HealthReport that UpdateStatusName()/
             // Status(name) pass it and reads live _statusDeps instead, so it can never be staler than the
             // (version, report) pair TryStoreStatusName compares it against - a live read is always
@@ -82,8 +101,12 @@ namespace HealthCheckPlus.Internal
             // call. This is a scope limitation of the versioning scheme, not a live bug - the
             // scenario it exists to fix (SwitchToUnhealthy's own override reverting to a stale
             // value) only applies to a caller-supplied StatusHealthReport that actually derives its
-            // result from the report it's given.
-            if (!_statusFunction.TryAdd(options.HealthCheckName, options.StatusHealthReport ?? (_ => AggregateStatus())))
+            // result from the report it's given. It still honors includeName, for the same reason
+            // the caller-supplied delegate case above it does.
+            var registration = new StatusNameRegistration(
+                options.StatusHealthReport ?? (_ => AggregateStatus(includeName)),
+                includeName);
+            if (!_statusFunction.TryAdd(options.HealthCheckName, registration))
             {
                 throw new ArgumentException("HealthCheckName already exists");
             }
@@ -130,19 +153,28 @@ namespace HealthCheckPlus.Internal
         // calls, and a tied version doesn't get rejected by TryStoreStatusName's `>` comparison.
         // Locking only the capture - not the delegate invocation below, which is arbitrary
         // consumer code and could be slow - keeps that same guarantee without ever blocking on it.
+        //
+        // Each registered name gets its OWN report, built from its own IncludeName (see
+        // StatusNameRegistration) - two names registered with different Predicates must not see
+        // each other's filtered view. All of them are still built inside the same lock as version,
+        // so every name's report and the version it's stored against describe the exact same
+        // instant, the same guarantee as when this built one shared report for every name.
         public void UpdateStatusName()
         {
-            HealthReport report;
             long version;
+            var reportsByName = new List<(string Name, StatusNameRegistration Registration, HealthReport Report)>();
             lock (_lock)
             {
                 version = _stateVersion;
-                report = CreateReport();
+                foreach (var item in _statusFunction)
+                {
+                    reportsByName.Add((item.Key, item.Value, BuildReport(item.Value.IncludeName, excludeNeverRun: false)));
+                }
             }
-            foreach (var item in _statusFunction)
+            foreach (var (name, registration, report) in reportsByName)
             {
-                var status = item.Value!.Invoke(report);
-                TryStoreStatusName(item.Key, status, version);
+                var status = registration.StatusHealthReport.Invoke(report);
+                TryStoreStatusName(name, status, version);
             }
         }
 
@@ -208,15 +240,7 @@ namespace HealthCheckPlus.Internal
 
         public HealthReport CreateReport()
         {
-            // OrdinalIgnoreCase to match the equivalent dictionary DefaultHealthCheckServicePlus.
-            // CheckHealthPlusAsync builds for its own HealthReport - a HealthReport.Entries lookup
-            // should behave the same regardless of which code path produced the report.
-            var entries = _statusDeps.ToDictionary(
-                kvp => kvp.Key,
-                kvp => BuildReportEntry(kvp.Value, out _),
-                StringComparer.OrdinalIgnoreCase
-            );
-            return new HealthReport(entries, TimeSpan.Zero);
+            return BuildReport(includeName: null, excludeNeverRun: false);
         }
 
         // Used by HealthCheckPlusBackGroundService to build the report it publishes: only names
@@ -230,18 +254,33 @@ namespace HealthCheckPlus.Internal
         // calls be *included* (now true) while still carrying the InitCache seed data that the
         // first call had already snapshotted before that first run finished - a phantom Healthy
         // result published for a check that, at publish time, had barely just started reporting
-        // real data.
+        // real data. This exclusion is the background publisher's own policy, not shared by
+        // UpdateStatusName()/Status(name) below (see BuildReport) - those treat a never-run check
+        // as Healthy, same as the no-filter CreateReport() above, regardless of whether their own
+        // registration carries an IncludeName filter.
         public HealthReport CreateReport(Func<string, bool> includeName)
         {
+            return BuildReport(includeName, excludeNeverRun: true);
+        }
+
+        // Shared by both CreateReport overloads and by UpdateStatusName()/Status(name)'s own
+        // per-registration report building (see StatusNameRegistration.IncludeName) - one place
+        // decides how a name filter and the never-run exclusion each apply, instead of three
+        // independent copies of this loop that could individually drift.
+        private HealthReport BuildReport(Func<string, bool>? includeName, bool excludeNeverRun)
+        {
+            // OrdinalIgnoreCase to match the equivalent dictionary DefaultHealthCheckServicePlus.
+            // CheckHealthPlusAsync builds for its own HealthReport - a HealthReport.Entries lookup
+            // should behave the same regardless of which code path produced the report.
             var entries = new Dictionary<string, HealthReportEntry>(StringComparer.OrdinalIgnoreCase);
             foreach (var kvp in _statusDeps)
             {
-                if (!includeName(kvp.Key))
+                if (includeName != null && !includeName(kvp.Key))
                 {
                     continue;
                 }
                 var entry = BuildReportEntry(kvp.Value, out var origin);
-                if (origin == HealthCheckTrigger.None)
+                if (excludeNeverRun && origin == HealthCheckTrigger.None)
                 {
                     continue;
                 }
@@ -272,36 +311,49 @@ namespace HealthCheckPlus.Internal
                 lock (_lock)
                 {
                     version = _stateVersion;
-                    report = CreateReport();
+                    report = BuildReport(value.IncludeName, excludeNeverRun: false);
                 }
-                var status = value!.Invoke(report);
+                var status = value.StatusHealthReport.Invoke(report);
                 return TryStoreStatusName(name, status, version);
             }
             return cached.Status;
         }
 
         // The default aggregation rule (worst status wins) - used both as the no-name Status()
-        // shortcut and as AddStatusName's fallback when no custom StatusHealthReport is provided.
-        // Previously expressed independently in three places, one of which (a seed entry keyed by
-        // string.Empty, recomputed every UpdateStatusName() cycle) was never actually read by
-        // anything.
+        // shortcut (includeName always null there - no registration, no Predicate, no filtering)
+        // and as AddStatusName's fallback when no custom StatusHealthReport is provided (includeName
+        // is that registration's own IncludeName, so a Predicate-filtered registration's default
+        // aggregate stays scoped to the same checks its endpoint's HTTP response is, instead of
+        // silently reading past the filter back to every check in the cache). Previously expressed
+        // independently in three places, one of which (a seed entry keyed by string.Empty,
+        // recomputed every UpdateStatusName() cycle) was never actually read by anything.
         //
-        // _statusDeps can legitimately be empty (AddHealthChecksPlus() with zero AddCheckPlus/
-        // AddCheckLinkTo registrations) - Min() throws InvalidOperationException on an empty
-        // sequence, so this must short-circuit rather than let that surface as an unrelated crash
-        // from a Status()/AddStatusName call. Healthy matches the native HealthReport.Status's own
-        // default for zero entries (confirmed empirically), keeping this aggregate consistent with
-        // it for the same vacuous case.
-        private HealthStatus AggregateStatus()
+        // The filtered set can legitimately be empty (AddHealthChecksPlus() with zero AddCheckPlus/
+        // AddCheckLinkTo registrations, or every registered check excluded by includeName) - Min()
+        // throws InvalidOperationException on an empty sequence, so this must short-circuit rather
+        // than let that surface as an unrelated crash from a Status()/AddStatusName call. Healthy
+        // matches the native HealthReport.Status's own default for zero entries (confirmed
+        // empirically), keeping this aggregate consistent with it for the same vacuous case.
+        private HealthStatus AggregateStatus(Func<string, bool>? includeName = null)
         {
-            return _statusDeps.IsEmpty ? HealthStatus.Healthy : _statusDeps.Values.Min(x => x.LastResult.Status);
+            var relevant = includeName == null
+                ? _statusDeps.Values
+                : _statusDeps.Where(kvp => includeName(kvp.Key)).Select(kvp => kvp.Value).ToList();
+            return relevant.Count == 0 ? HealthStatus.Healthy : relevant.Min(x => x.LastResult.Status);
         }
 
+        // Test-only seam: no production code calls this (every real Running transition goes
+        // through TryBeginRun/ReleaseRunning/Update/SwithState, which each guard it under _lock).
+        // Locked here too, purely so this method can't become the one unguarded way to corrupt
+        // Running if a future caller ever reaches it outside a test.
         public void Running(string key, bool value)
         {
-            if (_statusDeps.TryGetValue(key, out var item))
+            lock (_lock)
             {
-                item.Running = value;
+                if (_statusDeps.TryGetValue(key, out var item))
+                {
+                    item.Running = value;
+                }
             }
         }
 
@@ -367,24 +419,25 @@ namespace HealthCheckPlus.Internal
         {
             if (!_statusDeps.TryGetValue(key, out var item))
             {
-                _logger.LogWarning(UpdateDroppedEventId,
-                    "The result for health check '{HealthCheckName}' was dropped: no such check is registered in the cache.", key);
+                SafeLog(() => _logger.LogWarning(UpdateDroppedEventId,
+                    "The result for health check '{HealthCheckName}' was dropped: no such check is registered in the cache.", key));
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.UpdateResultDropped), key);
                 return;
             }
 
             if (!item.Running)
             {
-                // TryBeginRun (see DefaultHealthCheckServicePlus.ScheduleIfDue) already closes the
-                // scheduling-stage race this used to guard against - two callers can no longer
-                // both observe a check as "due" and both start it. This branch is the remaining
-                // safety net for a second, different kind of overlap TryBeginRun doesn't cover:
-                // a manually-triggered execution (SwithState) racing an already-scheduled one for
-                // the same check. Whichever finishes first clears Running and applies its result;
-                // the other finds Running already false and its result (and metrics) would
-                // previously be dropped with no trace at all.
-                _logger.LogWarning(UpdateDroppedEventId,
-                    "The result for health check '{HealthCheckName}' was dropped: no execution was marked as running for it (likely an overlapping execution already applied its result).", key);
+                // TryBeginRun (see DefaultHealthCheckServicePlus.ScheduleIfDue) and SwithState both
+                // claim Running under _lock, and only when it is currently false - so exactly one
+                // caller ever owns a given check's execution at a time, and this branch is not
+                // reachable through either of them today. It's a defensive safety net, not an
+                // active race guard: if Running were ever cleared out from under a real in-flight
+                // execution (e.g. through the test-only Running(key,bool) seam below, or a future
+                // caller that doesn't follow the TryBeginRun/SwithState ownership protocol),
+                // logging and recording an anomaly here beats silently discarding the result with
+                // no trace at all.
+                SafeLog(() => _logger.LogWarning(UpdateDroppedEventId,
+                    "The result for health check '{HealthCheckName}' was dropped: no execution was marked as running for it (likely an overlapping execution already applied its result).", key));
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.UpdateResultDropped), key);
                 return;
             }
@@ -432,8 +485,31 @@ namespace HealthCheckPlus.Internal
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(MetricsRecordingErrorEventId, ex,
-                    "Recording metrics for health check '{HealthCheckName}' failed; the check result itself was not affected.", key);
+                SafeLog(() => _logger.LogWarning(MetricsRecordingErrorEventId, ex,
+                    "Recording metrics for health check '{HealthCheckName}' failed; the check result itself was not affected.", key));
+            }
+        }
+
+        // Mirror image of SafeRecordMetric above: a throwing ILogger sink (a broken third-party
+        // logging provider) must never be able to break Update()/SwithState() any more than a
+        // broken metrics pipeline can. The failure becomes observable via
+        // AnomalyReason.LoggingSinkFailed instead of another log call - see that reason's doc for
+        // why (same circularity risk SafeRecordMetric's own catch above already avoids, mirrored).
+        //
+        // Undefended residual: the RecordAnomaly call in the catch below is itself unguarded, so a
+        // second, independent failure recording THAT (a broken MeterListener) still propagates out
+        // of SafeLog and, transitively, out of Update()/SwithState(). Closing that fully would need
+        // a nested empty catch here, which this codebase's own no-silent-catch doctrine treats as a
+        // decision requiring explicit sign-off, not something to add unasked - left as a known gap.
+        private void SafeLog(Action logCall)
+        {
+            try
+            {
+                logCall();
+            }
+            catch (Exception)
+            {
+                HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
             }
         }
 
@@ -477,9 +553,9 @@ namespace HealthCheckPlus.Internal
                 // doctrine forbids elsewhere (see docs/ARCHITECTURE.md's logging-and-anomalies
                 // section): a consumer calling SwitchToUnhealthy/SwitchToDegraded would see no
                 // exception and reasonably assume the override took effect.
-                _logger.LogWarning(SwitchToDroppedEventId,
+                SafeLog(() => _logger.LogWarning(SwitchToDroppedEventId,
                     "A manual override to '{TargetStatus}' for health check '{HealthCheckName}' was dropped: a scheduled execution is currently running for it and will produce its own result shortly. Retry after it completes if the override is still needed.",
-                    status, key);
+                    status, key));
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.SwitchToDroppedWhileRunning), key);
                 return;
             }

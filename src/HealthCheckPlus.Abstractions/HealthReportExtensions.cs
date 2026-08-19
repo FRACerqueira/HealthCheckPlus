@@ -17,8 +17,12 @@ namespace HealthCheckPlus.Abstractions
         /// </summary>
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="keydep">The name dependence.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> or <paramref name="keydep"/> is <c>null</c>.</exception>
         public static HealthStatus StatusResult(this HealthReport report, string keydep)
         {
+            ArgumentNullException.ThrowIfNull(report);
+            ArgumentNullException.ThrowIfNull(keydep);
+
             if (report.Entries.TryGetValue(keydep, out var entry))
             {
                 return entry.Status;
@@ -33,8 +37,11 @@ namespace HealthCheckPlus.Abstractions
         /// <param name="keydep">
         /// The Enum value dependence.
         /// </param>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> or <paramref name="keydep"/> is <c>null</c>.</exception>
         public static HealthStatus StatusResult(this HealthReport report, Enum keydep)
         {
+            ArgumentNullException.ThrowIfNull(keydep);
+
             return StatusResult(report, keydep.ToString());
         }
 
@@ -44,6 +51,7 @@ namespace HealthCheckPlus.Abstractions
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="result">the Dictionary with all HealthCheck Result with not healthy status</param>
         /// <returns>True if found, otherwise false.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> is <c>null</c>.</exception>
         public static bool TryGetNotHealthy(this HealthReport report, out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
             return TryGetByStatus(report, out result, status => status != HealthStatus.Healthy);
@@ -55,6 +63,7 @@ namespace HealthCheckPlus.Abstractions
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="result">the Dictionary with all HealthCheck Result with healthy status</param>
         /// <returns>True if found, otherwise false.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> is <c>null</c>.</exception>
         public static bool TryGetHealthy(this HealthReport report, out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
             return TryGetByStatus(report, out result, status => status == HealthStatus.Healthy);
@@ -66,6 +75,7 @@ namespace HealthCheckPlus.Abstractions
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="result">the Dictionary with all HealthCheck Result with degraded status</param>
         /// <returns>True if found, otherwise false.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> is <c>null</c>.</exception>
         public static bool TryGetDegraded(this HealthReport report, out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
             return TryGetByStatus(report, out result, status => status == HealthStatus.Degraded);
@@ -77,6 +87,7 @@ namespace HealthCheckPlus.Abstractions
         /// <param name="report">The <see cref="HealthReport"/>.</param>
         /// <param name="result">the Dictionary with all HealthCheck Result with unhealthy status</param>
         /// <returns>True if found, otherwise false.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="report"/> is <c>null</c>.</exception>
         public static bool TryGetUnhealthy(this HealthReport report, out IReadOnlyDictionary<string, HealthCheckResult> result)
         {
             return TryGetByStatus(report, out result, status => status == HealthStatus.Unhealthy);
@@ -84,6 +95,8 @@ namespace HealthCheckPlus.Abstractions
 
         private static bool TryGetByStatus(HealthReport report, out IReadOnlyDictionary<string, HealthCheckResult> result, Func<HealthStatus, bool> predicate)
         {
+            ArgumentNullException.ThrowIfNull(report);
+
             result = (IReadOnlyDictionary<string, HealthCheckResult>)report.Entries.Where(entry => predicate(entry.Value.Status))
                 .ToDictionary(entry => entry.Key, entry => new HealthCheckResult(entry.Value.Status,entry.Value.Description, entry.Value.Exception,entry.Value.Data));
             return result.Count !=0;

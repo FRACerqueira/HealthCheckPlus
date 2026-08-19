@@ -4,7 +4,7 @@
 </br>
 
 
-#### Register then dependence health check to run.
+#### Registers a new health check to run.
 
 ```csharp
 public static IHealthChecksBuilder AddCheckPlus<T>(this IHealthChecksBuilder ihb, string namedep, 
@@ -16,9 +16,9 @@ public static IHealthChecksBuilder AddCheckPlus<T>(this IHealthChecksBuilder ihb
 | parameter | description |
 | --- | --- |
 | ihb | The IHealthChecksBuilder. |
-| namedep | The name health check list to run. |
-| delay | An optional TimeSpan for this check's own `Healthy` policy - the initial delay before the check is first eligible to run, not a delay of any IHealthCheckPublisher. When omitted, the check has no delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back to [`Delay`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/Delay.md) for that check's very first run only. |
-| period | An optional TimeSpan for this check's own `Healthy` policy - how often it reruns, not a period of any IHealthCheckPublisher. On the HTTP path this also applies whenever the check's current status (Degraded/Unhealthy) has no explicit policy of its own registered via [`AddDegradedPolicy`](./AddDegradedPolicy.md)/ [`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) - not only while the check is genuinely `Healthy`. When omitted, the check reruns on every request on the HTTP path; on the background path, this period (or, if omitted, [`HealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/HealthyPeriod.md)) is only ever consulted while the check is currently `Healthy` - a check currently Degraded/Unhealthy uses [`DegradedPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/DegradedPeriod.md)/[`UnhealthyPeriod`](../../HealthCheckPlus.options/HealthCheckPlusBackGroundOptions/UnhealthyPeriod.md) instead, unless an explicit [`AddDegradedPolicy`](./AddDegradedPolicy.md)/[`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) period was registered for it. |
+| namedep | The name to register the health check under. |
+| delay | An optional TimeSpan for this check's own `Healthy` policy - the initial delay before the check is first eligible to run, not a delay of any IHealthCheckPublisher. When omitted, the check has no delay on the HTTP path (it runs on the first request that reaches it); on the background path, an omitted delay falls back to [`Delay`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/Delay.md) for that check's very first run only. |
+| period | An optional TimeSpan for this check's own `Healthy` policy - how often it reruns, not a period of any IHealthCheckPublisher. On the HTTP path this also applies whenever the check's current status (Degraded/Unhealthy) has no explicit policy of its own registered via [`AddDegradedPolicy`](./AddDegradedPolicy.md)/ [`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) - not only while the check is genuinely `Healthy`. When omitted, the check reruns on every request on the HTTP path; on the background path, this period (or, if omitted, [`HealthyPeriod`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/HealthyPeriod.md)) is only ever consulted while the check is currently `Healthy` - a check currently Degraded/Unhealthy uses [`DegradedPeriod`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/DegradedPeriod.md)/[`UnhealthyPeriod`](../../HealthCheckPlus.Options/HealthCheckPlusBackGroundOptions/UnhealthyPeriod.md) instead, unless an explicit [`AddDegradedPolicy`](./AddDegradedPolicy.md)/[`AddUnhealthyPolicy`](./AddUnhealthyPolicy.md) period was registered for it. |
 | tags | A list of tags that can be used for filtering health checks. |
 | failureStatus | The HealthStatus that should be reported when the health check reports a failure. If the provided value is `null`, then Unhealthy will be reported. |
 | timeout | An optional TimeSpan representing the timeout of the check. |

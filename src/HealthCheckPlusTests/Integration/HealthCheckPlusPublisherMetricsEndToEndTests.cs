@@ -5,7 +5,7 @@
 
 using System.Diagnostics.Metrics;
 using HealthCheckPlus.Abstractions;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;

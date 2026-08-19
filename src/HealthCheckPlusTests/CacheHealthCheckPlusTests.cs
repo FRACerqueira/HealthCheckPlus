@@ -5,8 +5,9 @@
 
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 
 namespace HealthCheckPlusTests
 {
@@ -28,9 +29,9 @@ namespace HealthCheckPlusTests
                 StatusHealthReport = report => HealthStatus.Healthy
             };
 
-            _cacheHealthCheckPlus.AddStatusName(options);
+            _cacheHealthCheckPlus.AddStatusName(options, includeName: null);
 
-            Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.AddStatusName(options));
+            Assert.Throws<ArgumentException>(() => _cacheHealthCheckPlus.AddStatusName(options, includeName: null));
         }
 
         [Fact]
@@ -90,11 +91,57 @@ namespace HealthCheckPlusTests
                 StatusHealthReport = report => HealthStatus.Healthy
             };
 
-            _cacheHealthCheckPlus.AddStatusName(options);
+            _cacheHealthCheckPlus.AddStatusName(options, includeName: null);
             _cacheHealthCheckPlus.InitCache(["Test"]);
             _cacheHealthCheckPlus.UpdateStatusName();
 
             Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("Test"));
+        }
+
+        // Regression test: UpdateStatusName() used to always invoke a registered StatusHealthReport
+        // delegate with the full, unfiltered cache - regardless of the includeName filter the same
+        // registration's own Predicate translates to (see AddStatusName's own comment). "Excluded"
+        // is genuinely Unhealthy here, but never enters the report this delegate is invoked with,
+        // because includeName excludes it - the same scoping the registration's own endpoint would
+        // apply to its HTTP response.
+        [Fact]
+        public void UpdateStatusName_ShouldScopeTheReport_ByTheRegistrationsOwnIncludeName()
+        {
+            _cacheHealthCheckPlus.InitCache(["Included", "Excluded"]);
+            _cacheHealthCheckPlus.Running("Excluded", true);
+            _cacheHealthCheckPlus.Update("Excluded", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Unhealthy), DateTime.UtcNow, TimeSpan.Zero);
+
+            var options = new HealthCheckPlusOptions
+            {
+                HealthCheckName = "live",
+                StatusHealthReport = report => report.Entries.ContainsKey("Excluded") ? HealthStatus.Unhealthy : HealthStatus.Healthy
+            };
+            _cacheHealthCheckPlus.AddStatusName(options, includeName: name => name == "Included");
+
+            _cacheHealthCheckPlus.UpdateStatusName();
+
+            Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("live"));
+        }
+
+        // Same regression as above, for Status(name)'s own cold-compute path (the first-ever call
+        // for a name, before any UpdateStatusName() cycle has populated _statusName for it) -
+        // Update() alone (unlike SwithState) never calls UpdateStatusName(), so this reaches
+        // Status(name)'s own report-building code, not UpdateStatusName()'s.
+        [Fact]
+        public void Status_ShouldScopeTheReport_ByTheRegistrationsOwnIncludeName_OnItsFirstColdCompute()
+        {
+            _cacheHealthCheckPlus.InitCache(["Included", "Excluded"]);
+            _cacheHealthCheckPlus.Running("Excluded", true);
+            _cacheHealthCheckPlus.Update("Excluded", HealthCheckTrigger.Background, new HealthCheckResult(HealthStatus.Unhealthy), DateTime.UtcNow, TimeSpan.Zero);
+
+            var options = new HealthCheckPlusOptions
+            {
+                HealthCheckName = "live",
+                StatusHealthReport = report => report.Entries.ContainsKey("Excluded") ? HealthStatus.Unhealthy : HealthStatus.Healthy
+            };
+            _cacheHealthCheckPlus.AddStatusName(options, includeName: name => name == "Included");
+
+            Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("live"));
         }
 
         // Regression test: SwitchToUnhealthy/SwitchToDegraded used to update the check's own last
@@ -114,7 +161,7 @@ namespace HealthCheckPlusTests
                 HealthCheckName = "Named",
                 StatusHealthReport = report => report.Entries["Test1"].Status
             };
-            _cacheHealthCheckPlus.AddStatusName(options);
+            _cacheHealthCheckPlus.AddStatusName(options, includeName: null);
             _cacheHealthCheckPlus.UpdateStatusName();
 
             Assert.Equal(HealthStatus.Healthy, _cacheHealthCheckPlus.Status("Named"));
@@ -163,7 +210,7 @@ namespace HealthCheckPlusTests
                     return HealthStatus.Unhealthy; // the override's own, fresh computation
                 }
             };
-            _cacheHealthCheckPlus.AddStatusName(options);
+            _cacheHealthCheckPlus.AddStatusName(options, includeName: null);
 
             // A dedicated Thread, not Task.Run: this call blocks synchronously for up to 10s
             // inside the delegate above, and the shared thread pool - already under pressure
@@ -383,6 +430,79 @@ namespace HealthCheckPlusTests
             _cacheHealthCheckPlus.SwithState("Test1", HealthStatus.Unhealthy);
 
             Assert.Equal(HealthStatus.Unhealthy, _cacheHealthCheckPlus.FullStatus("Test1").LastResult.Status);
+        }
+
+        // A logging provider that throws on every call - simulates a broken third-party sink.
+        private sealed class ThrowingLogger : ILogger<CacheHealthCheckPlus>
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                throw new InvalidOperationException("Simulated broken logging provider.");
+            }
+        }
+
+        // Regression test: Update()'s "dropped" branches (an unregistered key, or no execution
+        // marked Running for it) used to log completely unguarded - a throwing ILogger sink made
+        // Update() itself throw, on the single point every execution path (foreground/HTTP,
+        // background, and SwitchTo) converges on. Dropping a result must stay silent to the
+        // caller regardless of whether the drop itself could be logged.
+        [Fact]
+        public void Update_ShouldNotThrow_WhenKeyIsNotRegistered_AndLoggingThrows()
+        {
+            var cache = new CacheHealthCheckPlus(new ThrowingLogger());
+
+            var result = new HealthCheckResult(HealthStatus.Healthy);
+            cache.Update("Unknown", HealthCheckTrigger.UrlRequest, result, DateTime.UtcNow, TimeSpan.Zero);
+        }
+
+        // Not swallowed with zero signal: SafeLog's catch must actually record the
+        // logging_sink_failed anomaly, not just avoid throwing - the "no throw" tests above would
+        // still pass if SafeLog's catch were reduced to an empty `catch { }`, which is exactly the
+        // silent-catch shape this codebase's own doctrine forbids.
+        [Fact]
+        public void Update_ShouldRecordLoggingSinkFailedAnomaly_WhenKeyIsNotRegistered_AndLoggingThrows()
+        {
+            using var capture = new MetricsCapture();
+            var cache = new CacheHealthCheckPlus(new ThrowingLogger());
+
+            var result = new HealthCheckResult(HealthStatus.Healthy);
+            cache.Update("Unknown", HealthCheckTrigger.UrlRequest, result, DateTime.UtcNow, TimeSpan.Zero);
+
+            Assert.Contains(capture.Measurements, m =>
+                m.InstrumentName == "healthcheckplus.anomalies" &&
+                m.Tags.TryGetValue("healthcheckplus.anomaly.reason", out var reason) &&
+                Equals(reason, "logging_sink_failed"));
+        }
+
+        [Fact]
+        public void Update_ShouldNotThrow_WhenNoExecutionIsMarkedRunning_AndLoggingThrows()
+        {
+            var cache = new CacheHealthCheckPlus(new ThrowingLogger());
+            cache.InitCache(["Test1"]);
+
+            var result = new HealthCheckResult(HealthStatus.Healthy);
+            // Running was never set true for "Test1", so this hits the second dropped branch.
+            cache.Update("Test1", HealthCheckTrigger.UrlRequest, result, DateTime.UtcNow, TimeSpan.Zero);
+        }
+
+        // Same defect, in SwithState()'s own drop branch (a manual override arriving while a
+        // scheduled execution is already in flight for the same check).
+        [Fact]
+        public void SwithState_ShouldNotThrow_WhenOverrideIsDroppedBecauseAlreadyRunning_AndLoggingThrows()
+        {
+            var cache = new CacheHealthCheckPlus(new ThrowingLogger());
+            cache.InitCache(["Test1"]);
+            cache.Running("Test1", true);
+
+            cache.SwithState("Test1", HealthStatus.Unhealthy);
+
+            // The override must actually have been dropped (not silently applied), confirming
+            // this test exercised the intended branch rather than the happy path.
+            Assert.Equal(HealthStatus.Healthy, cache.FullStatus("Test1").LastResult.Status);
         }
 
         [Fact]

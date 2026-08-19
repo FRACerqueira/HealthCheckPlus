@@ -3,6 +3,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
+using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -51,6 +52,42 @@ namespace HealthCheckPlusTests
             var ex = Assert.Throws<InvalidOperationException>(
                 () => provider.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value);
             Assert.Contains("DoesNotExist", ex.Message, StringComparison.Ordinal);
+        }
+
+        // Regression test: AddCheckLinkTo used to match namedep/name via
+        // StringComparison.CurrentCultureIgnoreCase - locale-dependent, unlike OrdinalIgnoreCase
+        // used everywhere else this library compares a check name. Under the Turkish culture, the
+        // uppercase form of 'i' is 'İ' (dotted), not 'I', and the lowercase form of 'I' is 'ı'
+        // (dotless), not 'i' - so "FILE" and "file" compare as *different* names under
+        // CurrentCultureIgnoreCase on a tr-TR thread, even though they're the same name everywhere
+        // this library treats names as equal. A host whose thread culture happens to be tr-TR
+        // (or any other culture with this same casing quirk) could see AddCheckLinkTo throw
+        // InvalidOperationException("No health check named ... was found") for a name that a
+        // non-Turkish-culture host would resolve without issue.
+        [Fact]
+        public void AddCheckLinkTo_ShouldMatchNames_RegardlessOfThreadCulture()
+        {
+            var originalCulture = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("tr-TR");
+
+                var services = new ServiceCollection();
+                services.AddLogging();
+                var ihb = services.AddHealthChecksPlus();
+                ihb.Add(new HealthCheckRegistration("FILE", _ => new AlwaysHealthyCheck(), null, null));
+                ihb.AddCheckLinkTo("Adopted", "file");
+
+                using var provider = services.BuildServiceProvider();
+                var options = provider.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value;
+
+                Assert.Contains(options.Registrations, r => r.Name == "Adopted");
+                Assert.DoesNotContain(options.Registrations, r => r.Name == "FILE");
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = originalCulture;
+            }
         }
 
         private sealed class CountingFactoryCheck : IHealthCheck

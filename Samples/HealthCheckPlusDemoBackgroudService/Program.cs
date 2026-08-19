@@ -1,5 +1,5 @@
 using HealthCheckPlus.Abstractions;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Text.Json;

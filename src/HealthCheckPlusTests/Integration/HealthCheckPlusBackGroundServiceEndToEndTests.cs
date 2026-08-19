@@ -4,7 +4,7 @@
 // ********************************************************************************************
 
 using HealthCheckPlus.Internal;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
@@ -147,6 +147,40 @@ namespace HealthCheckPlusTests.Integration
             Assert.Contains(hostedServices, s => s is HealthCheckPlusBackGroundService);
 
             await host.StopAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Regression test: AddBackgroundPolicy()'s removal of the native
+        // HealthCheckPublisherHostedService is order-dependent - it only removes whatever is
+        // registered at that exact moment. If anything calls IServiceCollection.AddHealthChecks()
+        // again afterward (here simulating a third-party IHealthChecksBuilder extension that does
+        // this defensively before adding its own check, a common real-world pattern), .NET's
+        // TryAddEnumerable silently re-adds it, since nothing of that type is registered at that
+        // later point anymore. Left undetected, the native service would then drive publishers on
+        // its own schedule - bypassing AfterIdleCount/WhenReportChange/PublisherCondition entirely
+        // - or duplicate every dispatch alongside HealthCheckPlusBackGroundService, with zero log
+        // or metric signal either way. StartAsync now fails fast instead.
+        [Fact]
+        public async Task AddBackgroundPolicy_ShouldFailFast_WhenNativePublisherHostedServiceIsReRegisteredAfterward()
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                using var host = await TestHost.CreateAsync(
+                    services =>
+                    {
+                        services.AddLogging();
+                        var ihb = services.AddHealthChecksPlus();
+                        ihb.AddCheckPlus<CountingCheck>("Test1");
+                        ihb.AddBackgroundPolicy();
+
+                        // Simulates a third-party extension (or the app itself) calling
+                        // AddHealthChecks() again after AddBackgroundPolicy() already removed it.
+                        services.AddHealthChecks();
+                    },
+                    _ => { });
+            });
+
+            Assert.Contains("HealthCheckPublisherHostedService", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("AddBackgroundPolicy", ex.Message, StringComparison.Ordinal);
         }
 
         // healthcheckplus.check.executions/duration must carry check.origin=Background when the
@@ -331,18 +365,21 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            // A generous wait relative to the ~1s minimum cycle time: a CI runner slower than this
-            // machine (observed in practice on windows-latest) can otherwise miss even the single
-            // publish cycle this test needs.
-            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            // Poll for the actual condition instead of a fixed delay - a fixed delay here turned
+            // out not generous enough under this project's own full-solution, 3-TFM-parallel test
+            // run, and even a longer one would still race the very first publish cycle, which
+            // legitimately excludes "Included" until it has run even once (see
+            // BackgroundService_ShouldExcludeNotYetRunChecks_FromThePublishedReport) - asserting
+            // "Included" is present via Assert.All over every captured report, rather than "present
+            // in at least one", was the part that actually flaked.
+            await TestHost.WaitUntilAsync(
+                () => { lock (publisher.Reports) { return publisher.Reports.Any(r => r.Entries.ContainsKey("Included")); } },
+                TimeSpan.FromSeconds(30),
+                "Expected at least one published report to include 'Included' once it had run.",
+                TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
-            Assert.NotEmpty(publisher.Reports);
-            Assert.All(publisher.Reports, report =>
-            {
-                Assert.Contains("Included", report.Entries.Keys);
-                Assert.DoesNotContain("Excluded", report.Entries.Keys);
-            });
+            Assert.All(publisher.Reports, report => Assert.DoesNotContain("Excluded", report.Entries.Keys));
         }
 
         // Regression test: a check that hasn't run even once yet (its own Delay, from AddCheckPlus,
@@ -375,18 +412,21 @@ namespace HealthCheckPlusTests.Integration
                 },
                 _ => { });
 
-            // A generous wait relative to the ~1s minimum cycle time: a CI runner slower than this
-            // machine (observed in practice on windows-latest) can otherwise miss even the single
-            // publish cycle this test needs.
-            await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            // Poll for the actual condition instead of a fixed delay - this exact test flaked
+            // under this project's own full-solution, 3-TFM-parallel test run (observed twice
+            // this session: "HasRun" missing from a captured report). A longer fixed delay
+            // wouldn't have helped: the very first publish cycle legitimately excludes "HasRun"
+            // until it has run even once, so asserting its presence via Assert.All over every
+            // captured report - rather than "present in at least one" - was the part that
+            // actually raced, independent of how generous the wait before it was.
+            await TestHost.WaitUntilAsync(
+                () => { lock (publisher.Reports) { return publisher.Reports.Any(r => r.Entries.ContainsKey("HasRun")); } },
+                TimeSpan.FromSeconds(30),
+                "Expected at least one published report to include 'HasRun' once it had run.",
+                TestContext.Current.CancellationToken);
             await host.StopAsync(TestContext.Current.CancellationToken);
 
-            Assert.NotEmpty(publisher.Reports);
-            Assert.All(publisher.Reports, report =>
-            {
-                Assert.Contains("HasRun", report.Entries.Keys);
-                Assert.DoesNotContain("NeverRun", report.Entries.Keys);
-            });
+            Assert.All(publisher.Reports, report => Assert.DoesNotContain("NeverRun", report.Entries.Keys));
         }
 
         // Regression test: StopAsync used to swallow an exception from _stopping.Cancel() with a

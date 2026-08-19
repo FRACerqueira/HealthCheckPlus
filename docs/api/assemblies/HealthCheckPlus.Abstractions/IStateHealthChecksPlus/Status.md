@@ -12,7 +12,7 @@ public HealthStatus Status(string? name = null)
 
 | parameter | description |
 | --- | --- |
-| name | The name for the URL request. |
+| name | The named aggregate to look up - the value passed as `HealthCheckName` to a `HealthCheckPlusOptions` used with `UseHealthChecksPlus(path, options)` - or `null`/empty for the default aggregate over every tracked check. |
 
 ### Return Value
 
@@ -22,7 +22,7 @@ The aggregate HealthStatus.
 
 | exception | condition |
 | --- | --- |
-| ArgumentException | *name* is a non-empty string that was never registered via `AddStatusName`. A `null` or empty *name* never throws - both return the same aggregate as the parameterless call. |
+| ArgumentException | *name* is a non-empty string that was never registered as a `HealthCheckPlusOptions.HealthCheckName`. A `null` or empty *name* never throws - both return the same aggregate as the parameterless call. |
 
 ### See Also
 

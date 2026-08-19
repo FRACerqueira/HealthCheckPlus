@@ -7,7 +7,7 @@
 
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal.Policies;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -104,8 +104,10 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                     // A consumer-supplied IDisposable.Dispose() throwing must not abort the loop:
                     // without this try/catch, every adopted check after the first failing one would
                     // be silently left undisposed for the rest of process shutdown, with no signal
-                    // anywhere that it happened.
-                    Log.HealthCheckDisposeError(_logger, name, ex);
+                    // anywhere that it happened. SafeLog guards the log call itself for the same
+                    // reason - a throwing ILogger sink here must not reintroduce the exact bug this
+                    // try/catch exists to prevent.
+                    SafeLog(() => Log.HealthCheckDisposeError(_logger, name, ex));
 
                     SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.AdoptedCheckDisposeFailed));
                 }
@@ -124,7 +126,30 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
             catch (Exception metricsEx)
             {
-                Log.HealthCheckMetricsRecordingError(_logger, metricsEx);
+                SafeLog(() => Log.HealthCheckMetricsRecordingError(_logger, metricsEx));
+            }
+        }
+
+        // Mirror image of SafeRecordMetric above: a throwing ILogger sink (a broken third-party
+        // logging provider) must never be able to break Dispose(), a batch, or a single check's
+        // execution any more than a broken metrics pipeline can. The failure becomes observable via
+        // AnomalyReason.LoggingSinkFailed instead of another log call - see that reason's doc for
+        // why (same circularity risk SafeRecordMetric's own catch above already avoids, mirrored).
+        //
+        // Undefended residual: the RecordAnomaly call in the catch below is itself unguarded, so a
+        // second, independent failure recording THAT (a broken MeterListener) still propagates out
+        // of SafeLog and, transitively, out of whatever called it. Closing that fully would need a
+        // nested empty catch here, which this codebase's own no-silent-catch doctrine treats as a
+        // decision requiring explicit sign-off, not something to add unasked - left as a known gap.
+        private void SafeLog(Action logCall)
+        {
+            try
+            {
+                logCall();
+            }
+            catch (Exception)
+            {
+                HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
             }
         }
 
@@ -230,7 +255,15 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
         // HealthCheckPlusBackGroundOptions only exists when AddBackgroundPolicy was used.
         private HealthCheckPlusPolicyStatus ResolveBackgroundPolicy(string name, ItemCacheHealth sta, HealthCheckPlusBackGroundOptions backgroudoptions)
         {
-            switch (sta.LastResult.Status)
+            // Read once and reuse for both the status switch and the DateRef comparison below -
+            // sta is the live, mutable cache item, and LastResult/DateRef are two different
+            // properties of the same underlying snapshot (see ItemCacheHealth.Snapshot). Reading
+            // them as two separate property accesses risked a concurrent Update() landing in
+            // between: the Healthy branch chosen from one generation's status, paired with a
+            // DateRef from the next generation, could make a genuinely-first-run check compare
+            // unequal to DateRegister and fall through to TimeSpan.Zero instead of Delay.
+            var snapshot = sta.Snapshot;
+            switch (snapshot.LastResult.Status)
             {
                 case HealthStatus.Unhealthy:
                     return FindPolicy(name, HealthStatus.Unhealthy)
@@ -243,7 +276,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 default: // HealthStatus.Healthy
                     {
                         var healthy = GetHealthyPolicy(name);
-                        var delay = healthy.PolicyDelay ?? (sta.DateRef == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
+                        var delay = healthy.PolicyDelay ?? (snapshot.DateRef == _cacheStatus.DateRegister ? backgroudoptions.Delay : TimeSpan.Zero);
                         var period = healthy.PolicyPeriod ?? backgroudoptions.HealthyPeriod;
                         return new HealthCheckPlusPolicyStatus(HealthStatus.Healthy, delay, period, name);
                     }
@@ -399,11 +432,18 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 // one log call was missed. ReleaseRunningForBatch's own doc explains why releasing
                 // here is safe even in the (impossible today) case both catches below somehow fired
                 // for the same batch.
+                //
+                // The log call itself now goes through SafeLog rather than relying on this
+                // try/catch: a broken logger no longer aborts the whole batch (every check in it
+                // reported as failed via ReleaseRunningForBatch+rethrow) just because a debug log
+                // line couldn't be written - the checks still run, and only the logging failure
+                // itself surfaces, via AnomalyReason.LoggingSinkFailed. The try/catch remains for
+                // StartBatch genuinely throwing synchronously, which is a real batch-start failure.
                 Task<HealthReportEntry>[] tasks;
                 DateTime dtref;
                 try
                 {
-                    Log.HealthCheckProcessingBegin(_logger);
+                    SafeLog(() => Log.HealthCheckProcessingBegin(_logger));
                     dtref = DateTime.UtcNow;
                     tasks = StartBatch(registrationstorun, cancellationToken);
                 }
@@ -428,6 +468,13 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 // task's outcome is classified and applied - shared with BackGroudCheckHealthPlusAsync
                 // so there is exactly one place that decides this, instead of two copies that can
                 // drift apart.
+                // ApplyBatchResults itself throwing (independently of whenAllFailure) used to be
+                // reachable via a throwing ILogger sink on its own AmbientCancellation log call -
+                // now guarded by SafeLog (see ApplyBatchResults), the same way the batch-start log
+                // above it is. That was the only demonstrated way to make this specific try throw;
+                // it's kept as a backstop for a future failure mode inside ApplyBatchResults, the
+                // same category as BackGroudCheckHealthPlusAsync's identical StartBatch guard
+                // below, which also has no realistic trigger today.
                 ExceptionDispatchInfo? whenAllFailure = null;
                 try
                 {
@@ -446,7 +493,23 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 {
                     throw new AggregateException(whenAllFailure.SourceException, ex);
                 }
+
+                // UpdateStatusName() before the rethrow below, not after: ApplyBatchResults above
+                // already committed every completed check's result via Update() regardless of
+                // whether the batch as a whole is about to be reported as faulted (e.g. the ambient
+                // token firing mid-flight while most checks still completed normally) - a named
+                // aggregate (Status(name)) must reflect those committed results the same cycle they
+                // landed, not stay stale until whatever next cycle happens not to fault. This used
+                // to only run once whenAllFailure had already been checked (rethrowing here first),
+                // so a faulted batch's Update() calls never made it into any named aggregate at all
+                // - an asymmetry with BackGroudCheckHealthPlusAsync below, which already calls
+                // UpdateStatusName() before its own equivalent rethrow.
+                _cacheStatus.UpdateStatusName();
                 whenAllFailure?.Throw();
+            }
+            else
+            {
+                _cacheStatus.UpdateStatusName();
             }
 
             foreach (var registration in registrations)
@@ -462,8 +525,6 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             }
             var report = new HealthReport(entries, totalTime.Elapsed);
 
-            _cacheStatus.UpdateStatusName();
-
             if (statusHealthreport != null)
             {
                 var sta = statusHealthreport.Invoke(report);
@@ -472,7 +533,11 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
 
             if (registrationstorun.Count != 0)
             {
-                Log.HealthCheckProcessingEnd(_logger, report.Status, totalTime.Elapsed);
+                // Unguarded before: every check result in `report` is already computed and
+                // committed by this point (Update()/UpdateStatusName() above already ran), so a
+                // throwing sink here used to turn an already-successful evaluation into a 500 on
+                // /health purely because the closing debug log couldn't be written.
+                SafeLog(() => Log.HealthCheckProcessingEnd(_logger, report.Status, totalTime.Elapsed));
             }
             return report;
         }
@@ -639,7 +704,12 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                             }
 
                         case BatchTaskOutcome.AmbientCancellation:
-                            Log.HealthCheckExecutionAborted(_logger, registration.Name);
+                            // SafeLog here (not a bare Log.* call): a throwing sink used to be
+                            // caught by this iteration's own catch below and folded into the
+                            // AggregateException thrown after the whole batch, reporting a
+                            // perfectly legitimate ambient-cancellation outcome as a batch failure
+                            // purely because logging it failed.
+                            SafeLog(() => Log.HealthCheckExecutionAborted(_logger, registration.Name));
                             SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.CheckExecutionAborted));
                             _cacheStatus.ReleaseRunning(registration.Name, releasedAt);
                             break;
@@ -707,23 +777,35 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 // exception was caused by that token (e.g. a different, genuinely slow check in the
                 // same batch triggering the real cancellation). Wrapping it as Faulted routes it
                 // correctly regardless of what else is happening in the batch.
-                Log.HealthCheckError(_logger, registration, ex, TimeSpan.Zero);
+                // SafeLog before the rethrow: a throwing sink here would otherwise replace the real
+                // construction failure with a logging failure as the exception this check reports.
+                SafeLog(() => Log.HealthCheckError(_logger, registration, ex, TimeSpan.Zero));
                 throw new InvalidOperationException($"Health check '{registration.Name}' could not be constructed.", ex);
             }
             catch (Exception ex)
             {
-                Log.HealthCheckError(_logger, registration, ex, TimeSpan.Zero);
+                SafeLog(() => Log.HealthCheckError(_logger, registration, ex, TimeSpan.Zero));
                 throw;
             }
 
             // If the health check does things like make Database queries using EF or backend HTTP calls,
             // it may be valuable to know that logs it generates are part of a health check. So we start a scope.
+            //
+            // Deliberately not behind SafeLog, unlike every Log.* call in this class: BeginScope
+            // returns an IDisposable consumed by this using statement, not an Action SafeLog can
+            // wrap and swallow - defending it would mean restructuring this into a try/catch around
+            // the whole scope instead of a one-line wrap. A throwing ILoggerProvider's own
+            // BeginScope here would still abort this check the same way it did before SafeLog
+            // existed - a known, intentionally deferred residual gap, not an oversight.
             using (_logger.BeginScope(new HealthCheckLogScopePlus(registration.Name)))
             {
                 var stopwatch = Stopwatch.StartNew();
                 var context = new HealthCheckContext { Registration = registration };
 
-                Log.HealthCheckBegin(_logger, registration.Name);
+                // Unguarded before: a throwing sink here ran before healthCheck.CheckHealthAsync
+                // below ever got a chance to execute, so the check would be reported as having
+                // thrown an unhandled exception without ever actually having run.
+                SafeLog(() => Log.HealthCheckBegin(_logger, registration.Name));
 
                 HealthReportEntry entry;
                 CancellationTokenSource? timeoutCancellationTokenSource = null;
@@ -751,8 +833,12 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                         data: result.Data,
                         tags: registration.Tags);
 
-                    Log.HealthCheckEnd(_logger, registration, entry, duration);
-                    Log.HealthCheckData(_logger, registration, entry);
+                    // Unguarded before: a throwing sink here was caught by the catch below (the one
+                    // that treats a genuine check failure as Unhealthy), turning a check that just
+                    // succeeded into a reported failure whose description was the logging sink's own
+                    // exception message, not anything about the real result.
+                    SafeLog(() => Log.HealthCheckEnd(_logger, registration, entry, duration));
+                    SafeLog(() => Log.HealthCheckData(_logger, registration, entry));
 
                 }
                 catch (OperationCanceledException ex) when (ex.CancellationToken != checkCancellationToken || !cancellationToken.IsCancellationRequested)
@@ -775,7 +861,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                         data: null,
                         tags: registration.Tags);
 
-                    Log.HealthCheckError(_logger, registration, ex, duration);
+                    SafeLog(() => Log.HealthCheckError(_logger, registration, ex, duration));
                 }
 
                 // Allow cancellation to propagate if it's not a timeout.
@@ -790,7 +876,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                         data: null,
                         tags: registration.Tags);
 
-                    Log.HealthCheckError(_logger, registration, ex, duration);
+                    SafeLog(() => Log.HealthCheckError(_logger, registration, ex, duration));
                 }
 
                 finally
@@ -912,7 +998,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
                 }
             }
         }
-#pragma warning disable IDE0079
+#pragma warning restore IDE0079
 
         private sealed class HealthCheckDataLogValue : IReadOnlyList<KeyValuePair<string, object>>
         {

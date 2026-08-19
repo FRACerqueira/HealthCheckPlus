@@ -15,7 +15,7 @@ public static IHealthChecksBuilder AddUnhealthyPolicy(this IHealthChecksBuilder 
 | --- | --- |
 | ihb | The IHealthChecksBuilder. |
 | namedep | The name health check to run. |
-| period | Requeried TimeSpan The period of execution when status is Unhealthy. |
+| period | Required TimeSpan The period of execution when status is Unhealthy. |
 
 ### Return Value
 

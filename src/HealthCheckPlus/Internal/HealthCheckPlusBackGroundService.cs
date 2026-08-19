@@ -6,7 +6,8 @@
 using System.Diagnostics;
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ namespace HealthCheckPlus.Internal
         private readonly CancellationTokenSource _stopping;
         private readonly IHealthCheckPublisher[] _publishers;
         private readonly bool _haspublishers;
+        private readonly IServiceProvider _serviceProvider;
         private Task? _runningHealthCheckPlus;
         private readonly ILogger<HealthCheckPlusBackGroundService> _logger;
         private int _countIdletopublish = 0;
@@ -32,7 +34,8 @@ namespace HealthCheckPlus.Internal
             HealthCheckService healthCheckService,
             IOptions<HealthCheckServiceOptions> healthcheckserviceOptions,
             IOptions<HealthCheckPlusBackGroundOptions> options,
-            IEnumerable<IHealthCheckPublisher> publishers)
+            IEnumerable<IHealthCheckPublisher> publishers,
+            IServiceProvider serviceProvider)
         {
             _optionsBackGround = options;
             _publishers = [];
@@ -45,10 +48,36 @@ namespace HealthCheckPlus.Internal
             _healthCheckService = InternalCast.To<DefaultHealthCheckServicePlus>(healthCheckService, "the registered HealthCheckService");
             _logger = logger;
             _stopping = new CancellationTokenSource();
+            _serviceProvider = serviceProvider;
         }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
+            // AddBackgroundPolicy() removes the native HealthCheckPublisherHostedService from the
+            // IServiceCollection at registration time so publishers aren't driven twice - but that
+            // removal is order-dependent: if anything calls IServiceCollection.AddHealthChecks()
+            // again afterward (the app itself by mistake, or a third-party IHealthChecksBuilder
+            // extension that calls it defensively before adding its own check - a common pattern),
+            // .NET's TryAddEnumerable silently re-adds it, since nothing of that type is registered
+            // at that later point anymore. Left undetected, this produces one of two silent bad
+            // outcomes depending on Publishing.Enabled: the native service drives publishers on its
+            // own schedule, bypassing AfterIdleCount/WhenReportChange/PublisherCondition entirely,
+            // or both it and this service drive them, duplicating every dispatch. By the time
+            // StartAsync runs, the generic host has already resolved the full IHostedService list
+            // to start every service in it (including this one) - resolving it again here returns
+            // that same cached singleton list, it does not trigger a fresh or circular construction.
+            if (_serviceProvider.GetServices<IHostedService>().Any(s =>
+                s.GetType().FullName == "Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckPublisherHostedService"))
+            {
+                throw new InvalidOperationException(
+                    $"Invalid configuration. The native HealthCheckPublisherHostedService was re-registered after " +
+                    $"{nameof(HealthCheckPlusBackGroundService)} was added, which means something called " +
+                    $"IServiceCollection.AddHealthChecks() (directly, or through a third-party IHealthChecksBuilder " +
+                    $"extension that calls it internally) after AddBackgroundPolicy(). Call AddBackgroundPolicy() " +
+                    $"after every health check registration to avoid publishers being driven twice or bypassing " +
+                    $"this library's own publishing policy.");
+            }
+
             if (_healthcheckserviceOptions.Value.Registrations.Count == 0)
             {
                 return Task.CompletedTask;
@@ -77,7 +106,15 @@ namespace HealthCheckPlus.Internal
             {
                 var duration = Stopwatch.StartNew();
 
-                Log.ProcessingBegin(_logger);
+                // Every Log.* call in this loop goes through SafeLog - it used to run completely
+                // unguarded here and below, outside any try/catch. A throwing ILogger sink (a
+                // broken third-party logging provider) on this first call faulted this entire
+                // method's Task on cycle one, permanently: nothing ever restarts this loop short of
+                // a host restart, and - since StopAsync/DisposeAsync's own ObserveLoopCompletion
+                // logs the fault via this same (broken) logger - even that signal was at risk of
+                // being lost too. The loop must survive a broken logger the same way it already
+                // survives a broken publisher or a throwing Predicate.
+                SafeLog(() => Log.ProcessingBegin(_logger));
 
                 CancellationTokenSource? cancellation = null;
                 try
@@ -94,19 +131,19 @@ namespace HealthCheckPlus.Internal
                 catch (OperationCanceledException)
                 {
                     // This is a timeout
-                    Log.ProcessingTimeout(_logger, duration.Elapsed.TotalMilliseconds);
+                    SafeLog(() => Log.ProcessingTimeout(_logger, duration.Elapsed.TotalMilliseconds));
                 }
                 catch (Exception ex)
                 {
                     // This is an error,  CheckHealthAsync failed.
-                    Log.ProcessingError(_logger, duration.Elapsed.TotalMilliseconds, ex);
+                    SafeLog(() => Log.ProcessingError(_logger, duration.Elapsed.TotalMilliseconds, ex));
                 }
                 finally
                 {
                     cancellation?.Dispose();
                 }
 
-                Log.ProcessingEnd(_logger, duration.Elapsed.TotalMilliseconds);
+                SafeLog(() => Log.ProcessingEnd(_logger, duration.Elapsed.TotalMilliseconds));
 
                 if (_haspublishers)
                 {
@@ -192,7 +229,7 @@ namespace HealthCheckPlus.Internal
                                     // check-execution block above it, which already has one),
                                     // Task.WhenAll's rethrown exception would fault the loop's
                                     // fire-and-forget Task silently.
-                                    Log.HealthCheckPublisherCycleError(_logger, ex);
+                                    SafeLog(() => Log.HealthCheckPublisherCycleError(_logger, ex));
 
                                     SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublisherCycleFailedButContinued));
                                 }
@@ -204,7 +241,7 @@ namespace HealthCheckPlus.Internal
                         }
                         catch (Exception ex)
                         {
-                            Log.PublishReportBuildError(_logger, ex);
+                            SafeLog(() => Log.PublishReportBuildError(_logger, ex));
                             SafeRecordMetric(() => HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.PublishReportBuildFailed));
                         }
                     }
@@ -251,8 +288,18 @@ namespace HealthCheckPlus.Internal
                 // shutdown indefinitely for no reason connected to this class's own logic.
                 return _runningHealthCheckPlus.ContinueWith(task =>
                 {
-                    ObserveLoopCompletion(task, _logger);
-                    _runningHealthCheckPlus.Dispose();
+                    // finally: ObserveLoopCompletion's own catch (a broken MeterListener
+                    // surfacing through RecordAnomaly, uncaught - see its comment) must not skip
+                    // disposing the loop task, the same reasoning behind Dispose()/DisposeAsync()'s
+                    // own try/finally around CancelStopping().
+                    try
+                    {
+                        ObserveLoopCompletion(task, _logger);
+                    }
+                    finally
+                    {
+                        _runningHealthCheckPlus.Dispose();
+                    }
                 }, TaskScheduler.Default);
             }
             return Task.CompletedTask;
@@ -262,7 +309,18 @@ namespace HealthCheckPlus.Internal
         {
             if (loopTask.IsFaulted)
             {
-                Log.BackgroundLoopFaulted(logger, loopTask.Exception!);
+                // Called from both StopAsync's continuation and DisposeAsync, the latter of which
+                // must not throw (see its own comment). This is static (unit-tested directly against
+                // synthetic Task states), so it can't use the instance SafeLog helper below - same
+                // rationale, inlined: a throwing sink here must not fault shutdown itself.
+                try
+                {
+                    Log.BackgroundLoopFaulted(logger, loopTask.Exception!);
+                }
+                catch (Exception)
+                {
+                    HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
+                }
             }
         }
 
@@ -289,8 +347,19 @@ namespace HealthCheckPlus.Internal
         // risking a deadlock.
         public void Dispose()
         {
-            CancelStopping();
-            _stopping.Dispose();
+            // finally, not two sequential statements: CancelStopping() itself can't throw past
+            // its own catch, but that catch's SafeLog can still surface a RecordAnomaly failure
+            // uncaught (SafeLog's own comment names this residual). Without the finally, that
+            // would skip _stopping.Dispose() entirely, leaking it - the throw itself, once that's
+            // done, is the documented gap SafeLog's comment describes, not fixed here.
+            try
+            {
+                CancelStopping();
+            }
+            finally
+            {
+                _stopping.Dispose();
+            }
         }
 
         // Preferred over the synchronous Dispose() above by any container that disposes itself
@@ -302,22 +371,31 @@ namespace HealthCheckPlus.Internal
         // complete, so awaiting it here resolves immediately with no behavior change.
         public async ValueTask DisposeAsync()
         {
-            CancelStopping();
-            if (_runningHealthCheckPlus != null)
+            // finally, not a trailing statement: same reasoning - and the same undefended
+            // residual gap if RecordAnomaly itself is what's broken - as Dispose()'s own
+            // try/finally; see its comment.
+            try
             {
-                try
+                CancelStopping();
+                if (_runningHealthCheckPlus != null)
                 {
-                    await _runningHealthCheckPlus.ConfigureAwait(false);
+                    try
+                    {
+                        await _runningHealthCheckPlus.ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Observed via ObserveLoopCompletion next, not rethrown - disposal must not
+                        // throw. Harmless to call this a second time in the (rare, and itself
+                        // harmless) case StopAsync's own continuation already did.
+                    }
+                    ObserveLoopCompletion(_runningHealthCheckPlus, _logger);
                 }
-                catch
-                {
-                    // Observed via ObserveLoopCompletion next, not rethrown - disposal must not
-                    // throw. Harmless to call this a second time in the (rare, and itself
-                    // harmless) case StopAsync's own continuation already did.
-                }
-                ObserveLoopCompletion(_runningHealthCheckPlus, _logger);
             }
-            _stopping.Dispose();
+            finally
+            {
+                _stopping.Dispose();
+            }
         }
 
         private void CancelStopping()
@@ -331,7 +409,7 @@ namespace HealthCheckPlus.Internal
                 // Same rationale as the identical try/catch in StopAsync - calling this a second
                 // time (StopAsync already having done it) is a safe no-op, so this only ever
                 // fires for the same reason it does there.
-                Log.StopCancellationError(_logger, ex);
+                SafeLog(() => Log.StopCancellationError(_logger, ex));
             }
         }
 
@@ -353,9 +431,9 @@ namespace HealthCheckPlus.Internal
                     return;
                 }
 
-                Log.HealthCheckPublisherBegin(_logger, publisher);
+                SafeLog(() => Log.HealthCheckPublisherBegin(_logger, publisher));
                 await publisher.PublishAsync(report, cancellationToken).ConfigureAwait(false);
-                Log.HealthCheckPublisherEnd(_logger, publisher, duration.ElapsedMilliseconds);
+                SafeLog(() => Log.HealthCheckPublisherEnd(_logger, publisher, duration.ElapsedMilliseconds));
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.Published, duration.Elapsed));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -370,13 +448,15 @@ namespace HealthCheckPlus.Internal
             }
             catch (OperationCanceledException)
             {
-                Log.HealthCheckPublisherTimeout(_logger, publisher, duration.ElapsedMilliseconds);
+                // SafeLog before the rethrow, not a bare Log.* call - otherwise a throwing sink here
+                // would replace the timeout as the exception this method's caller actually observes.
+                SafeLog(() => Log.HealthCheckPublisherTimeout(_logger, publisher, duration.ElapsedMilliseconds));
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.Error, duration.Elapsed));
                 throw;
             }
             catch (Exception ex)
             {
-                Log.HealthCheckPublisherError(_logger, publisher, duration.ElapsedMilliseconds, ex);
+                SafeLog(() => Log.HealthCheckPublisherError(_logger, publisher, duration.ElapsedMilliseconds, ex));
                 SafeRecordMetric(() => HealthCheckPlusMetrics.RecordPublisherInvocation(PublisherTypeName(publisher), PublisherInvocationResult.Error, duration.Elapsed));
                 throw;
             }
@@ -408,7 +488,32 @@ namespace HealthCheckPlus.Internal
             }
             catch (Exception ex)
             {
-                Log.HealthCheckPublisherMetricsRecordingError(_logger, ex);
+                SafeLog(() => Log.HealthCheckPublisherMetricsRecordingError(_logger, ex));
+            }
+        }
+
+        // Mirror image of SafeRecordMetric above: a throwing ILogger sink (a broken third-party
+        // logging provider) must never be able to kill this loop, break StopAsync/Dispose/
+        // DisposeAsync (none of which may throw), or abort a publisher's dispatch, any more than a
+        // broken metrics pipeline can. The failure becomes observable via
+        // AnomalyReason.LoggingSinkFailed instead of another log call - see that reason's doc for
+        // why (same circularity risk SafeRecordMetric's own catch above already avoids, mirrored).
+        //
+        // Undefended residual: the RecordAnomaly call in the catch below is itself unguarded, so a
+        // second, independent failure recording THAT (a broken MeterListener) still propagates out
+        // of SafeLog - and, transitively, out of Dispose()/DisposeAsync()/StopAsync's continuation,
+        // none of which may throw. Closing that fully would need a nested empty catch here, which
+        // this codebase's own no-silent-catch doctrine treats as a decision requiring explicit
+        // sign-off, not something to add unasked - left as a known gap, not an oversight.
+        private void SafeLog(Action logCall)
+        {
+            try
+            {
+                logCall();
+            }
+            catch (Exception)
+            {
+                HealthCheckPlusMetrics.RecordAnomaly(AnomalyReason.LoggingSinkFailed);
             }
         }
 

@@ -6,7 +6,7 @@
 using System.Text.Json;
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 

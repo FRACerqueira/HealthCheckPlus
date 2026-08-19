@@ -15,6 +15,12 @@ public static HealthStatus StatusResult(this HealthReport report, Enum keydep)
 | report | The HealthReport. |
 | keydep | The Enum value dependence. |
 
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *report* or *keydep* is `null`. |
+
 ### See Also
 
 * class [HealthReportExtensions](../HealthReportExtensions.md)
@@ -34,6 +40,12 @@ public static HealthStatus StatusResult(this HealthReport report, string keydep)
 | --- | --- |
 | report | The HealthReport. |
 | keydep | The name dependence. |
+
+### Exceptions
+
+| exception | condition |
+| --- | --- |
+| ArgumentNullException | *report* or *keydep* is `null`. |
 
 ### See Also
 

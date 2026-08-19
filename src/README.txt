@@ -62,7 +62,9 @@ Usage
 //At Statup / Program (without background services policies)
 builder.Services
     //Add HealthCheckPlus - the set of tracked checks comes from whatever ends up registered
-    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync
+    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync.
+    //A check added only via a native extension still needs AddCheckPlus/AddCheckLinkTo for
+    //its own Healthy policy below, or the host fails fast at startup naming it.
     .AddHealthChecksPlus()
     //your custom HC    
     .AddCheckPlus<HcTeste1>("HcTest1")

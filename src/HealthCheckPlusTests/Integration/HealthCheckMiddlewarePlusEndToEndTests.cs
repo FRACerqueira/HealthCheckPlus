@@ -5,7 +5,8 @@
 
 using System.Net;
 using System.Text.Json;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Abstractions;
+using HealthCheckPlus.Options;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
@@ -210,6 +211,50 @@ namespace HealthCheckPlusTests.Integration
                 app => app.UseHealthChecksPlus("/health")));
 
             Assert.Contains("Native", ex.Message, StringComparison.Ordinal);
+        }
+
+        // Equivalence regression test: this endpoint's own HTTP response and
+        // IStateHealthChecksPlus.Status("live") are supposed to agree about the exact same
+        // registered name - AddStatusName registers "live" with the SAME HealthCheckPlusOptions
+        // (and therefore the same Predicate) UseHealthChecksPlus wires into the middleware, so a
+        // caller filtering /health to only the tagged-"live" checks should see the identical
+        // filtered view whether they read it through the endpoint or through Status("live").
+        // "Excluded" is flipped to Unhealthy via SwitchToUnhealthy - not by letting it actually
+        // run - specifically so this endpoint's own Predicate never schedules it (matching the
+        // real-world shape: some OTHER path, not this endpoint, is what made it unhealthy).
+        // Confirmed this used to diverge: Status(name) always read the FULL, unfiltered cache
+        // (including "Excluded" here) regardless of this registration's own Predicate, so it
+        // reported Unhealthy while the endpoint - evaluating the identical Predicate - reported
+        // Healthy for the exact same name.
+        [Fact]
+        public async Task GetHealth_AndStatusForTheSameName_ShouldAgree_WhenAPredicateExcludesAFailingCheck()
+        {
+            using var host = await TestHost.CreateAsync(
+                services =>
+                {
+                    services.AddLogging();
+                    var ihb = services.AddHealthChecksPlus();
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Live1", tags: ["live"]);
+                    ihb.AddCheckPlus<AlwaysHealthyCheck>("Excluded");
+                },
+                app => app.UseHealthChecksPlus("/health", new HealthCheckPlusOptions
+                {
+                    HealthCheckName = "live",
+                    Predicate = r => r.Tags.Contains("live"),
+                    ResponseWriter = HealthCheckPlusOptions.WriteShortDetails
+                }));
+
+            var statecache = host.Services.GetRequiredService<IStateHealthChecksPlus>();
+            statecache.SwitchToUnhealthy("Excluded");
+
+            var client = host.GetTestClient();
+            var response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            using var json = JsonDocument.Parse(body);
+            Assert.Equal("Healthy", json.RootElement.GetProperty("status").GetString());
+
+            Assert.Equal(HealthStatus.Healthy, statecache.Status("live"));
         }
     }
 }
