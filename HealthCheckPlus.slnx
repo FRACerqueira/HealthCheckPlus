@@ -1,0 +1,44 @@
+<Solution>
+  <Folder Name="/docs/">
+    <File Path="CHANGELOG.md" />
+    <File Path="docs/api/docindex.md" />
+    <File Path="docs/ARCHITECTURE.md" />
+    <File Path="docs/POINTS_OF_ATTENTION.md" />
+    <File Path="docs/RELEASE_METHODOLOGY.md" />
+    <File Path="docs/RUNBOOK.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/docs/architecture/">
+    <File Path="docs/architecture/logging.md" />
+    <File Path="docs/architecture/publishing.md" />
+    <File Path="docs/architecture/scheduling.md" />
+    <File Path="docs/architecture/state.md" />
+  </Folder>
+  <Folder Name="/docs/adr/">
+    <File Path="adr-config.adrplus" />
+    <File Path="docs/adr/indexadrs.md" />
+    <File Path="docs/adr/ADR001V01R01-native-system.-diagnostics.-metrics-instrumentation-for-check-and-publisher-telemetry.md" />
+    <File Path="docs/adr/ADR002V01R01-derive-the-tracked-health-check-set-from-di-registrations-instead-of-a-caller-supplied-list.md" />
+    <File Path="docs/adr/ADR003V01R01-scope-registration-time-and-cached-health-check-state-per-host-instead-of-process-wide.md" />
+    <File Path="docs/adr/ADR004V01R01-fail-fast-at-startup-on-registration-and-configuration-inconsistencies.md" />
+    <File Path="docs/adr/ADR005V01R01-guard-logging,-metrics,-and-background-cycle-delegates-so-a-single-failure-can-never-break-health-evaluation-or-the-background-loop.md" />
+    <File Path="docs/adr/ADR006V01R01-one-project-wide-event-id-and-event-name-catalog-instead-of-per-class-numbering.md" />
+    <File Path="docs/adr/ADR007V01R01-represent-a-health-check's-multi-field-result-as-an-atomically-swapped-immutable-snapshot.md" />
+    <File Path="docs/adr/ADR008V01R01-depend-on-the-standalone-health-checks-abstractions-package-and-declare-a-real-nu-get-dependency-between-the-two-packages.md" />
+    <File Path="docs/adr/ADR009V01R01-depend-only-on-supported-public-contracts-for-framework-integration.md" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="Samples/HealthCheckPlusDemo/HealthCheckPlusDemo.csproj" />
+    <Project Path="Samples/HealthCheckPlusDemoBackgroudService/HealthCheckPlusDemoBackgroudService.csproj" />
+    <Project Path="Samples/HealthCheckPlusDemoMetrics/HealthCheckPlusDemoMetrics.csproj" />
+  </Folder>
+  <Folder Name="/workflows/">
+    <File Path=".github/workflows/build.yml" />
+    <File Path=".github/workflows/codeql.yml" />
+    <File Path=".github/workflows/publish.yml" />
+  </Folder>
+  <Project Path="src/HealthCheckPlus.Abstractions/HealthCheckPlus.Abstractions.csproj" />
+  <Project Path="src/HealthCheckPlus/HealthCheckPlus.csproj" />
+  <Project Path="src/HealthCheckPlusTests/HealthCheckPlusTests.csproj" />
+  <Project Path="src/XmlDocMarkdownGenerator/XmlDocMarkdownGenerator.csproj" />
+</Solution>

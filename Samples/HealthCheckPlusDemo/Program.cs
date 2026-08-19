@@ -1,5 +1,5 @@
 using HealthCheckPlus.Abstractions;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Text.Json;
 
@@ -7,8 +7,6 @@ namespace HealthCheckPlusDemo
 {
     public class Program
     {
-        private static readonly string[] names = ["HcTest1", "HcTest2", "Redis"];
-
         public static void Main(string[] args)
         {
             IStateHealthChecksPlus? _stateHealthChecksPlus;
@@ -22,14 +20,14 @@ namespace HealthCheckPlusDemo
 
             builder.Services
                 //Add HealthCheckPlus
-                .AddHealthChecksPlus(names)
+                .AddHealthChecksPlus()
                 //your custom HC    
                 .AddCheckPlus<HcTeste1>("HcTest1")
                 //your custom HC    
                 .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
-                //external HC 
-                .AddRedis("connection string", "Myredis")
-                //register external HC 
+                //external HC
+                .AddRedis("connection string", "MyRedis")
+                //register external HC
                 .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
                 //policy for Unhealthy
                 .AddUnhealthyPolicy("HcTest1", TimeSpan.FromSeconds(2))

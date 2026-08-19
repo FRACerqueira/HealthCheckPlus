@@ -1,13 +1,13 @@
 # ![HealthCheckPlus Logo](https://raw.githubusercontent.com/FRACerqueira/HealthCheckPlus/refs/heads/main/icon.png) Welcome to HealthCheckPlus
 
-### **HealthCheck with individual policies based on healthy/degraded/unhealthy status and optimized Report Publisher.**
+### **Per-status polling policies, cached results, and a smarter publisher pipeline for ASP.NET Core health checks.**
 
 [![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
-[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
+[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](./LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus)](https://www.nuget.org/packages/HealthCheckPlus/)
 
-**HealthCheckPlus** was developed in c# with the **.Net10**, **.Net9** and **.Net8** target frameworks.
+**HealthCheckPlus** is written in C#, targeting **.NET 10**, **.NET 9**, and **.NET 8**. It builds on top of ASP.NET Core's native health check system (`Microsoft.Extensions.Diagnostics.HealthChecks`) rather than replacing it - your existing `IHealthCheck` implementations and third-party check packages keep working unchanged.
 
 ## Table of Contents
 
@@ -16,6 +16,7 @@
 - [Examples](#examples)
 - [Usage](#usage)
 - [Documentation](#documentation)
+- [Changelog](#changelog)
 - [Code of Conduct](#code-of-conduct)
 - [Contributing](#contributing)
 - [Credits](#credits)
@@ -24,47 +25,27 @@
 ## Features
 [**Top**](#table-of-contents)
 
-- Command to Change to unhealthy/degraded any HealthCheck by forcing check by interval policy
-- Command to retrieve the last result of each HealthCheck kept in cache
-- Optional Delay and interval for each HealthCheck 
-    - Policy for Healthy while keeping results cached (default)
-    - Policy for degraded (Optional)
-    - Policy for unhealthy (Optional)
-- Register an external health check (package import) and associate delay, interval and individual policy rules.
-- Policy background service for updating and running HealthChecks
-    - Optional set delay and interval are used in the background update service parameters when defined and HealthCheck is null for delay and interval
-    - Integration with registered publishers with the interface IHealthCheckPublisher with extra filters:
-        - Number of counts idle to publish.
-        - Run publish only when the report has a status change in one of its entries.
-- Response templates with small/full details in "application/json" ContentType
-    - HealthCheckPlusOptions.WriteShortDetails
-    - HealthCheckPlusOptions.WriteShortDetailsPlus (with extra fields : cache source and reference date of last run)
-    - HealthCheckPlusOptions.WriteDetailsWithoutException
-    - HealthCheckPlusOptions.WriteDetailsWithoutExceptionPlus (with extra fields : cache source and reference date of last run)
-    - HealthCheckPlusOptions.WriteDetailsWithException
-    - HealthCheckPlusOptions.WriteDetailsWithExceptionPlus (with extra fields : cache source and reference date of last run)
-- Simple and clear fluent syntax extending the native features of healt check
+**Per-status scheduling.** Each health check can poll at a different rate depending on its own last-known status - for example, check a healthy dependency every 30 seconds but a degraded one every 5. Configure a Healthy policy (the default, always required), and optionally a Degraded and/or Unhealthy policy for each check.
 
-### What's new in the latest version 
+**A cache of the last result per check.** A request to `/health` doesn't necessarily re-run every check synchronously - it reads whatever the last poll already produced, subject to that check's own policy. You can also read the cached result for any check, or force one to Unhealthy/Degraded directly from application code (e.g. after catching an exception talking to a dependency) - see [`SwitchToUnhealthy`/`SwitchToDegraded`](#usage) below.
 
-- **V3.0.1 (latest version)**
-    - Added support for .Net10
-    - Sanitization of references
+**Adopting external/third-party checks.** Register a check from any existing `IHealthChecksBuilder` extension (e.g. `AddRedis(...)`) and give it its own delay, period, and policy rules the same way as a custom check.
 
-- V3.0.0
+**An optional background service.** Runs checks on its own schedule, independent of HTTP traffic, and drives every registered `IHealthCheckPublisher` with two extra filters on top of the native publisher pipeline:
+- Publish only every N idle cycles, not every cycle (`AfterIdleCount`).
+- Publish only when the aggregate report actually changed since the last publish (`WhenReportChange`).
+- A publisher can add its own custom gating via `IHealthCheckPlusPublisher.PublisherCondition`.
 
-    - Added support for .Net9
-    - Removed support for .Net6, .Net7
-    - Removed commands with enum for list of HealthCheck´s
-    - Some property names have been refactored for readability or syntax errors.
-    - Optimized several parts of the code to improve performance
-    - Fixed publisher improper execution bug when set to only execute when there are changes
-    - Documentation updated
-    
-- **V2.0.1**
+**Six response templates**, all serialized as `application/json; charset=utf-8`, from a short status-only body up to full details with descriptions and exceptions:
+- `WriteShortDetails` / `WriteShortDetailsPlus`
+- `WriteDetailsWithoutException` / `WriteDetailsWithoutExceptionPlus`
+- `WriteDetailsWithException` / `WriteDetailsWithExceptionPlus`
 
-    - Created dependency isolation package: HealthCheckPlus.Abstractions
-        - Now all public interfaces and classes are isolated in another assembly  
+The `...Plus` variants add `dateRef`/`origin` to each entry (how stale a cached result is, and what triggered it), which means they need an extra `IStateHealthChecksPlus` parameter - so `ResponseWriter` takes a small lambda instead of a direct method reference: `ResponseWriter = (ctx, report) => HealthCheckPlusOptions.WriteDetailsWithExceptionPlus(ctx, report, stateHealthChecksPlus)` (see the Samples for a full working example).
+
+**Native metrics** via `System.Diagnostics.Metrics` (check executions, status transitions, publisher invocations) - no extra package dependency, consumable by any exporter (OpenTelemetry, Prometheus, App Insights, ...).
+
+**A fluent, chainable API** that extends the native health check builder rather than replacing it.
 
 ## Installing
 [**Top**](#table-of-contents)
@@ -92,30 +73,31 @@ dotnet add package HealthCheckPlus.Abstractions [--prerelease]
 ## Examples
 [**Top**](#table-of-contents)
 
-See folder [**Samples**](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/Samples).
+Three runnable projects under [**Samples**](./Samples) — clone the repo and `dotnet run` any of them:
+
+- [**HealthCheckPlusDemo**](./Samples/HealthCheckPlusDemo) — the smallest complete setup: custom checks, an adopted external check (Redis), per-status policies, the HTTP endpoints, and the manual-override/middleware patterns. Start here.
+- [**HealthCheckPlusDemoBackgroudService**](./Samples/HealthCheckPlusDemoBackgroudService) — the same setup plus background polling and publishing: `AddBackgroundPolicy`, a custom `IHealthCheckPublisher`, and five endpoints side by side showing different response templates (short, full, default, and interop with the native `UseHealthChecks` middleware).
+- [**HealthCheckPlusDemoMetrics**](./Samples/HealthCheckPlusDemoMetrics) — observing the native `System.Diagnostics.Metrics` instrumentation: a `MeterListener` prints every `healthcheckplus.*` measurement to the console as it's recorded, no exporter required.
 
 ## Usage
 [**Top**](#table-of-contents)
 
-The **HealthCheckPlus** use **fluent interface**; an object-oriented API whose design relies extensively on method chaining. Its goal is to increase code legibility. The term was coined in 2005 by Eric Evans and Martin Fowler.
+**HealthCheckPlus** uses a **fluent interface** - method chaining, in the same style as the native `IHealthChecksBuilder` it extends - so a full setup reads top to bottom as one continuous configuration.
 
 ```csharp
-
-//create list all HealthCheck by string (compatible type)
-private static readonly string[] HealthChecknames = ["HcTest1", "HcTest2", "Redis"];
-```
-
-```csharp
-//At Statup / Program (without background services policies)
+//At Startup / Program (without background services policies)
 builder.Services
-    //Add HealthCheckPlus
-    .AddHealthChecksPlus(HealthChecknames)
+    //Add HealthCheckPlus - the set of tracked checks comes from whatever ends up registered
+    //below (AddCheckPlus/AddCheckLinkTo/native AddCheck), no separate list to keep in sync.
+    //A check added only via a native extension still needs AddCheckPlus/AddCheckLinkTo for
+    //its own Healthy policy below, or the host fails fast at startup naming it.
+    .AddHealthChecksPlus()
     //your custom HC    
     .AddCheckPlus<HcTeste1>("HcTest1")
     //your custom HC    
     .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
     //external HC 
-    .AddRedis("connection string", "Myredis")
+    .AddRedis("connection string", "MyRedis")
     //register external HC 
     .AddCheckLinkTo("Redis", "MyRedis", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
     //policy for Unhealthy
@@ -127,16 +109,16 @@ builder.Services
 ```
 
 ```csharp
-//At Statup / Program (with background services policies)
+//At Startup / Program (with background services policies)
 builder.Services
     //Add HealthCheckPlus
-    .AddHealthChecksPlus(HealthChecknames)
+    .AddHealthChecksPlus()
     //your custom HC with custom delay and period   
     .AddCheckPlus<HcTeste1>("HcTest1", TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10))
     //your custom HC without delay and period (using BackgroundPolicy)     
     .AddCheckPlus<HcTeste2>("HcTest2", failureStatus: HealthStatus.Degraded)
     //external HC 
-    .AddRedis("connection string", "Myredis")
+    .AddRedis("connection string", "MyRedis")
     //register external HC  without delay and period (using BackgroundPolicy)
     .AddCheckLinkTo("Redis", "MyRedis")
     //policy for running in Background service
@@ -149,9 +131,12 @@ builder.Services
         opt.HealthyPeriod = TimeSpan.FromSeconds(30);
         opt.DegradedPeriod = TimeSpan.FromSeconds(30);
         opt.UnhealthyPeriod = TimeSpan.FromSeconds(30);
+        //Publishing.Enabled defaults to false - assigning a new PublishingOptions() (as below) is
+        //what turns it on. AfterIdleCount/WhenReportChange below happen to match its own defaults,
+        //but the assignment itself is not redundant boilerplate: deleting this block silently
+        //disables all publishing, with no log or metric signal.
         opt.Publishing = new PublishingOptions() 
         { 
-            //default values
             AfterIdleCount = 1,
             WhenReportChange = true
         };
@@ -160,7 +145,7 @@ builder.Services
 
 
 ```csharp
-//At Statup / Program (optional)
+//At Startup / Program (optional)
 
 var app = builder.Build();
 
@@ -172,7 +157,7 @@ using (IServiceScope startscope = app.Services.CreateScope())
 ```
 
 ```csharp
-//At Statup / Program
+//At Startup / Program
 //Endpoints HC
 app
     //Extend HealthCheckOptions with HealthCheckPlusOptions
@@ -219,7 +204,7 @@ app
 ```
 
 ```csharp
-//example of use in the middler pipeline
+//example of use in the middleware pipeline
 _ = app.Use(async (context, next) =>
 {
     if (_stateHealthChecksPlus.Status("live") == HealthStatus.Unhealthy)
@@ -238,17 +223,17 @@ _ = app.Use(async (context, next) =>
 
 ```csharp
 //example of use in a business class using dependency injection
-public class MyBussines
+public class MyBusiness
 {
-    public MyBussines(IStateHealthChecksPlus healthCheckApp)
+    public MyBusiness(IStateHealthChecksPlus healthCheckApp)
     {
         if (healthCheckApp.Status("live") == HealthStatus.Degraded)
         { 
             //do something
         }
-        if (healthCheckApp.StatusResult("HcTeste2").Status == HealthStatus.Unhealthy)
+        if (healthCheckApp.StatusResult("HcTest2").Status == HealthStatus.Unhealthy)
         { 
-            //do something. This dependency 'HcTeste2' is not available
+            //do something. This dependency 'HcTest2' is not available
         }
         try
         {
@@ -256,7 +241,7 @@ public class MyBussines
         }
         catch (ExceptionRedis rex)
         {
-            healthCheckApp.SwithToUnhealthy("Redis");
+            healthCheckApp.SwitchToUnhealthy("Redis");
         }
     }
 }
@@ -264,9 +249,9 @@ public class MyBussines
 
 ```csharp
 //example of  Publisher condition to execute
-public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublisher
+public class SamplePublishHealth : IHealthCheckPlusPublisher
 {
-   public Func<HealthReport, bool> PublisherCondition => (_) => true;
+   public Func<HealthReport, bool>? PublisherCondition { get; set; } = (_) => true;
    public Task PublishAsync(HealthReport report, CancellationToken cancellationToken)
    {
       return Task.CompletedTask;
@@ -277,8 +262,17 @@ public class SamplePublishHealth : IHealthCheckPublisher, IHealthCheckPlusPublis
 ## Documentation
 [**Top**](#table-of-contents)
 
-The documentation is available in the [Docs directory](./src/docs/docindex.md).
+- [Points of attention](./docs/POINTS_OF_ATTENTION.md) — what to know before you build on HealthCheckPlus, in plain language. Start here.
+- [Architecture](./docs/ARCHITECTURE.md) — how HealthCheckPlus is put together internally, for maintainers and contributors.
+- [Operational runbook](./docs/RUNBOOK.md) — how to read a health check response and diagnose common problems, for operators.
+- [API reference](./docs/api/docindex.md) — generated from the XML doc comments.
+- [Release methodology](./docs/RELEASE_METHODOLOGY.md) — how a release's quality is verified before it ships.
+- [Architecture decisions](./docs/adr/) — the load-bearing design decisions behind this library, with context and alternatives considered.
 
+## Changelog
+[**Top**](#table-of-contents)
+
+See [CHANGELOG.md](CHANGELOG.md) for the version history.
 
 ## Code of Conduct
 [**Top**](#table-of-contents)
@@ -297,12 +291,12 @@ See the [Contributing guide](CONTRIBUTING.md) for developer documentation.
 **API documentation generated by**
 
 - [XmlDocMarkdown](https://github.com/ejball/XmlDocMarkdown), Copyright (c) 2024 [Ed Ball](https://github.com/ejball)
-    - See an unrefined customization to contain header and other adjustments in project [XmlDocMarkdownGenerator](https://github.com/FRACerqueira/HealthCheckPlus/tree/main/src/XmlDocMarkdownGenerator)  
+    - See an unrefined customization to contain header and other adjustments in project [XmlDocMarkdownGenerator](./src/XmlDocMarkdownGenerator)  
      
 ## License
 [**Top**](#table-of-contents)
 
 Copyright 2023 @ Fernando Cerqueira
 
-HealthCheckPlus is licensed under the MIT license. See [LICENSE](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE).
+HealthCheckPlus is licensed under the MIT license. See [LICENSE](./LICENSE).
 

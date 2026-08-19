@@ -193,5 +193,65 @@ namespace HealthCheckPlusTests
         {
             TestEnum
         }
+
+        // Regression: none of these six extension methods validated their arguments before
+        // dereferencing them, unlike every other public API in this library (CA1062). A null
+        // report used to surface as a bare NullReferenceException instead of a clear
+        // ArgumentNullException naming the parameter.
+        [Fact]
+        public void StatusResult_StringKey_ThrowsArgumentNullException_WhenReportIsNull()
+        {
+            HealthReport report = null!;
+            Assert.Throws<ArgumentNullException>(() => report.StatusResult("test"));
+        }
+
+        [Fact]
+        public void StatusResult_StringKey_ThrowsArgumentNullException_WhenKeydepIsNull()
+        {
+            var report = CreateHealthReport([]);
+            Assert.Throws<ArgumentNullException>(() => report.StatusResult((string)null!));
+        }
+
+        [Fact]
+        public void StatusResult_EnumKey_ThrowsArgumentNullException_WhenReportIsNull()
+        {
+            HealthReport report = null!;
+            Assert.Throws<ArgumentNullException>(() => report.StatusResult(TestEnum.TestEnum));
+        }
+
+        [Fact]
+        public void StatusResult_EnumKey_ThrowsArgumentNullException_WhenKeydepIsNull()
+        {
+            var report = CreateHealthReport([]);
+            Assert.Throws<ArgumentNullException>(() => report.StatusResult((Enum)null!));
+        }
+
+        [Fact]
+        public void TryGetNotHealthy_ThrowsArgumentNullException_WhenReportIsNull()
+        {
+            HealthReport report = null!;
+            Assert.Throws<ArgumentNullException>(() => report.TryGetNotHealthy(out _));
+        }
+
+        [Fact]
+        public void TryGetHealthy_ThrowsArgumentNullException_WhenReportIsNull()
+        {
+            HealthReport report = null!;
+            Assert.Throws<ArgumentNullException>(() => report.TryGetHealthy(out _));
+        }
+
+        [Fact]
+        public void TryGetDegraded_ThrowsArgumentNullException_WhenReportIsNull()
+        {
+            HealthReport report = null!;
+            Assert.Throws<ArgumentNullException>(() => report.TryGetDegraded(out _));
+        }
+
+        [Fact]
+        public void TryGetUnhealthy_ThrowsArgumentNullException_WhenReportIsNull()
+        {
+            HealthReport report = null!;
+            Assert.Throws<ArgumentNullException>(() => report.TryGetUnhealthy(out _));
+        }
     }
 }

@@ -12,5 +12,5 @@ namespace HealthCheckPlus.Internal.Policies
             TimeSpan? PolicyDelay,
             TimeSpan? PolicyPeriod,
             string PolicyNameDep
-        ) : IHealthCheckPlusPolicyStatus;
+        );
 }

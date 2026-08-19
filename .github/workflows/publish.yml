@@ -13,11 +13,28 @@ jobs:
     - name: Setup dotnet
       uses: actions/setup-dotnet@v5
       with:
-        dotnet-version: '10.0.x' # SDK Version to use.
+        # The test project is multi-targeted (net8.0;net9.0;net10.0) - the pre-pack test gate below
+        # needs all three runtimes installed, not just the SDK's own major version, or the
+        # net8.0/net9.0 runs fail to launch.
+        dotnet-version: |
+          8.0.x
+          9.0.x
+          10.0.x
+        cache: true
+        cache-dependency-path: '**/*.csproj'
 
     - name: Setup Version
       id: setup_version
       run: echo "VERSION=${GITHUB_REF/refs\/tags\/v/}" >> $GITHUB_OUTPUT
+
+    # Gate: a tag can point at any commit, not necessarily one that already passed CI on a
+    # branch - build and test before packing/pushing, so a broken tag can't publish a broken
+    # package (NuGet versions can't be unpublished once pushed).
+    - name: Build solution
+      run: dotnet build HealthCheckPlus.slnx -c Release
+
+    - name: Run test cases
+      run: dotnet test -c Release --no-build
 
     - name: Pack NuGet Package HealthCheckPlus
       run: dotnet pack src/HealthCheckPlus/HealthCheckPlus.csproj -c Release -o ./dist -p:Version=${{ steps.setup_version.outputs.VERSION }}
@@ -26,4 +43,4 @@ jobs:
       run: dotnet pack src/HealthCheckPlus.Abstractions/HealthCheckPlus.Abstractions.csproj -c Release -o ./dist -p:Version=${{ steps.setup_version.outputs.VERSION }}
 
     - name: Publish Packs NuGet
-      run: dotnet nuget push dist/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+      run: dotnet nuget push dist/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json --skip-duplicate

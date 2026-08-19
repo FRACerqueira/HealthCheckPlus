@@ -6,11 +6,12 @@
 using HealthCheckPlus.Abstractions;
 using HealthCheckPlus.Internal;
 using HealthCheckPlus.Internal.WrapperMicrosoft;
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using System.Linq;
 
 #pragma warning disable IDE0130 // Namespace does not match folder structure
 namespace Microsoft.AspNetCore.Builder
@@ -36,9 +37,11 @@ namespace Microsoft.AspNetCore.Builder
         /// of <paramref name="path"/> case-insensitively, allowing for an extra trailing slash ('/') character.
         /// </para>
         /// <para>
-        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckOptions}"/>.
+        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckPlusOptions}"/>.
         /// </para>
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path)
         {
             ArgumentNullException.ThrowIfNull(app);
@@ -62,9 +65,11 @@ namespace Microsoft.AspNetCore.Builder
         /// character.
         /// </para>
         /// <para>
-        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckOptions}"/>.
+        /// The health check middleware will use default settings from <see cref="IOptions{HealthCheckPlusOptions}"/>.
         /// </para>
         /// </remarks>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> is <c>null</c>.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, int port)
         {
             ArgumentNullException.ThrowIfNull(app);
@@ -76,24 +81,27 @@ namespace Microsoft.AspNetCore.Builder
         /// Adds a middleware that provides health check status.
         /// </summary>
         /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
-        /// <param name="path">The The path on which to provide health check status.</param>
+        /// <param name="path">The path on which to provide health check status.</param>
         /// <param name="options">The <see cref="HealthCheckPlusOptions"/> used to configure.</param>
-        /// If path is set to null or the empty string then the health check middleware will
         /// <remarks>
+        /// If path is set to null or the empty string then the health check middleware will
         /// ignore the URL path and process all requests. If path is set to a non-empty value,
         /// the health check middleware will process requests with a URL that matches the
         /// provided value of path case-insensitively, allowing for an extra trailing slash
         ///('/') character.
         /// </remarks>
         /// <returns>The <see cref="IApplicationBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> or <paramref name="options"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="options"/>' <see cref="HealthCheckPlusOptions.HealthCheckName"/> was already registered by an earlier call.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called - or the registered <see cref="IStateHealthChecksPlus"/> is not the type <c>AddHealthChecksPlus()</c> registers.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, HealthCheckPlusOptions options)
         {
             ArgumentNullException.ThrowIfNull(app);
 
             ArgumentNullException.ThrowIfNull(options);
 
-            var cacheStatus = (CacheHealthCheckPlus)app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!;
-            cacheStatus.AddStatusName(options);
+            var cacheStatus = InternalCast.To<CacheHealthCheckPlus>(app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!, "the registered IStateHealthChecksPlus");
+            cacheStatus.AddStatusName(options, BuildIncludeName(options.Predicate, app.ApplicationServices));
 
             object[] args = [Options.Create(options)];
             UseHealthChecksCore(app, path, null, args);
@@ -104,25 +112,28 @@ namespace Microsoft.AspNetCore.Builder
         /// Adds a middleware that provides health check status.
         /// </summary>
         /// <param name="app">The <see cref="IApplicationBuilder"/>.</param>
-        /// <param name="path">The The path on which to provide health check status.</param>
+        /// <param name="path">The path on which to provide health check status.</param>
         /// <param name="port">The port to listen on. Must be a local port on which the server is listening.</param>
         /// <param name="options">The <see cref="HealthCheckPlusOptions"/> used to configure.</param>
-        /// If path is set to null or the empty string then the health check middleware will
         /// <remarks>
+        /// If path is set to null or the empty string then the health check middleware will
         /// ignore the URL path and process all requests. If path is set to a non-empty value,
         /// the health check middleware will process requests with a URL that matches the
         /// provided value of path case-insensitively, allowing for an extra trailing slash
         ///('/') character.
         /// </remarks>
         /// <returns>The <see cref="IApplicationBuilder"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="app"/> or <paramref name="options"/> is <c>null</c>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="options"/>' <see cref="HealthCheckPlusOptions.HealthCheckName"/> was already registered by an earlier call.</exception>
+        /// <exception cref="InvalidOperationException">No <see cref="HealthCheckService"/> is registered - <c>AddHealthChecksPlus</c> was never called - or the registered <see cref="IStateHealthChecksPlus"/> is not the type <c>AddHealthChecksPlus()</c> registers.</exception>
         public static IApplicationBuilder UseHealthChecksPlus(this IApplicationBuilder app, PathString path, int port, HealthCheckPlusOptions options)
         {
             ArgumentNullException.ThrowIfNull(app);
 
             ArgumentNullException.ThrowIfNull(options);
 
-            var cacheStatus = (CacheHealthCheckPlus)app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!;
-            cacheStatus.AddStatusName(options);
+            var cacheStatus = InternalCast.To<CacheHealthCheckPlus>(app.ApplicationServices.GetRequiredService<IStateHealthChecksPlus>()!, "the registered IStateHealthChecksPlus");
+            cacheStatus.AddStatusName(options, BuildIncludeName(options.Predicate, app.ApplicationServices));
 
             object[] args = [Options.Create(options)];
             UseHealthChecksCore(app, path, port, args);
@@ -133,8 +144,9 @@ namespace Microsoft.AspNetCore.Builder
         {
             if (app.ApplicationServices.GetService(typeof(HealthCheckService)) == null)
             {
-                throw new InvalidOperationException(string.Format("Unable Find {0})",
-                    nameof(HealthCheckServiceCollectionExtensions.AddHealthChecks)));
+                throw new InvalidOperationException(
+                    $"Unable to find the required health check services. Call '{nameof(HealthCheckServiceCollectionExtensions.AddHealthChecks)}' " +
+                    $"(via '{nameof(HealthChecksPlusExtension.AddHealthChecksPlus)}') before calling this method.");
             }
 
             // NOTE: we explicitly don't use Map here because it's really common for multiple health
@@ -167,6 +179,22 @@ namespace Microsoft.AspNetCore.Builder
             app.MapWhen(predicate, b => b.UseMiddleware<HealthCheckMiddlewarePlus>(args));
         }
 
-
+        // HealthCheckMiddlewarePlus evaluates this same Predicate to filter the report it builds
+        // for its own endpoint's HTTP response (see DefaultHealthCheckServicePlus.
+        // CheckHealthPlusAsync's own predicate parameter) - AddStatusName's registered aggregate
+        // must see the same filtered set of checks, or the two can disagree about what "this
+        // endpoint's status" means. CacheHealthCheckPlus only ever tracks check names, not the
+        // real HealthCheckRegistration list a Predicate is evaluated against, so this translation
+        // happens here, where that list is actually available.
+        private static Func<string, bool>? BuildIncludeName(Func<HealthCheckRegistration, bool>? predicate, IServiceProvider services)
+        {
+            if (predicate == null)
+            {
+                return null;
+            }
+            var registrations = services.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations;
+            var eligibleNames = new HashSet<string>(registrations.Where(predicate).Select(r => r.Name), StringComparer.OrdinalIgnoreCase);
+            return eligibleNames.Contains;
+        }
     }
 }

@@ -19,14 +19,20 @@ namespace HealthCheckPlusDemo.Controllers
         [HttpGet(Name = "GetWeatherForecast")]
         public IEnumerable<WeatherForecast> Get()
         {
+            // Read a single dependency's cached status without waiting for it to run again -
+            // useful when a business action depends on one specific check, not the whole app.
             if (stateHealthChecks.StatusResult("HcTest1").Status != HealthStatus.Healthy)
             {
-                //do something
+                _logger.LogWarning("HcTest1 is not Healthy; forecast data may be degraded.");
             }
+
+            // Read the same aggregate status the "live" endpoint reports, from application code
+            // instead of an HTTP call - e.g. to skip non-essential work while the app is unhealthy.
             if (stateHealthChecks.Status("live") != HealthStatus.Healthy)
             {
-                //do something
+                _logger.LogWarning("Application is not Healthy; consider degrading this response.");
             }
+
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast
             {
                 Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),

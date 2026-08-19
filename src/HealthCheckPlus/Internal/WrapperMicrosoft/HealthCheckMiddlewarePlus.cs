@@ -5,7 +5,7 @@
 // The maintenance and evolution is maintained by the HealthCheckPlus project under MIT license
 // ********************************************************************************************
 
-using HealthCheckPlus.options;
+using HealthCheckPlus.Options;
 using HealthCheckPlus.Abstractions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -26,7 +26,7 @@ namespace HealthCheckPlus.Internal.WrapperMicrosoft
             ArgumentNullException.ThrowIfNull(healthCheckService);
 
             _healthCheckOptions = healthCheckOptions.Value;
-            _healthCheckService = (DefaultHealthCheckServicePlus)healthCheckService;
+            _healthCheckService = InternalCast.To<DefaultHealthCheckServicePlus>(healthCheckService, "the registered HealthCheckService");
         }
 
         public async Task InvokeAsync(HttpContext httpContext)

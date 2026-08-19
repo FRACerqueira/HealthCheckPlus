@@ -6,7 +6,7 @@ namespace HealthCheckPlusDemoBackgroudService.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class WeatherForecastController(IStateHealthChecksPlus stateHealthChecks) : ControllerBase
+    public class WeatherForecastController(IStateHealthChecksPlus stateHealthChecks, ILogger<WeatherForecastController> logger) : ControllerBase
     {
         private static readonly string[] Summaries =
         [
@@ -18,14 +18,18 @@ namespace HealthCheckPlusDemoBackgroudService.Controllers
         {
             if (stateHealthChecks.StatusResult("HcTest1").Status != HealthStatus.Healthy)
             {
-                //do something
+                logger.LogWarning("HcTest1 is not Healthy; forecast data may be degraded.");
             }
             if (stateHealthChecks.Status("live") != HealthStatus.Healthy)
             {
-                //do something
+                logger.LogWarning("Application is not Healthy; consider degrading this response.");
             }
 
-            //change status to force the pubisher report (sample only)
+            // Manual override (IStateHealthChecksPlus.SwitchToDegraded/SwitchToUnhealthy): forces a
+            // status change from application code, not from a poll - e.g. after catching an
+            // exception from the dependency this check represents. Called unconditionally here
+            // only to make the background publisher's "publish on change" filter fire on demand;
+            // in a real app this call would sit inside a catch block.
             stateHealthChecks.SwitchToDegraded("HcTest1");
 
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast
