@@ -595,8 +595,8 @@ namespace HealthCheckPlus.Internal
                 // this check when the manual override is requested - applying it here would race
                 // with that execution's own upcoming Update() call, so it's dropped instead. Left
                 // silent before, this is exactly the "no silent catch" pattern this project's own
-                // doctrine forbids elsewhere (see docs/ARCHITECTURE.md's logging-and-anomalies
-                // section): a consumer calling SwitchToUnhealthy/SwitchToDegraded would see no
+                // doctrine forbids elsewhere (see docs/architecture/logging.md): a consumer
+                // calling SwitchToUnhealthy/SwitchToDegraded would see no
                 // exception and reasonably assume the override took effect.
                 SafeLog(() => _logger.LogWarning(SwitchToDroppedEventId,
                     "A manual override to '{TargetStatus}' for health check '{HealthCheckName}' was dropped: a scheduled execution is currently running for it and will produce its own result shortly. Retry after it completes if the override is still needed.",

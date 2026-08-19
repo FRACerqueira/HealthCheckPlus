@@ -47,7 +47,7 @@ New behavior should come with test coverage — prefer an integration-style test
 Standard .NET conventions apply — see the [.NET Framework Design Guidelines](https://learn.microsoft.com/dotnet/standard/design-guidelines/) for the general shape. A few things specific to this codebase:
 
 - Logging uses the `[LoggerMessage]` source-generated pattern, with a hard-coded `EventId`/`EventName` per log method, drawn from the single flat catalog in `HealthCheckPlusEventIds` (add new entries there, then grep for existing `Log` nested classes to see the pattern) — this keeps event names stable even if a method is renamed later, and keeps every event id unique project-wide instead of only within one class.
-- A `catch` block must never swallow an exception silently. At minimum, log it; where the codebase already has metrics for a similar defensive path, add one. See `docs/ARCHITECTURE.md`'s [Logging and anomalies](./docs/ARCHITECTURE.md#logging-and-anomalies) section for the pattern this codebase follows.
+- A `catch` block must never swallow an exception silently. At minimum, log it; where the codebase already has metrics for a similar defensive path, add one. See [Logging and anomalies](./docs/architecture/logging.md) for the pattern this codebase follows.
 - Prefer public, documented extension points (`IServiceCollection.Configure<T>`, well-known interfaces) over reflecting into another library's internal types, even when it takes more code — see `docs/ARCHITECTURE.md`'s [Product positioning](./docs/ARCHITECTURE.md#product-positioning) section for why.
 
 ## Making a change

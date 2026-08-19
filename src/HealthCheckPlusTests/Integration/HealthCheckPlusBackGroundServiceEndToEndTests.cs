@@ -460,7 +460,7 @@ namespace HealthCheckPlusTests.Integration
 
         // Regression test: StopAsync used to swallow an exception from _stopping.Cancel() with a
         // fully empty catch block - no log, no metric, nothing - which is exactly the pattern this
-        // project's own rule forbids (see docs/ARCHITECTURE.md's logging-and-anomalies section).
+        // project's own rule forbids (see docs/architecture/logging.md).
         // CancellationTokenSource.Cancel() can throw if any callback registered anywhere on the
         // cancellation chain a background cycle's linked token belongs to itself throws; this
         // drives a real shutdown while a check with such a callback is in flight to reproduce it.
