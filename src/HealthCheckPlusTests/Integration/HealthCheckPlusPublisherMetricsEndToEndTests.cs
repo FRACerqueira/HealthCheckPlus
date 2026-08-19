@@ -125,9 +125,16 @@ namespace HealthCheckPlusTests.Integration
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "published");
             Assert.Contains(invocations, m => (string?)m.Tags["healthcheckplus.publisher.result"] == "skipped_no_change");
 
-            var publishedDuration = capture.Measurements.Single(m =>
-                m.InstrumentName == "healthcheckplus.publisher.duration" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(NoopPublisher).FullName);
-            Assert.Equal(typeof(NoopPublisher).FullName, publishedDuration.Tags["healthcheckplus.publisher.type"]);
+            // Not .Single(): "Test1" can legitimately miss the very first idle cycle if it hasn't
+            // run yet by then (see BackgroundService_ShouldExcludeNotYetRunChecks_FromThePublishedReport),
+            // in which case that cycle publishes an empty report and the next cycle - once "Test1"
+            // has actually run - legitimately publishes again because the report genuinely changed,
+            // producing a second "published" duration measurement here. Both are real publishes;
+            // asserting "at least one" is what this test actually needs to verify.
+            var publishedDurations = capture.Measurements.Where(m =>
+                m.InstrumentName == "healthcheckplus.publisher.duration" && (string?)m.Tags["healthcheckplus.publisher.type"] == typeof(NoopPublisher).FullName).ToArray();
+            Assert.NotEmpty(publishedDurations);
+            Assert.All(publishedDurations, m => Assert.Equal(typeof(NoopPublisher).FullName, m.Tags["healthcheckplus.publisher.type"]));
         }
 
         // The WhenReportChange skip branch's `foreach (var publisher in _publishers)` loop
