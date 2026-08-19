@@ -32,7 +32,7 @@ For anything beyond a small fix, open an issue first to discuss the approach bef
 ## Building and testing
 
 ```
-dotnet build HealthCheckPlus.sln
+dotnet build HealthCheckPlus.slnx
 dotnet test src/HealthCheckPlusTests
 ```
 

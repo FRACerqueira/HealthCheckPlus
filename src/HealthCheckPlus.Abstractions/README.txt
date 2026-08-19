@@ -78,4 +78,4 @@ License
 
 Copyright 2023 @ Fernando Cerqueira
 
-HealthCheckPlus is licensed under the MIT license. See https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE.
+HealthCheckPlus is licensed under the MIT license. See https://github.com/FRACerqueira/HealthCheckPlus/blob/main/LICENSE.

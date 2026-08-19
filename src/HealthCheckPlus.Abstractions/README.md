@@ -3,7 +3,7 @@
 ### **Abstractions of HealthCheckPlus - the shared contract between the main package and your own code.**
 
 [![Build](https://github.com/FRACerqueira/HealthCheckPlus/workflows/Build/badge.svg)](https://github.com/FRACerqueira/HealthCheckPlus/actions/workflows/build.yml)
-[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/master/LICENSE)
+[![License](https://img.shields.io/github/license/FRACerqueira/HealthCheckPlus)](https://github.com/FRACerqueira/HealthCheckPlus/blob/main/LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/HealthCheckPlus.Abstractions)](https://www.nuget.org/packages/HealthCheckPlus.Abstractions/)
 [![Downloads](https://img.shields.io/nuget/dt/HealthCheckPlus.Abstractions)](https://www.nuget.org/packages/HealthCheckPlus.Abstractions/)
 

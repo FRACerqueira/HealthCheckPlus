@@ -31,7 +31,7 @@ jobs:
     # branch - build and test before packing/pushing, so a broken tag can't publish a broken
     # package (NuGet versions can't be unpublished once pushed).
     - name: Build solution
-      run: dotnet build HealthCheckPlus.sln -c Release
+      run: dotnet build HealthCheckPlus.slnx -c Release
 
     - name: Run test cases
       run: dotnet test -c Release --no-build
